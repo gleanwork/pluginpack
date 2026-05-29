@@ -56,7 +56,7 @@ plugins/
   copilot.json
 ```
 
-Users can install the portable skills with `npx skills add owner/repo --skill release-notes`. Claude, Cursor, and other native plugin users install from the generated marketplace/plugin layout their app expects.
+Users should install portable skills from the `skills/` subpath, for example `npx skills add owner/repo/skills --skill '*'`. The repo root is intentionally also home to generated native plugin outputs, so the subpath keeps `skills` CLI discovery focused on the canonical portable skills. Claude, Cursor, and other native plugin users install from the generated marketplace/plugin layout their app expects.
 
 `pluginpack` writes a `.pluginpack/<target>.json` managed-file manifest for each built target. That manifest lets builds and cleanup commands remove stale generated files without touching source files or unmanaged repo content.
 
