@@ -66,6 +66,7 @@ const configSchema = z.object({
 const sourcePluginManifestSchema = metadataSchema.extend({
   name: z.string().optional(),
   description: z.string().optional(),
+  mcpServers: z.record(z.string(), z.unknown()).optional(),
 });
 
 export { configSchema, sourcePluginManifestSchema };

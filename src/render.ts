@@ -10,6 +10,62 @@ import type {
   TargetName,
 } from "./types.js";
 
+export async function resolveMcpServers(
+  project: ResolvedProject,
+  sourceIds: string[],
+): Promise<Record<string, unknown> | undefined> {
+  const merged: Record<string, unknown> = {};
+  let found = false;
+  for (const sourceId of sourceIds) {
+    const plugin = project.plugins.get(sourceId);
+    if (!plugin) {
+      continue;
+    }
+    const servers = await readPluginMcpServers(plugin);
+    if (!servers) {
+      continue;
+    }
+    found = true;
+    for (const [name, config] of Object.entries(servers)) {
+      if (name in merged) {
+        throw new Error(
+          `Duplicate MCP server "${name}" while merging source plugin "${sourceId}".`,
+        );
+      }
+      merged[name] = config;
+    }
+  }
+  return found ? merged : undefined;
+}
+
+// A source plugin declares MCP servers via a .mcp.json file (standard
+// { mcpServers: {...} } shape) or an mcpServers key in plugin.pluginpack.json.
+// The file takes precedence when both are present.
+async function readPluginMcpServers(
+  plugin: SourcePlugin,
+): Promise<Record<string, unknown> | undefined> {
+  const filePath = path.join(plugin.dir, ".mcp.json");
+  if (await exists(filePath)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await fs.readFile(filePath, "utf8"));
+    } catch (error) {
+      throw new Error(
+        `Invalid JSON in ${filePath}: ${(error as Error).message}`,
+      );
+    }
+    const servers = (parsed as { mcpServers?: unknown }).mcpServers;
+    return isObject(servers) ? servers : undefined;
+  }
+  return isObject(plugin.manifest.mcpServers)
+    ? plugin.manifest.mcpServers
+    : undefined;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export async function collectPluginFiles(
   project: ResolvedProject,
   target: TargetName,

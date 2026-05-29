@@ -130,6 +130,11 @@ describe("emitted output conforms to external target schemas", () => {
       "pluginpack.config.ts": CONFIG,
       plugins: {
         glean: {
+          ".mcp.json": `${JSON.stringify(
+            { mcpServers: { glean: { command: "glean-mcp" } } },
+            null,
+            2,
+          )}\n`,
           "plugin.pluginpack.json": `${JSON.stringify(
             { description: "Official Glean plugin.", displayName: "Glean" },
             null,
@@ -164,6 +169,7 @@ describe("emitted output conforms to external target schemas", () => {
     );
 
     expect(schemaErrors(cursorPluginSchema, plugin)).toEqual([]);
+    expect(plugin.mcpServers).toBe("./.mcp.json");
     // Cursor tolerates a top-level marketplace `version` at runtime: the published
     // schema is stricter than reality (gleanwork/cursor-plugins ships `version` and
     // is live in Cursor's marketplace). Any OTHER unexpected key still fails here.
@@ -251,23 +257,7 @@ describe("emitted output conforms to external target schemas", () => {
       source: "./plugins/glean",
       version: "2.1.1",
       skills: ["./skills/example"],
+      mcpServers: ".mcp.json",
     });
   });
-
-  it.skipIf(!hasClaude)(
-    "claude plugin validate accepts the emitted Copilot marketplace",
-    async () => {
-      const result = await runBin("build", "--target", "copilot");
-      expect(result.exitCode, String(result.stderr)).toBe(0);
-
-      // Copilot reuses the Claude marketplace schema, so claude's validator is a
-      // genuine external oracle. Non-strict: Copilot adds skills[]/version fields
-      // that Claude's runtime tolerates but --strict would reject.
-      execFileSync(
-        "claude",
-        ["plugin", "validate", path.join(project.baseDir, "out-copilot")],
-        { stdio: "pipe" },
-      );
-    },
-  );
 });

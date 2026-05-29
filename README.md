@@ -127,6 +127,7 @@ For more complex source content, keep source plugins under `plugins/` and emit t
 plugins/
   core/
     plugin.pluginpack.json
+    .mcp.json
     skills/
       release-notes/
         SKILL.md
@@ -138,6 +139,12 @@ plugins/
 ```
 
 A target can emit a source plugin directly, rename it, or merge multiple source plugins into one emitted plugin.
+
+## MCP Servers
+
+A source plugin declares MCP servers with a standard `.mcp.json` file at its root (`{ "mcpServers": { "name": { ... } } }`), or with an `mcpServers` key in `plugin.pluginpack.json`. The file wins if both are present, and merging plugins with the same server name is an error.
+
+Each target wires MCP into its native shape: `claude` ships `.mcp.json` at the plugin root (auto-discovered), `cursor` references it from `plugin.json` (`"mcpServers": "./.mcp.json"`), `copilot` references it from the marketplace entry, and `gemini` inlines the server map into `gemini-extension.json`.
 
 There are two reasonable alternatives when the single-repo shape is not enough:
 

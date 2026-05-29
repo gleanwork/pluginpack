@@ -1,5 +1,5 @@
 import path from "node:path";
-import { collectPluginFiles } from "./render.js";
+import { collectPluginFiles, resolveMcpServers } from "./render.js";
 import { json, toPosix } from "./fs.js";
 import type {
   Artifact,
@@ -58,8 +58,10 @@ type EmitPluginsOptions = {
     pluginName: string,
     pluginConfig: EmittedPluginConfig,
     componentDirs: Set<string>,
+    mcpServers: Record<string, unknown> | undefined,
   ) => Record<string, unknown>;
   entrySource?: (pluginPath: string) => string;
+  mcp?: "file" | "inline";
 };
 
 async function emitPlugins(
@@ -86,12 +88,21 @@ async function emitPlugins(
       files.set(toPosix(path.join(pluginPath, relativePath)), value);
     }
 
+    const mcpServers = await resolveMcpServers(project, pluginConfig.from);
+    if (mcpServers && options.mcp === "file") {
+      files.set(
+        toPosix(path.join(pluginPath, ".mcp.json")),
+        json({ mcpServers }),
+      );
+    }
+
     const metadata = emittedPluginMetadata(project, pluginConfig);
     const manifest = options.buildManifest(
       metadata,
       pluginName,
       pluginConfig,
       componentDirs,
+      mcpServers,
     );
     files.set(toPosix(options.pluginManifestPath(pluginPath)), json(manifest));
 
@@ -123,15 +134,23 @@ async function emitCursor(
       pluginConfig.path ?? pluginName,
     pluginManifestPath: (pluginPath) =>
       path.join(pluginPath, marketplaceDir, "plugin.json"),
-    buildManifest: (metadata, pluginName, pluginConfig, componentDirs) =>
+    buildManifest: (
+      metadata,
+      pluginName,
+      pluginConfig,
+      componentDirs,
+      mcpServers,
+    ) =>
       cursorPluginManifest(
         metadata,
         version,
         pluginName,
         pluginConfig,
         componentDirs,
+        mcpServers,
       ),
     entrySource: (pluginPath) => pluginPath,
+    mcp: "file",
   });
 
   const marketplace = {
@@ -172,6 +191,7 @@ async function emitClaude(
     buildManifest: (metadata, pluginName, pluginConfig) =>
       claudePluginManifest(metadata, version, pluginName, pluginConfig),
     entrySource: (pluginPath) => `./${pluginPath}`,
+    mcp: "file",
   });
 
   const marketplace = {
@@ -205,8 +225,9 @@ async function emitGemini(
       pluginConfig.path ?? pluginName,
     pluginManifestPath: (pluginPath) =>
       path.join(pluginPath, "gemini-extension.json"),
-    buildManifest: (metadata, pluginName, pluginConfig) =>
-      geminiExtensionManifest(metadata, version, pluginName, pluginConfig),
+    buildManifest: (metadata, pluginName, pluginConfig, _componentDirs, mcp) =>
+      geminiExtensionManifest(metadata, version, pluginName, pluginConfig, mcp),
+    mcp: "inline",
   });
 
   return artifact(target, outDir, files);
@@ -237,6 +258,14 @@ async function emitCopilot(
       files.set(toPosix(path.join(pluginPath, relativePath)), value);
     }
 
+    const mcpServers = await resolveMcpServers(project, pluginConfig.from);
+    if (mcpServers) {
+      files.set(
+        toPosix(path.join(pluginPath, ".mcp.json")),
+        json({ mcpServers }),
+      );
+    }
+
     const skills = [
       ...new Set(
         [...pluginFiles.keys()]
@@ -252,6 +281,7 @@ async function emitCopilot(
         description: pluginConfig.description ?? metadata?.description,
         version,
         skills,
+        mcpServers: mcpServers ? ".mcp.json" : undefined,
       }),
     );
   }
@@ -302,6 +332,7 @@ function cursorPluginManifest(
   pluginName: string,
   pluginConfig: EmittedPluginConfig,
   componentDirs: Set<string>,
+  mcpServers: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     name: pluginName,
@@ -326,12 +357,14 @@ function cursorPluginManifest(
     "commands",
     "rules",
     "hooks",
-    "mcpServers",
   ];
   for (const component of components) {
     if (componentDirs.has(component)) {
       manifest[component] = `./${component}/`;
     }
+  }
+  if (mcpServers) {
+    manifest.mcpServers = "./.mcp.json";
   }
   return stripUndefined({ ...manifest, ...pluginConfig.manifest });
 }
@@ -360,11 +393,13 @@ function geminiExtensionManifest(
   version: string,
   pluginName: string,
   pluginConfig: EmittedPluginConfig,
+  mcpServers: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   return stripUndefined({
     name: pluginName,
     version,
     description: pluginConfig.description ?? metadata?.description,
+    mcpServers,
     ...pluginConfig.manifest,
   });
 }

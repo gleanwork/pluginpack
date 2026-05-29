@@ -388,6 +388,127 @@ export default defineConfig({
       /Duplicate emitted file/,
     );
   });
+
+  it("packages MCP servers across targets from both source forms", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-mcp-test-"));
+    roots.push(root);
+    await mkdir(path.join(root, "plugins/filed/skills/s1"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "plugins/filed/.mcp.json"),
+      `${JSON.stringify({ mcpServers: { srv: { command: "node" } } }, null, 2)}\n`,
+    );
+    await writeFile(
+      path.join(root, "plugins/filed/skills/s1/SKILL.md"),
+      skill("s1", "S1."),
+    );
+    await mkdir(path.join(root, "plugins/manifested/skills/s2"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "plugins/manifested/plugin.pluginpack.json"),
+      `${JSON.stringify({ mcpServers: { msrv: { command: "py" } } }, null, 2)}\n`,
+    );
+    await writeFile(
+      path.join(root, "plugins/manifested/skills/s2/SKILL.md"),
+      skill("s2", "S2."),
+    );
+    await writeFile(
+      path.join(root, "pluginpack.config.ts"),
+      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "mcp-plugins",
+  version: "1.0.0",
+  metadata: { description: "MCP", author: { name: "X" }, license: "MIT" },
+  targets: {
+    cursor: { outDir: "dist/cursor", plugins: { filed: { from: ["filed"], path: "filed", components: ["skills"] } } },
+    claude: { outDir: "dist/claude", plugins: { filed: { from: ["filed"] } } },
+    gemini: { outDir: "dist/gemini", plugins: { filed: { from: ["filed"] } } },
+    copilot: { outDir: "dist/copilot", plugins: { manifested: { from: ["manifested"] } } }
+  }
+});
+`,
+    );
+
+    await build({ cwd: root });
+
+    // cursor references the copied .mcp.json
+    const cursorPlugin = JSON.parse(
+      await readFile(
+        path.join(root, "dist/cursor/filed/.cursor-plugin/plugin.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(cursorPlugin.mcpServers).toBe("./.mcp.json");
+    await access(path.join(root, "dist/cursor/filed/.mcp.json"));
+
+    // claude auto-discovers .mcp.json at the plugin root
+    await access(path.join(root, "dist/claude/plugins/filed/.mcp.json"));
+
+    // gemini inlines the server map into the extension manifest
+    const geminiManifest = JSON.parse(
+      await readFile(
+        path.join(root, "dist/gemini/filed/gemini-extension.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(geminiManifest.mcpServers).toMatchObject({
+      srv: { command: "node" },
+    });
+
+    // copilot from a manifest-form source: generated .mcp.json + entry reference
+    const copilotMarket = JSON.parse(
+      await readFile(
+        path.join(root, "dist/copilot/.claude-plugin/marketplace.json"),
+        "utf8",
+      ),
+    ) as { plugins: Record<string, unknown>[] };
+    expect(copilotMarket.plugins[0].mcpServers).toBe(".mcp.json");
+    await access(path.join(root, "dist/copilot/plugins/manifested/.mcp.json"));
+  });
+
+  it("rejects MCP server name collisions when merging source plugins", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-mcp-dup-"));
+    roots.push(root);
+    await mkdir(path.join(root, "plugins/a/skills/sa"), { recursive: true });
+    await mkdir(path.join(root, "plugins/b/skills/sb"), { recursive: true });
+    await writeFile(
+      path.join(root, "plugins/a/.mcp.json"),
+      `${JSON.stringify({ mcpServers: { dup: { command: "a" } } }, null, 2)}\n`,
+    );
+    await writeFile(
+      path.join(root, "plugins/b/.mcp.json"),
+      `${JSON.stringify({ mcpServers: { dup: { command: "b" } } }, null, 2)}\n`,
+    );
+    await writeFile(
+      path.join(root, "plugins/a/skills/sa/SKILL.md"),
+      skill("sa", "SA."),
+    );
+    await writeFile(
+      path.join(root, "plugins/b/skills/sb/SKILL.md"),
+      skill("sb", "SB."),
+    );
+    await writeFile(
+      path.join(root, "pluginpack.config.ts"),
+      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "mcp-dup",
+  version: "1.0.0",
+  metadata: { description: "Dup", author: { name: "X" }, license: "MIT" },
+  targets: {
+    claude: { outDir: "dist/claude", plugins: { combined: { from: ["a", "b"] } } }
+  }
+});
+`,
+    );
+
+    await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
+      /Duplicate MCP server "dup"/,
+    );
+  });
 });
 
 async function fixture(): Promise<string> {
