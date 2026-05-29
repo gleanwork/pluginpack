@@ -509,6 +509,37 @@ export default defineConfig({
       /Duplicate MCP server "dup"/,
     );
   });
+
+  it("detects cross-target output path collisions", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-collide-"));
+    roots.push(root);
+    await mkdir(path.join(root, "skills/demo"), { recursive: true });
+    await writeFile(
+      path.join(root, "skills/demo/SKILL.md"),
+      skill("demo", "Demo skill."),
+    );
+    // claude and copilot both write .claude-plugin/marketplace.json at outDir ".".
+    await writeFile(
+      path.join(root, "pluginpack.config.ts"),
+      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "collide-plugins",
+  version: "1.0.0",
+  source: { skills: "skills", rootPlugin: { id: "core" } },
+  metadata: { description: "C", author: { name: "C" }, license: "MIT" },
+  targets: {
+    claude: { outDir: ".", plugins: { demo: { from: ["core"] } } },
+    copilot: { outDir: ".", plugins: { demo: { from: ["core"] } } }
+  }
+});
+`,
+    );
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      /overlapping output paths/,
+    );
+  });
 });
 
 async function fixture(): Promise<string> {
