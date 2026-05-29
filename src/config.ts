@@ -150,6 +150,7 @@ async function addRootSkillsPlugin(
     componentRoots: {
       skills: skillsDir,
     },
+    includeStaticFiles: false,
   });
 }
 

@@ -66,13 +66,15 @@ async function collectOnePlugin(
     }
   }
 
-  for (const fileName of staticFiles) {
-    const file = path.join(plugin.dir, fileName);
-    if (!(await exists(file))) {
-      continue;
+  if (plugin.includeStaticFiles !== false) {
+    for (const fileName of staticFiles) {
+      const file = path.join(plugin.dir, fileName);
+      if (!(await exists(file))) {
+        continue;
+      }
+      const resolved = await resolveTargetOverride(plugin.dir, file, target);
+      setFile(files, fileName, await fs.readFile(resolved), plugin.id);
     }
-    const resolved = await resolveTargetOverride(plugin.dir, file, target);
-    setFile(files, fileName, await fs.readFile(resolved), plugin.id);
   }
 }
 

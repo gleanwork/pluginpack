@@ -66,6 +66,7 @@ export type SourcePlugin = {
   dir: string;
   manifest: SourcePluginManifest;
   componentRoots?: Partial<Record<string, string>>;
+  includeStaticFiles?: boolean;
 };
 
 export type ResolvedProject = {

@@ -362,6 +362,7 @@ export default defineConfig({
     path.join(root, "skills/demo/SKILL.md"),
     skill("demo", "Demo skill."),
   );
+  await writeFile(path.join(root, "README.md"), "# Root docs\n");
   return root;
 }
 
