@@ -1,6 +1,8 @@
 # pluginpack
 
-Compile one source tree of agent skills and plugin assets into native plugin formats for AI apps.
+One source of truth for agent plugins across AI app ecosystems.
+
+`pluginpack` compiles portable skills, commands, agents, rules, hooks, assets, and metadata into the native plugin layouts expected by each AI app.
 
 `pluginpack` is intentionally boring: it copies files, writes the manifests each target expects, and validates the result. It is a build tool, not a package manager or publisher.
 
