@@ -43,7 +43,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build && npm run docs",
+    "check": "npm run test:all",
     "dev": "tsx src/cli.ts",
     "docs": "node dist/cli.js docs --check",
     "format": "prettier --write \"**/*.{ts,json,md,yml,yaml}\"",
@@ -53,6 +53,7 @@
     "prepublishOnly": "npm run check && npm pack --dry-run",
     "release": "release-it",
     "test": "vitest run",
+    "test:all": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build && npm run docs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
