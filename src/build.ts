@@ -1,5 +1,6 @@
 import { loadConfig } from "./config.js";
 import { writeArtifact } from "./fs.js";
+import { pruneManagedFiles, writeManagedManifest } from "./managed.js";
 import { emitTarget } from "./targets.js";
 import type { Artifact, BuildOptions, TargetName } from "./types.js";
 
@@ -15,7 +16,9 @@ export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
     const artifact = await emitTarget(project, target, options.outDir);
     artifacts.push(artifact);
     if (!options.dryRun) {
+      await pruneManagedFiles(artifact);
       await writeArtifact(artifact.outDir, artifact.files);
+      await writeManagedManifest(artifact);
     }
   }
   return artifacts;

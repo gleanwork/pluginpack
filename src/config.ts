@@ -6,6 +6,7 @@ import { z } from "zod";
 import type {
   ResolvedProject,
   PluginpackConfig,
+  ResolvedProjectConfig,
   SourcePlugin,
   SourcePluginManifest,
 } from "./types.js";
@@ -30,6 +31,12 @@ const metadataSchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 
+const rootPluginSchema = metadataSchema.extend({
+  id: z.string().min(1).optional(),
+  name: z.string().optional(),
+  description: z.string().optional(),
+});
+
 const emittedPluginSchema = z.object({
   from: z.array(z.string().min(1)).min(1),
   path: z.string().optional(),
@@ -51,7 +58,13 @@ const targetSchema = z.object({
 const configSchema = z.object({
   name: z.string().min(1),
   version: z.string().min(1),
-  source: z.object({ plugins: z.string().optional() }).optional(),
+  source: z
+    .object({
+      plugins: z.string().optional(),
+      skills: z.string().optional(),
+      rootPlugin: rootPluginSchema.optional(),
+    })
+    .optional(),
   metadata: metadataSchema.optional(),
   targets: z.object({
     claude: targetSchema.optional(),
@@ -74,6 +87,22 @@ export async function loadConfig(
   cwd = process.cwd(),
   configPath?: string,
 ): Promise<ResolvedProject> {
+  const projectConfig = await loadProjectConfig(cwd, configPath);
+  const { config, rootDir } = projectConfig;
+  const sourceRoot = path.resolve(rootDir, config.source?.plugins ?? "plugins");
+  const plugins = await discoverSourcePlugins(sourceRoot);
+  await addRootSkillsPlugin(rootDir, config, plugins);
+  return {
+    ...projectConfig,
+    sourceRoot,
+    plugins,
+  };
+}
+
+export async function loadProjectConfig(
+  cwd = process.cwd(),
+  configPath?: string,
+): Promise<ResolvedProjectConfig> {
   const resolvedConfigPath = configPath
     ? path.resolve(cwd, configPath)
     : await findConfig(cwd);
@@ -87,15 +116,41 @@ export async function loadConfig(
     resolvedConfigPath,
   ) as PluginpackConfig;
   const rootDir = path.dirname(resolvedConfigPath);
-  const sourceRoot = path.resolve(rootDir, config.source?.plugins ?? "plugins");
-  const plugins = await discoverSourcePlugins(sourceRoot);
   return {
     rootDir,
     configPath: resolvedConfigPath,
     config,
-    sourceRoot,
-    plugins,
   };
+}
+
+async function addRootSkillsPlugin(
+  rootDir: string,
+  config: PluginpackConfig,
+  plugins: Map<string, SourcePlugin>,
+): Promise<void> {
+  if (!config.source?.skills) {
+    return;
+  }
+  const id = config.source.rootPlugin?.id ?? "core";
+  if (plugins.has(id)) {
+    throw new Error(
+      `Root skills source plugin "${id}" conflicts with an existing source plugin.`,
+    );
+  }
+  const skillsDir = path.resolve(rootDir, config.source.skills);
+  if (!(await exists(skillsDir))) {
+    throw new Error(`Root skills source directory is missing: ${skillsDir}`);
+  }
+  const manifest = { ...(config.source.rootPlugin ?? {}) };
+  delete manifest.id;
+  plugins.set(id, {
+    id,
+    dir: rootDir,
+    manifest,
+    componentRoots: {
+      skills: skillsDir,
+    },
+  });
 }
 
 async function findConfig(cwd: string): Promise<string> {

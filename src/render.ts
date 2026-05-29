@@ -46,7 +46,8 @@ async function collectOnePlugin(
   target: TargetName,
 ): Promise<void> {
   for (const dirName of componentDirs) {
-    const dir = path.join(plugin.dir, dirName);
+    const dir =
+      plugin.componentRoots?.[dirName] ?? path.join(plugin.dir, dirName);
     if (!(await exists(dir))) {
       continue;
     }
@@ -54,7 +55,11 @@ async function collectOnePlugin(
       if (isTargetOverrideFile(file)) {
         continue;
       }
-      const relativeToPlugin = toPosix(path.relative(plugin.dir, file));
+      const relativeToPlugin = toPosix(
+        plugin.componentRoots?.[dirName]
+          ? path.join(dirName, path.relative(dir, file))
+          : path.relative(plugin.dir, file),
+      );
       const resolved = await resolveTargetOverride(plugin.dir, file, target);
       const value = await fs.readFile(resolved);
       setFile(files, relativeToPlugin, value, plugin.id);

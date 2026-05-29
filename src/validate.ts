@@ -35,7 +35,7 @@ async function validateGemini(
 ): Promise<void> {
   const entries = await fs.readdir(root, { withFileTypes: true });
   const extensionDirs = entries
-    .filter((entry) => entry.isDirectory())
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
     .map((entry) => path.join(root, entry.name));
   if (extensionDirs.length === 0) {
     error(

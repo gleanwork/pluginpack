@@ -1,8 +1,16 @@
-import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { build } from "../src/build.js";
+import { clean, prune } from "../src/cleanup.js";
 import { diffTarget } from "../src/diff.js";
 import { validateOutput } from "../src/validate.js";
 
@@ -116,6 +124,25 @@ describe("pluginpack core", () => {
     expect(geminiManifest.description).toBe("Source plugin description.");
   });
 
+  it("builds from a top-level skills directory source", async () => {
+    const root = await rootSkillsFixture();
+
+    await build({ cwd: root });
+
+    await expect(
+      readFile(
+        path.join(root, "dist/cursor/demo/skills/demo/SKILL.md"),
+        "utf8",
+      ),
+    ).resolves.toContain("Demo skill.");
+    await expect(
+      readFile(
+        path.join(root, "dist/claude/plugins/demo/.claude-plugin/plugin.json"),
+        "utf8",
+      ),
+    ).resolves.toContain('"description": "Root skills plugin."');
+  });
+
   it("reports stale managed files with diff", async () => {
     const root = await fixture();
     await build({ cwd: root, target: "cursor" });
@@ -135,6 +162,70 @@ describe("pluginpack core", () => {
       type: "changed",
       path: "demo/skills/demo/SKILL.md",
     });
+  });
+
+  it("reports managed files that should be removed with diff", async () => {
+    const root = await rootSkillsFixture();
+    await mkdir(path.join(root, "skills/old-skill"), { recursive: true });
+    await writeFile(
+      path.join(root, "skills/old-skill/SKILL.md"),
+      skill("old-skill", "Old skill."),
+    );
+    await build({ cwd: root, target: "cursor" });
+    await rm(path.join(root, "skills/old-skill"), {
+      recursive: true,
+      force: true,
+    });
+
+    const result = await diffTarget({
+      cwd: root,
+      target: "cursor",
+      against: "dist/cursor",
+    });
+
+    expect(result.entries).toContainEqual({
+      type: "removed",
+      path: "demo/skills/old-skill/SKILL.md",
+    });
+  });
+
+  it("prunes stale managed files and cleans managed outputs", async () => {
+    const root = await rootSkillsFixture();
+    await mkdir(path.join(root, "skills/old-skill"), { recursive: true });
+    await writeFile(
+      path.join(root, "skills/old-skill/SKILL.md"),
+      skill("old-skill", "Old skill."),
+    );
+    await build({ cwd: root, target: "cursor" });
+    await rm(path.join(root, "skills/old-skill"), {
+      recursive: true,
+      force: true,
+    });
+
+    const pruneResult = await prune({ cwd: root, target: "cursor" });
+
+    expect(pruneResult[0]?.entries).toContainEqual({
+      type: "stale",
+      target: "cursor",
+      path: "demo/skills/old-skill/SKILL.md",
+    });
+    await expectMissing(
+      path.join(root, "dist/cursor/demo/skills/old-skill/SKILL.md"),
+    );
+
+    await rm(path.join(root, "skills"), { recursive: true, force: true });
+
+    const cleanResult = await clean({ cwd: root, target: "cursor" });
+
+    expect(cleanResult[0]?.entries).toContainEqual({
+      type: "deleted",
+      target: "cursor",
+      path: "demo/skills/demo/SKILL.md",
+    });
+    await expectMissing(
+      path.join(root, "dist/cursor/demo/skills/demo/SKILL.md"),
+    );
+    await expectMissing(path.join(root, "dist/cursor/.pluginpack/cursor.json"));
   });
 
   it("ignores configured diff paths", async () => {
@@ -224,6 +315,58 @@ export default defineConfig({
     skill("demo", "Demo skill."),
   );
   return root;
+}
+
+async function rootSkillsFixture(): Promise<string> {
+  const root = await mkdtemp(path.join(tmpdir(), "pluginpack-root-test-"));
+  roots.push(root);
+  await mkdir(path.join(root, "skills/demo"), { recursive: true });
+  await writeFile(
+    path.join(root, "pluginpack.config.ts"),
+    `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "demo-plugins",
+  version: "1.0.0",
+  source: {
+    skills: "skills",
+    rootPlugin: {
+      id: "core",
+      description: "Root skills plugin.",
+      displayName: "Root Skills"
+    }
+  },
+  metadata: {
+    description: "Demo plugins",
+    author: { name: "Demo" },
+    license: "MIT"
+  },
+  targets: {
+    cursor: {
+      outDir: "dist/cursor",
+      plugins: {
+        demo: { from: ["core"], components: ["skills"] }
+      }
+    },
+    claude: {
+      outDir: "dist/claude",
+      plugins: {
+        demo: { from: ["core"] }
+      }
+    }
+  }
+});
+`,
+  );
+  await writeFile(
+    path.join(root, "skills/demo/SKILL.md"),
+    skill("demo", "Demo skill."),
+  );
+  return root;
+}
+
+async function expectMissing(filePath: string): Promise<void> {
+  await expect(access(filePath)).rejects.toMatchObject({ code: "ENOENT" });
 }
 
 function skill(name: string, description: string): string {

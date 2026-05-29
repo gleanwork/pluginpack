@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { build } from "./build.js";
 import { exists, loadConfig } from "./config.js";
+import { normalizeManagedPath, readManagedManifest } from "./managed.js";
 import type { DiffEntry, DiffResult, TargetName } from "./types.js";
 
 export async function diffTarget(options: {
@@ -27,6 +28,9 @@ export async function diffTarget(options: {
       options.against,
     );
     const entries: DiffEntry[] = [];
+    const currentManagedPaths = new Set(
+      artifact.managedPaths.map(normalizeManagedPath),
+    );
     for (const relativePath of artifact.managedPaths) {
       if (isIgnoredDiffPath(relativePath, ignoredDiffPaths)) {
         continue;
@@ -43,6 +47,19 @@ export async function diffTarget(options: {
       ]);
       if (!generated.equals(existing)) {
         entries.push({ type: "changed", path: relativePath });
+      }
+    }
+    const previous = await readManagedManifest(againstRoot, options.target);
+    for (const previousPath of previous?.files ?? []) {
+      const normalized = normalizeManagedPath(previousPath);
+      if (
+        currentManagedPaths.has(normalized) ||
+        isIgnoredDiffPath(normalized, ignoredDiffPaths)
+      ) {
+        continue;
+      }
+      if (await exists(path.join(againstRoot, normalized))) {
+        entries.push({ type: "removed", path: normalized });
       }
     }
     return {

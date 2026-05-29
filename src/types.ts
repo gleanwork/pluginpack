@@ -22,6 +22,12 @@ export type Metadata = {
 
 export type SourceConfig = {
   plugins?: string;
+  skills?: string;
+  rootPlugin?: Metadata & {
+    id?: string;
+    name?: string;
+    description?: string;
+  };
 };
 
 export type EmittedPluginConfig = {
@@ -59,6 +65,7 @@ export type SourcePlugin = {
   id: string;
   dir: string;
   manifest: SourcePluginManifest;
+  componentRoots?: Partial<Record<string, string>>;
 };
 
 export type ResolvedProject = {
@@ -67,6 +74,12 @@ export type ResolvedProject = {
   config: PluginpackConfig;
   sourceRoot: string;
   plugins: Map<string, SourcePlugin>;
+};
+
+export type ResolvedProjectConfig = {
+  rootDir: string;
+  configPath: string;
+  config: PluginpackConfig;
 };
 
 export type FileValue = string | Buffer;
@@ -104,4 +117,16 @@ export type DiffEntry = {
 export type DiffResult = {
   ok: boolean;
   entries: DiffEntry[];
+};
+
+export type CleanupEntry = {
+  type: "deleted" | "stale";
+  target: TargetName;
+  path: string;
+};
+
+export type CleanupResult = {
+  target: TargetName;
+  outDir: string;
+  entries: CleanupEntry[];
 };

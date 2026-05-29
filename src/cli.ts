@@ -2,6 +2,7 @@ import { promises as fs, readFileSync } from "node:fs";
 import path from "node:path";
 import { Command, Option } from "commander";
 import { build } from "./build.js";
+import { clean, prune } from "./cleanup.js";
 import { loadConfig } from "./config.js";
 import { diffTarget } from "./diff.js";
 import { validateOutput } from "./validate.js";
@@ -146,6 +147,40 @@ function createProgram(): Command {
     });
 
   program
+    .command("prune")
+    .description(
+      "Remove stale managed files that are no longer emitted by the current config.",
+    )
+    .usage("[--target cursor|claude|gemini|copilot] [--dry-run]")
+    .addOption(
+      new Option(
+        "--target <target>",
+        "Prune only one configured target.",
+      ).choices([...targets]),
+    )
+    .option("--dry-run", "Print stale managed files without deleting them.")
+    .action(async (options: { target?: TargetName; dryRun?: boolean }) => {
+      const results = await prune(options);
+      printCleanupResults(results, options.dryRun ? "Would prune" : "Pruned");
+    });
+
+  program
+    .command("clean")
+    .description("Remove all managed files for configured target outputs.")
+    .usage("[--target cursor|claude|gemini|copilot] [--dry-run]")
+    .addOption(
+      new Option(
+        "--target <target>",
+        "Clean only one configured target.",
+      ).choices([...targets]),
+    )
+    .option("--dry-run", "Print managed files without deleting them.")
+    .action(async (options: { target?: TargetName; dryRun?: boolean }) => {
+      const results = await clean(options);
+      printCleanupResults(results, options.dryRun ? "Would clean" : "Cleaned");
+    });
+
+  program
     .command("docs")
     .description(
       "Generate the README CLI reference section from command metadata.",
@@ -174,6 +209,20 @@ function createProgram(): Command {
     });
 
   return program;
+}
+
+function printCleanupResults(
+  results: Awaited<ReturnType<typeof prune>>,
+  verb: string,
+): void {
+  for (const result of results) {
+    console.log(
+      `${verb} ${result.entries.length} managed files for ${result.target} -> ${result.outDir}`,
+    );
+    for (const entry of result.entries) {
+      console.log(`  ${entry.path}`);
+    }
+  }
 }
 
 async function init(): Promise<void> {
@@ -302,6 +351,10 @@ function commandExamples(commandName: string): string[] {
       return ["pluginpack validate --target cursor --dir ../cursor-plugins"];
     case "diff":
       return ["pluginpack diff --target cursor --against ../cursor-plugins"];
+    case "prune":
+      return ["pluginpack prune", "pluginpack prune --target claude --dry-run"];
+    case "clean":
+      return ["pluginpack clean", "pluginpack clean --target cursor --dry-run"];
     case "docs":
       return ["pluginpack docs", "pluginpack docs --check"];
     default:
@@ -327,6 +380,16 @@ function commandExitCodes(commandName: string): string[] {
       return [
         "0 when managed files match",
         "1 when managed files differ or the command fails",
+      ];
+    case "prune":
+      return [
+        "0 when stale managed files are removed or listed",
+        "1 when config, source resolution, or cleanup fails",
+      ];
+    case "clean":
+      return [
+        "0 when managed files are removed or listed",
+        "1 when config, manifest loading, or cleanup fails",
       ];
     case "docs":
       return [

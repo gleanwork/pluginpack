@@ -17,60 +17,52 @@ Agent apps increasingly support similar ideas: skills, commands, agents, rules, 
 
 It does not try to make every app behave the same. Target adapters own target-specific layout, manifests, and validation.
 
-## What It Builds
+## Recommended Shape
 
-A source plugin can compile into different target shapes. For example, the same `plugins/assistant` source can become:
+The preferred path is one public plugin repository with a top-level `skills/` directory as the portable install surface, plus generated native plugin outputs in the same repo.
 
 ```txt
-dist/cursor/
-  .cursor-plugin/marketplace.json
-  acme/
-    .cursor-plugin/plugin.json
-    skills/
+skills/
+  release-notes/
+    SKILL.md
+pluginpack.config.ts
 
-dist/claude/
-  .claude-plugin/marketplace.json
-  plugins/
-    acme-assistant/
+.cursor-plugin/
+  marketplace.json
+plugins/
+  cursor/
+    acme/
+      .cursor-plugin/plugin.json
+      skills/
+  claude/
+    acme/
       .claude-plugin/plugin.json
       skills/
-
-dist/gemini/
-  acme-assistant/
-    gemini-extension.json
-    skills/
-
-dist/copilot/
-  .github/
-    skills/
+  gemini/
+    .pluginpack/
+      gemini.json
+    acme/
+      gemini-extension.json
+      skills/
+.claude-plugin/
+  marketplace.json
+.github/
+  skills/
+.pluginpack/
+  cursor.json
+  claude.json
+  copilot.json
 ```
 
-Those outputs are meant to be checked into or published from target plugin repositories.
+Users can install the portable skills with `npx skills add owner/repo --skill release-notes`. Claude, Cursor, and other native plugin users install from the generated marketplace/plugin layout their app expects.
+
+`pluginpack` writes a `.pluginpack/<target>.json` managed-file manifest for each built target. That manifest lets builds and cleanup commands remove stale generated files without touching source files or unmanaged repo content.
 
 ## Install
 
 ```bash
 npm install -D @gleanwork/pluginpack
 ```
-
-## Source Layout
-
-```txt
-plugins/
-  assistant/
-    plugin.pluginpack.json
-    skills/
-      release-notes/
-        SKILL.md
-    agents/
-    commands/
-    rules/
-    hooks/
-    assets/
-pluginpack.config.ts
-```
-
-Each directory under `plugins/` is a source plugin. A target can emit that source plugin directly, rename it, or merge multiple source plugins into one emitted plugin.
 
 ## Config
 
@@ -80,6 +72,13 @@ import { defineConfig } from "@gleanwork/pluginpack";
 export default defineConfig({
   name: "acme-plugins",
   version: "0.1.0",
+  source: {
+    skills: "skills",
+    rootPlugin: {
+      id: "core",
+      description: "Acme portable skills.",
+    },
+  },
   metadata: {
     description: "Acme agent plugins.",
     author: { name: "Acme" },
@@ -87,29 +86,73 @@ export default defineConfig({
   },
   targets: {
     cursor: {
-      outDir: "../cursor-plugins",
+      outDir: ".",
       plugins: {
-        acme: { from: ["assistant"] },
+        acme: {
+          from: ["core"],
+          path: "plugins/cursor/acme",
+          components: ["skills"],
+        },
       },
     },
     claude: {
-      outDir: "../claude-plugins",
+      outDir: ".",
+      pluginRoot: "plugins/claude",
       plugins: {
-        "acme-assistant": { from: ["assistant"] },
+        acme: { from: ["core"] },
+      },
+    },
+    gemini: {
+      outDir: "plugins/gemini",
+      plugins: {
+        acme: { from: ["core"] },
+      },
+    },
+    copilot: {
+      outDir: ".",
+      plugins: {
+        acme: { from: ["core"] },
       },
     },
   },
 });
 ```
 
+`source.skills` points at the repo-level skills directory. `source.rootPlugin.id` creates the source plugin name used by each target's `from` array.
+
+## Other Shapes
+
+For more complex source content, keep source plugins under `plugins/` and emit them into one or more target outputs:
+
+```txt
+plugins/
+  core/
+    plugin.pluginpack.json
+    skills/
+      release-notes/
+        SKILL.md
+    agents/
+    commands/
+    rules/
+    hooks/
+    assets/
+```
+
+A target can emit a source plugin directly, rename it, or merge multiple source plugins into one emitted plugin.
+
+There are two reasonable alternatives when the single-repo shape is not enough:
+
+- Single source repo, multiple output repos: best when each target ecosystem expects its own repo root shape.
+- Single source repo, release artifacts: best when users install zipped plugin payloads or release assets instead of browsing generated files in Git.
+
 ## Target Overrides
 
 Skill files are not always perfectly portable. When one app needs different frontmatter or content, add a target override next to the base file:
 
 ```txt
-plugins/assistant/skills/release-notes/SKILL.md
-plugins/assistant/skills/release-notes/targets/cursor/SKILL.md
-plugins/assistant/skills/release-notes/targets/claude/SKILL.md
+skills/release-notes/SKILL.md
+skills/release-notes/targets/cursor/SKILL.md
+skills/release-notes/targets/claude/SKILL.md
 ```
 
 Resolution order is target override first, then the base file.
@@ -233,6 +276,52 @@ Exit codes:
 
 - 0 when managed files match
 - 1 when managed files differ or the command fails
+
+### `prune`
+
+Remove stale managed files that are no longer emitted by the current config.
+
+```bash
+pluginpack prune [--target cursor|claude|gemini|copilot] [--dry-run]
+```
+
+Options:
+
+- `--target <target>`: Prune only one configured target.
+- `--dry-run`: Print stale managed files without deleting them.
+
+Examples:
+
+- `pluginpack prune`
+- `pluginpack prune --target claude --dry-run`
+
+Exit codes:
+
+- 0 when stale managed files are removed or listed
+- 1 when config, source resolution, or cleanup fails
+
+### `clean`
+
+Remove all managed files for configured target outputs.
+
+```bash
+pluginpack clean [--target cursor|claude|gemini|copilot] [--dry-run]
+```
+
+Options:
+
+- `--target <target>`: Clean only one configured target.
+- `--dry-run`: Print managed files without deleting them.
+
+Examples:
+
+- `pluginpack clean`
+- `pluginpack clean --target cursor --dry-run`
+
+Exit codes:
+
+- 0 when managed files are removed or listed
+- 1 when config, manifest loading, or cleanup fails
 
 ### `docs`
 
