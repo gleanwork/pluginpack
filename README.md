@@ -291,6 +291,7 @@ Options:
 
 - `--target <target>`: Prune only one configured target.
 - `--dry-run`: Print stale managed files without deleting them.
+- `--force`: Delete even paths that resolve inside the source tree or config.
 
 Examples:
 
@@ -314,6 +315,7 @@ Options:
 
 - `--target <target>`: Clean only one configured target.
 - `--dry-run`: Print managed files without deleting them.
+- `--force`: Delete even paths that resolve inside the source tree or config.
 
 Examples:
 

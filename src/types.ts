@@ -1,65 +1,24 @@
+import type {
+  Author,
+  Metadata,
+  SourceConfig,
+  EmittedPluginConfig,
+  TargetConfig,
+  PluginpackConfig,
+  SourcePluginManifest,
+} from "./schema.js";
+
+export type {
+  Author,
+  Metadata,
+  SourceConfig,
+  EmittedPluginConfig,
+  TargetConfig,
+  PluginpackConfig,
+  SourcePluginManifest,
+};
+
 export type TargetName = "claude" | "copilot" | "cursor" | "gemini";
-
-export type Author = {
-  name: string;
-  email?: string;
-  url?: string;
-};
-
-export type Metadata = {
-  displayName?: string;
-  description?: string;
-  author?: Author;
-  owner?: Author;
-  homepage?: string;
-  repository?: string;
-  license?: string;
-  logo?: string;
-  keywords?: string[];
-  category?: string;
-  tags?: string[];
-};
-
-export type SourceConfig = {
-  plugins?: string;
-  skills?: string;
-  rootPlugin?: Metadata & {
-    id?: string;
-    name?: string;
-    description?: string;
-  };
-};
-
-export type EmittedPluginConfig = {
-  from: string[];
-  path?: string;
-  description?: string;
-  displayName?: string;
-  manifest?: Record<string, unknown>;
-  components?: string[];
-};
-
-export type TargetConfig = {
-  outDir: string;
-  marketplaceDir?: string;
-  pluginRoot?: string;
-  plugins: Record<string, EmittedPluginConfig>;
-  manifest?: Record<string, unknown>;
-  ignoredDiffPaths?: string[];
-};
-
-export type PluginpackConfig = {
-  name: string;
-  version: string;
-  source?: SourceConfig;
-  metadata?: Metadata;
-  targets: Partial<Record<TargetName, TargetConfig>>;
-};
-
-export type SourcePluginManifest = Metadata & {
-  name?: string;
-  description?: string;
-};
 
 export type SourcePlugin = {
   id: string;
@@ -130,4 +89,10 @@ export type CleanupResult = {
   target: TargetName;
   outDir: string;
   entries: CleanupEntry[];
+};
+
+export type DeleteGuard = {
+  protectedRoots: string[];
+  configPath?: string;
+  force?: boolean;
 };

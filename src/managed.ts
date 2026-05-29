@@ -5,6 +5,8 @@ import type {
   Artifact,
   CleanupEntry,
   CleanupResult,
+  DeleteGuard,
+  PluginpackConfig,
   TargetName,
 } from "./types.js";
 
@@ -60,16 +62,18 @@ export async function readManagedManifest(
 
 export async function pruneManagedFiles(
   artifact: Artifact,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; guard?: DeleteGuard } = {},
 ): Promise<CleanupResult> {
   const previous = await readManagedManifest(artifact.outDir, artifact.target);
   const current = new Set(artifact.managedPaths.map(normalizeManagedPath));
+  const stale = (previous?.files ?? [])
+    .map(normalizeManagedPath)
+    .filter((file) => !current.has(file));
+  if (!options.dryRun) {
+    assertNoProtectedDeletions(artifact.outDir, stale, options.guard, "prune");
+  }
   const entries: CleanupEntry[] = [];
-  for (const file of previous?.files ?? []) {
-    const normalized = normalizeManagedPath(file);
-    if (current.has(normalized)) {
-      continue;
-    }
+  for (const normalized of stale) {
     entries.push({
       type: "stale",
       target: artifact.target,
@@ -89,15 +93,18 @@ export async function pruneManagedFiles(
 export async function cleanManagedFiles(
   outDir: string,
   target: TargetName,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; guard?: DeleteGuard } = {},
 ): Promise<CleanupResult> {
   const previous = await readManagedManifest(outDir, target);
   const entries: CleanupEntry[] = [];
   if (!previous) {
     return { target, outDir, entries };
   }
-  for (const file of previous?.files ?? []) {
-    const normalized = normalizeManagedPath(file);
+  const files = (previous.files ?? []).map(normalizeManagedPath);
+  if (!options.dryRun) {
+    assertNoProtectedDeletions(outDir, files, options.guard, "clean");
+  }
+  for (const normalized of files) {
     entries.push({ type: "deleted", target, path: normalized });
     if (!options.dryRun) {
       await removeManagedPath(outDir, normalized);
@@ -109,6 +116,59 @@ export async function cleanManagedFiles(
     await removeManagedPath(outDir, manifestPath);
   }
   return { target, outDir, entries };
+}
+
+export function buildDeleteGuard(
+  rootDir: string,
+  config: PluginpackConfig,
+  configPath: string,
+  force?: boolean,
+): DeleteGuard {
+  const protectedRoots: string[] = [];
+  if (config.source?.skills) {
+    protectedRoots.push(path.resolve(rootDir, config.source.skills));
+  }
+  if (config.source?.plugins) {
+    protectedRoots.push(path.resolve(rootDir, config.source.plugins));
+  }
+  return { protectedRoots, configPath: path.resolve(configPath), force };
+}
+
+function assertNoProtectedDeletions(
+  outDir: string,
+  paths: string[],
+  guard: DeleteGuard | undefined,
+  command: string,
+): void {
+  if (!guard || guard.force) {
+    return;
+  }
+  const blocked = paths.filter((file) =>
+    isProtectedDeletion(outDir, file, guard),
+  );
+  if (blocked.length === 0) {
+    return;
+  }
+  throw new Error(
+    `Refusing to ${command} ${blocked.length} path(s) that resolve inside your source tree or config:\n` +
+      `${blocked.map((file) => `  ${file}`).join("\n")}\n` +
+      `This usually means a target outDir overlaps source.skills/source.plugins. ` +
+      `Fix the config, or re-run with --force to delete anyway.`,
+  );
+}
+
+function isProtectedDeletion(
+  outDir: string,
+  relativePath: string,
+  guard: DeleteGuard,
+): boolean {
+  const absolute = path.resolve(outDir, normalizeManagedPath(relativePath));
+  if (guard.configPath && absolute === guard.configPath) {
+    return true;
+  }
+  return guard.protectedRoots.some(
+    (root) => absolute === root || absolute.startsWith(`${root}${path.sep}`),
+  );
 }
 
 export function normalizeManagedPath(value: string): string {

@@ -4,3 +4,4 @@ examples/glean/dist/
 examples/glean/plugins/
 examples/basic/dist/
 package-lock.json
+tests/fixtures/cursor/*.schema.json

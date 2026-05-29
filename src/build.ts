@@ -1,6 +1,10 @@
 import { loadConfig } from "./config.js";
 import { writeArtifact } from "./fs.js";
-import { pruneManagedFiles, writeManagedManifest } from "./managed.js";
+import {
+  buildDeleteGuard,
+  pruneManagedFiles,
+  writeManagedManifest,
+} from "./managed.js";
 import { emitTarget } from "./targets.js";
 import type { Artifact, BuildOptions, TargetName } from "./types.js";
 
@@ -11,12 +15,17 @@ export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
   const targets = options.target
     ? [options.target]
     : allTargets.filter((target) => project.config.targets[target]);
+  const guard = buildDeleteGuard(
+    project.rootDir,
+    project.config,
+    project.configPath,
+  );
   const artifacts: Artifact[] = [];
   for (const target of targets) {
     const artifact = await emitTarget(project, target, options.outDir);
     artifacts.push(artifact);
     if (!options.dryRun) {
-      await pruneManagedFiles(artifact);
+      await pruneManagedFiles(artifact, { guard });
       await writeArtifact(artifact.outDir, artifact.files);
       await writeManagedManifest(artifact);
     }

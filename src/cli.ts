@@ -159,10 +159,20 @@ function createProgram(): Command {
       ).choices([...targets]),
     )
     .option("--dry-run", "Print stale managed files without deleting them.")
-    .action(async (options: { target?: TargetName; dryRun?: boolean }) => {
-      const results = await prune(options);
-      printCleanupResults(results, options.dryRun ? "Would prune" : "Pruned");
-    });
+    .option(
+      "--force",
+      "Delete even paths that resolve inside the source tree or config.",
+    )
+    .action(
+      async (options: {
+        target?: TargetName;
+        dryRun?: boolean;
+        force?: boolean;
+      }) => {
+        const results = await prune(options);
+        printCleanupResults(results, options.dryRun ? "Would prune" : "Pruned");
+      },
+    );
 
   program
     .command("clean")
@@ -175,10 +185,23 @@ function createProgram(): Command {
       ).choices([...targets]),
     )
     .option("--dry-run", "Print managed files without deleting them.")
-    .action(async (options: { target?: TargetName; dryRun?: boolean }) => {
-      const results = await clean(options);
-      printCleanupResults(results, options.dryRun ? "Would clean" : "Cleaned");
-    });
+    .option(
+      "--force",
+      "Delete even paths that resolve inside the source tree or config.",
+    )
+    .action(
+      async (options: {
+        target?: TargetName;
+        dryRun?: boolean;
+        force?: boolean;
+      }) => {
+        const results = await clean(options);
+        printCleanupResults(
+          results,
+          options.dryRun ? "Would clean" : "Cleaned",
+        );
+      },
+    );
 
   program
     .command("docs")

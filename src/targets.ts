@@ -41,20 +41,39 @@ export async function emitTarget(
   return emitter(project, target, targetConfig, resolvedOutDir);
 }
 
-async function emitCursor(
+type MarketplaceEntry = {
+  name: string;
+  source: string;
+  description?: string;
+};
+
+type EmitPluginsOptions = {
+  resolvePluginPath: (
+    pluginName: string,
+    pluginConfig: EmittedPluginConfig,
+  ) => string;
+  pluginManifestPath: (pluginPath: string) => string;
+  buildManifest: (
+    metadata: Metadata | undefined,
+    pluginName: string,
+    pluginConfig: EmittedPluginConfig,
+    componentDirs: Set<string>,
+  ) => Record<string, unknown>;
+  entrySource?: (pluginPath: string) => string;
+};
+
+async function emitPlugins(
   project: ResolvedProject,
   target: TargetName,
   targetConfig: TargetConfig,
-  outDir: string,
-): Promise<Artifact> {
-  const marketplaceDir = targetConfig.marketplaceDir ?? ".cursor-plugin";
-  const files = new Map<string, string | Buffer>();
-  const plugins = [];
-
+  files: Map<string, string | Buffer>,
+  options: EmitPluginsOptions,
+): Promise<MarketplaceEntry[]> {
+  const entries: MarketplaceEntry[] = [];
   for (const [pluginName, pluginConfig] of Object.entries(
     targetConfig.plugins,
   )) {
-    const pluginPath = pluginConfig.path ?? pluginName;
+    const pluginPath = options.resolvePluginPath(pluginName, pluginConfig);
     const pluginFiles = await collectPluginFiles(
       project,
       target,
@@ -63,29 +82,57 @@ async function emitCursor(
     const componentDirs = new Set(
       [...pluginFiles.keys()].map((file) => file.split("/")[0]),
     );
-    const metadata = emittedPluginMetadata(project, pluginConfig);
     for (const [relativePath, value] of pluginFiles) {
       files.set(toPosix(path.join(pluginPath, relativePath)), value);
     }
 
-    const manifest = cursorPluginManifest(
+    const metadata = emittedPluginMetadata(project, pluginConfig);
+    const manifest = options.buildManifest(
       metadata,
-      project.config.version,
       pluginName,
       pluginConfig,
       componentDirs,
     );
-    files.set(
-      toPosix(path.join(pluginPath, marketplaceDir, "plugin.json")),
-      json(manifest),
-    );
+    files.set(toPosix(options.pluginManifestPath(pluginPath)), json(manifest));
 
-    plugins.push({
-      name: pluginName,
-      source: pluginPath,
-      description: pluginConfig.description ?? manifest.description,
-    });
+    if (options.entrySource) {
+      entries.push({
+        name: pluginName,
+        source: options.entrySource(pluginPath),
+        description:
+          pluginConfig.description ??
+          (manifest.description as string | undefined),
+      });
+    }
   }
+  return entries;
+}
+
+async function emitCursor(
+  project: ResolvedProject,
+  target: TargetName,
+  targetConfig: TargetConfig,
+  outDir: string,
+): Promise<Artifact> {
+  const marketplaceDir = targetConfig.marketplaceDir ?? ".cursor-plugin";
+  const version = project.config.version;
+  const files = new Map<string, string | Buffer>();
+
+  const plugins = await emitPlugins(project, target, targetConfig, files, {
+    resolvePluginPath: (pluginName, pluginConfig) =>
+      pluginConfig.path ?? pluginName,
+    pluginManifestPath: (pluginPath) =>
+      path.join(pluginPath, marketplaceDir, "plugin.json"),
+    buildManifest: (metadata, pluginName, pluginConfig, componentDirs) =>
+      cursorPluginManifest(
+        metadata,
+        version,
+        pluginName,
+        pluginConfig,
+        componentDirs,
+      ),
+    entrySource: (pluginPath) => pluginPath,
+  });
 
   const marketplace = {
     name: project.config.name,
@@ -95,7 +142,7 @@ async function emitCursor(
       keywords: project.config.metadata?.keywords,
     },
     plugins,
-    version: project.config.version,
+    version,
     ...targetConfig.manifest,
   };
   files.set(
@@ -114,46 +161,23 @@ async function emitClaude(
 ): Promise<Artifact> {
   const marketplaceDir = targetConfig.marketplaceDir ?? ".claude-plugin";
   const pluginRoot = targetConfig.pluginRoot ?? "plugins";
+  const version = project.config.version;
   const files = new Map<string, string | Buffer>();
-  const plugins = [];
 
-  for (const [pluginName, pluginConfig] of Object.entries(
-    targetConfig.plugins,
-  )) {
-    const pluginPath =
-      pluginConfig.path ?? toPosix(path.join(pluginRoot, pluginName));
-    const metadata = emittedPluginMetadata(project, pluginConfig);
-    const pluginFiles = await collectPluginFiles(
-      project,
-      target,
-      pluginConfig.from,
-    );
-    for (const [relativePath, value] of pluginFiles) {
-      files.set(toPosix(path.join(pluginPath, relativePath)), value);
-    }
-
-    const manifest = claudePluginManifest(
-      metadata,
-      project.config.version,
-      pluginName,
-      pluginConfig,
-    );
-    files.set(
-      toPosix(path.join(pluginPath, marketplaceDir, "plugin.json")),
-      json(manifest),
-    );
-
-    plugins.push({
-      name: pluginName,
-      source: `./${pluginPath}`,
-      description: pluginConfig.description ?? manifest.description,
-    });
-  }
+  const plugins = await emitPlugins(project, target, targetConfig, files, {
+    resolvePluginPath: (pluginName, pluginConfig) =>
+      pluginConfig.path ?? toPosix(path.join(pluginRoot, pluginName)),
+    pluginManifestPath: (pluginPath) =>
+      path.join(pluginPath, marketplaceDir, "plugin.json"),
+    buildManifest: (metadata, pluginName, pluginConfig) =>
+      claudePluginManifest(metadata, version, pluginName, pluginConfig),
+    entrySource: (pluginPath) => `./${pluginPath}`,
+  });
 
   const marketplace = {
     $schema: "https://anthropic.com/claude-code/marketplace.schema.json",
     name: project.config.name,
-    version: project.config.version,
+    version,
     description: project.config.metadata?.description,
     owner: project.config.metadata?.owner ?? project.config.metadata?.author,
     plugins,
@@ -173,33 +197,17 @@ async function emitGemini(
   targetConfig: TargetConfig,
   outDir: string,
 ): Promise<Artifact> {
+  const version = project.config.version;
   const files = new Map<string, string | Buffer>();
 
-  for (const [pluginName, pluginConfig] of Object.entries(
-    targetConfig.plugins,
-  )) {
-    const pluginPath = pluginConfig.path ?? pluginName;
-    const metadata = emittedPluginMetadata(project, pluginConfig);
-    const pluginFiles = await collectPluginFiles(
-      project,
-      target,
-      pluginConfig.from,
-    );
-    for (const [relativePath, value] of pluginFiles) {
-      files.set(toPosix(path.join(pluginPath, relativePath)), value);
-    }
-
-    const manifest = geminiExtensionManifest(
-      metadata,
-      project.config.version,
-      pluginName,
-      pluginConfig,
-    );
-    files.set(
-      toPosix(path.join(pluginPath, "gemini-extension.json")),
-      json(manifest),
-    );
-  }
+  await emitPlugins(project, target, targetConfig, files, {
+    resolvePluginPath: (pluginName, pluginConfig) =>
+      pluginConfig.path ?? pluginName,
+    pluginManifestPath: (pluginPath) =>
+      path.join(pluginPath, "gemini-extension.json"),
+    buildManifest: (metadata, pluginName, pluginConfig) =>
+      geminiExtensionManifest(metadata, version, pluginName, pluginConfig),
+  });
 
   return artifact(target, outDir, files);
 }

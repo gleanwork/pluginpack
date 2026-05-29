@@ -228,6 +228,56 @@ describe("pluginpack core", () => {
     await expectMissing(path.join(root, "dist/cursor/.pluginpack/cursor.json"));
   });
 
+  it("refuses to prune source paths unless forced", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-guard-test-"));
+    roots.push(root);
+    await mkdir(path.join(root, "skills/demo"), { recursive: true });
+    await writeFile(
+      path.join(root, "skills/demo/SKILL.md"),
+      skill("demo", "Demo skill."),
+    );
+    await writeFile(
+      path.join(root, "pluginpack.config.ts"),
+      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "demo-plugins",
+  version: "1.0.0",
+  source: { skills: "skills", rootPlugin: { id: "core" } },
+  metadata: { description: "Demo", author: { name: "Demo" }, license: "MIT" },
+  targets: {
+    cursor: {
+      outDir: ".",
+      plugins: {
+        demo: { from: ["core"], components: ["skills"] }
+      }
+    }
+  }
+});
+`,
+    );
+    // Seed a managed manifest that lists a source path as previously managed,
+    // simulating manifest drift under an outDir that overlaps the source tree.
+    await mkdir(path.join(root, ".pluginpack"), { recursive: true });
+    await writeFile(
+      path.join(root, ".pluginpack/cursor.json"),
+      `${JSON.stringify(
+        { version: 1, target: "cursor", files: ["skills/demo/SKILL.md"] },
+        null,
+        2,
+      )}\n`,
+    );
+
+    await expect(prune({ cwd: root, target: "cursor" })).rejects.toThrow(
+      /Refusing to prune/,
+    );
+    // A refused prune must leave the source file untouched.
+    await access(path.join(root, "skills/demo/SKILL.md"));
+
+    await prune({ cwd: root, target: "cursor", force: true });
+    await expectMissing(path.join(root, "skills/demo/SKILL.md"));
+  });
+
   it("ignores configured diff paths", async () => {
     const root = await fixture();
     const configPath = path.join(root, "pluginpack.config.ts");
