@@ -11,6 +11,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { build } from "../src/build.js";
 import { clean, prune } from "../src/cleanup.js";
+import { loadConfig } from "../src/config.js";
 import { diffTarget } from "../src/diff.js";
 import { validateOutput } from "../src/validate.js";
 
@@ -54,7 +55,7 @@ describe("pluginpack core", () => {
     ).resolves.toContain('"name": "demo"');
     await expect(
       readFile(
-        path.join(root, "dist/copilot/.github/skills/demo/SKILL.md"),
+        path.join(root, "dist/copilot/plugins/demo/skills/demo/SKILL.md"),
         "utf8",
       ),
     ).resolves.toContain("Demo skill.");
@@ -302,6 +303,91 @@ export default defineConfig({
 
     expect(result).toEqual({ ok: true, entries: [] });
   });
+
+  it("builds the recommended single-repo shape with no path collisions", async () => {
+    const root = await recommendedShapeFixture();
+
+    await build({ cwd: root });
+
+    await access(path.join(root, ".cursor-plugin/marketplace.json"));
+    await access(
+      path.join(root, "plugins/cursor/acme/skills/release-notes/SKILL.md"),
+    );
+    await access(path.join(root, ".claude-plugin/marketplace.json"));
+    await access(
+      path.join(root, "plugins/claude/acme/.claude-plugin/plugin.json"),
+    );
+    await access(
+      path.join(root, "plugins/copilot/.claude-plugin/marketplace.json"),
+    );
+
+    await expect(validateOutput("cursor", root)).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(validateOutput("claude", root)).resolves.toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("does not register generated output dirs as source plugins on rebuild", async () => {
+    const root = await recommendedShapeFixture();
+    await build({ cwd: root });
+
+    // After a build, plugins/{cursor,claude,copilot} exist as generated output.
+    // Loading config again must not treat them as source plugins.
+    const project = await loadConfig(root);
+
+    expect([...project.plugins.keys()]).toEqual(["core"]);
+  });
+
+  it("merges multiple source plugins and rejects colliding files", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-merge-test-"));
+    roots.push(root);
+    await mkdir(path.join(root, "plugins/a/skills/alpha"), { recursive: true });
+    await mkdir(path.join(root, "plugins/b/skills/beta"), { recursive: true });
+    await writeFile(
+      path.join(root, "plugins/a/skills/alpha/SKILL.md"),
+      skill("alpha", "Alpha skill."),
+    );
+    await writeFile(
+      path.join(root, "plugins/b/skills/beta/SKILL.md"),
+      skill("beta", "Beta skill."),
+    );
+    await writeFile(
+      path.join(root, "pluginpack.config.ts"),
+      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "merge-plugins",
+  version: "1.0.0",
+  metadata: { description: "Merge", author: { name: "Merge" }, license: "MIT" },
+  targets: {
+    cursor: {
+      outDir: "dist/cursor",
+      plugins: {
+        combined: { from: ["a", "b"], components: ["skills"] }
+      }
+    }
+  }
+});
+`,
+    );
+
+    await build({ cwd: root, target: "cursor" });
+    await access(path.join(root, "dist/cursor/combined/skills/alpha/SKILL.md"));
+    await access(path.join(root, "dist/cursor/combined/skills/beta/SKILL.md"));
+
+    // A skill path present in both source plugins must collide, not overwrite.
+    await mkdir(path.join(root, "plugins/b/skills/alpha"), { recursive: true });
+    await writeFile(
+      path.join(root, "plugins/b/skills/alpha/SKILL.md"),
+      skill("alpha", "Colliding alpha."),
+    );
+
+    await expect(build({ cwd: root, target: "cursor" })).rejects.toThrow(
+      /Duplicate emitted file/,
+    );
+  });
 });
 
 async function fixture(): Promise<string> {
@@ -413,6 +499,49 @@ export default defineConfig({
     skill("demo", "Demo skill."),
   );
   await writeFile(path.join(root, "README.md"), "# Root docs\n");
+  return root;
+}
+
+async function recommendedShapeFixture(): Promise<string> {
+  const root = await mkdtemp(path.join(tmpdir(), "pluginpack-recommended-"));
+  roots.push(root);
+  await mkdir(path.join(root, "skills/release-notes"), { recursive: true });
+  await writeFile(
+    path.join(root, "skills/release-notes/SKILL.md"),
+    skill("release-notes", "Release notes skill."),
+  );
+  await writeFile(
+    path.join(root, "pluginpack.config.ts"),
+    `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "acme-plugins",
+  version: "1.0.0",
+  source: {
+    skills: "skills",
+    rootPlugin: { id: "core", description: "Acme skills." }
+  },
+  metadata: { description: "Acme", author: { name: "Acme" }, license: "MIT" },
+  targets: {
+    cursor: {
+      outDir: ".",
+      plugins: {
+        acme: { from: ["core"], path: "plugins/cursor/acme", components: ["skills"] }
+      }
+    },
+    claude: {
+      outDir: ".",
+      pluginRoot: "plugins/claude",
+      plugins: { acme: { from: ["core"] } }
+    },
+    copilot: {
+      outDir: "plugins/copilot",
+      plugins: { acme: { from: ["core"] } }
+    }
+  }
+});
+`,
+  );
   return root;
 }
 

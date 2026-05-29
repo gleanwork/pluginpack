@@ -3,6 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
 import { z } from "zod";
+import { componentDirs } from "./components.js";
 import { configSchema, sourcePluginManifestSchema } from "./schema.js";
 import type {
   ResolvedProject,
@@ -118,6 +119,9 @@ async function discoverSourcePlugins(
       continue;
     }
     const dir = path.join(sourceRoot, entry.name);
+    if (!(await isSourcePluginDir(dir))) {
+      continue;
+    }
     const manifestPath = path.join(dir, "plugin.pluginpack.json");
     const manifest = await readSourceManifest(manifestPath);
     plugins.set(entry.name, {
@@ -127,6 +131,21 @@ async function discoverSourcePlugins(
     });
   }
   return plugins;
+}
+
+// A source plugin dir declares a manifest or has at least one component dir.
+// This keeps generated target output (e.g. plugins/cursor/ in a single-repo
+// layout) from being misread as source on rebuild.
+async function isSourcePluginDir(dir: string): Promise<boolean> {
+  if (await exists(path.join(dir, "plugin.pluginpack.json"))) {
+    return true;
+  }
+  for (const component of componentDirs) {
+    if (await exists(path.join(dir, component))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function readSourceManifest(

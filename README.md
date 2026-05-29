@@ -48,12 +48,9 @@ plugins/
       skills/
 .claude-plugin/
   marketplace.json
-.github/
-  skills/
 .pluginpack/
   cursor.json
   claude.json
-  copilot.json
 ```
 
 Users should install portable skills from the `skills/` subpath, for example `npx skills add owner/repo/skills --skill '*'`. The repo root is intentionally also home to generated native plugin outputs, so the subpath keeps `skills` CLI discovery focused on the canonical portable skills. Claude, Cursor, and other native plugin users install from the generated marketplace/plugin layout their app expects.
@@ -111,7 +108,7 @@ export default defineConfig({
       },
     },
     copilot: {
-      outDir: ".",
+      outDir: "plugins/copilot",
       plugins: {
         acme: { from: ["core"] },
       },
@@ -168,7 +165,7 @@ The first adapters are:
 - `gemini`
 - `copilot`
 
-`gemini` emits Gemini CLI extensions with a `gemini-extension.json` manifest. `copilot` emits project skills under `.github/skills`; that is a native skills target, not a plugin marketplace.
+`gemini` emits Gemini CLI extensions with a `gemini-extension.json` manifest. `copilot` emits the GitHub Copilot plugins format (per [`github/copilot-plugins`](https://github.com/github/copilot-plugins)): a `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`, each plugin under `plugins/<name>/` with a `skills` array per marketplace entry. Because Copilot reuses the Claude marketplace layout, the `claude` and `copilot` targets both write `.claude-plugin/marketplace.json` and therefore need separate output roots (distinct `outDir`s or separate repos).
 
 More targets should be added from official docs or real plugin examples, not guessed abstractions.
 

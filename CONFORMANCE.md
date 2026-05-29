@@ -8,12 +8,12 @@ format.
 There is no single, referenceable, upstream JSON Schema for any supported target.
 Each app's source of truth is something other than a stable schema URL:
 
-| Target    | Canonical source of truth                                                                                  | Referenceable schema?                                                                                                      |
-| --------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `claude`  | `claude plugin validate` CLI + [plugins-reference docs](https://code.claude.com/docs/en/plugins-reference) | **No.** The `$schema` URL the manifest declares (`https://anthropic.com/claude-code/marketplace.schema.json`) returns 404. |
-| `cursor`  | Glean-authored schemas in `gleanwork/cursor-plugins/schemas/`                                              | **No upstream.** The schema `$id` (`https://cursor.com/schemas/cursor-plugin/...`) 500s; no Cursor-published schema found. |
-| `gemini`  | TypeScript types in `google-gemini/gemini-cli` (`packages/cli/src/config/extension.ts`) + docs             | **No.** Defined by source types, not a published schema.                                                                   |
-| `copilot` | `SKILL.md` frontmatter convention                                                                          | **N/A.** pluginpack emits skills only; there is no JSON manifest to validate.                                              |
+| Target    | Canonical source of truth                                                                                    | Referenceable schema?                                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude`  | `claude plugin validate` CLI + [plugins-reference docs](https://code.claude.com/docs/en/plugins-reference)   | **No.** The `$schema` URL the manifest declares (`https://anthropic.com/claude-code/marketplace.schema.json`) returns 404.                        |
+| `cursor`  | Glean-authored schemas in `gleanwork/cursor-plugins/schemas/`                                                | **No upstream.** The schema `$id` (`https://cursor.com/schemas/cursor-plugin/...`) 500s; no Cursor-published schema found.                        |
+| `gemini`  | TypeScript types in `google-gemini/gemini-cli` (`packages/cli/src/config/extension.ts`) + docs               | **No.** Defined by source types, not a published schema.                                                                                          |
+| `copilot` | [`github/copilot-plugins`](https://github.com/github/copilot-plugins) — reuses the Claude marketplace schema | **Reusable.** Copilot reads `.claude-plugin/marketplace.json`, so `claude plugin validate` validates it; no Copilot-specific schema is published. |
 
 ## Oracles the harness uses
 
@@ -35,9 +35,17 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   also stricter than Cursor's runtime: the marketplace `version` field is
   tolerated in practice, so the test allows that one key explicitly while still
   rejecting any other unexpected field.
-- **gemini / copilot** — covered structurally by the cross-target build test in
-  `tests/core.test.ts` (manifest fields, file placement). No upstream schema
-  exists to validate against.
+- **copilot** — Copilot reuses the Claude marketplace schema and reads
+  `.claude-plugin/marketplace.json` (mirrored to `.github/plugin/marketplace.json`),
+  so `claude plugin validate` is a genuine external oracle for it (non-strict:
+  Copilot adds `skills[]`/`version` fields the Claude runtime tolerates). A
+  structural test also asserts the two marketplace copies are identical and that
+  entries carry the `skills[]` array. Because it shares the Claude marketplace
+  path, the `claude` and `copilot` targets need separate output roots.
+- **gemini** — covered structurally by the cross-target build test in
+  `tests/core.test.ts` (required `name`/`version` present; extra `description`
+  tolerated). gemini-cli defines the manifest as a TypeScript interface, so there
+  is no schema to validate against.
 
 ## Refreshing vendored schemas
 

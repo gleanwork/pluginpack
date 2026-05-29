@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { componentDirs, staticFiles } from "./components.js";
 import { exists } from "./config.js";
 import { toPosix, walkFiles } from "./fs.js";
 import type {
@@ -8,19 +9,6 @@ import type {
   SourcePlugin,
   TargetName,
 } from "./types.js";
-
-const componentDirs = [
-  "skills",
-  "agents",
-  "commands",
-  "rules",
-  "hooks",
-  "scripts",
-  "assets",
-  "policies",
-  "themes",
-];
-const staticFiles = ["README.md", "CHANGELOG.md", "LICENSE"];
 
 export async function collectPluginFiles(
   project: ResolvedProject,

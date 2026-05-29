@@ -218,25 +218,66 @@ async function emitCopilot(
   targetConfig: TargetConfig,
   outDir: string,
 ): Promise<Artifact> {
+  const version = project.config.version;
+  const pluginRoot = targetConfig.pluginRoot ?? "plugins";
   const files = new Map<string, string | Buffer>();
+  const plugins: Record<string, unknown>[] = [];
 
-  for (const pluginConfig of Object.values(targetConfig.plugins)) {
+  for (const [pluginName, pluginConfig] of Object.entries(
+    targetConfig.plugins,
+  )) {
+    const pluginPath =
+      pluginConfig.path ?? toPosix(path.join(pluginRoot, pluginName));
     const pluginFiles = await collectPluginFiles(
       project,
       target,
       pluginConfig.from,
     );
     for (const [relativePath, value] of pluginFiles) {
-      if (!relativePath.startsWith("skills/")) {
-        continue;
-      }
-      const destination = toPosix(path.join(".github", relativePath));
-      if (files.has(destination)) {
-        throw new Error(`Duplicate Copilot skill output "${destination}".`);
-      }
-      files.set(destination, value);
+      files.set(toPosix(path.join(pluginPath, relativePath)), value);
     }
+
+    const skills = [
+      ...new Set(
+        [...pluginFiles.keys()]
+          .filter((file) => file.startsWith("skills/"))
+          .map((file) => `./skills/${file.split("/")[1]}`),
+      ),
+    ].sort();
+    const metadata = emittedPluginMetadata(project, pluginConfig);
+    plugins.push(
+      stripUndefined({
+        name: pluginName,
+        source: `./${pluginPath}`,
+        description: pluginConfig.description ?? metadata?.description,
+        version,
+        skills,
+      }),
+    );
   }
+
+  const marketplace = stripUndefined({
+    name: project.config.name,
+    metadata: stripUndefined({
+      description: project.config.metadata?.description,
+      version,
+      keywords: project.config.metadata?.keywords,
+    }),
+    owner: project.config.metadata?.owner ?? project.config.metadata?.author,
+    plugins,
+    ...targetConfig.manifest,
+  });
+  // Copilot reuses the Claude marketplace schema and reads it from both the
+  // repo-root .claude-plugin/ and .github/plugin/ (see github/copilot-plugins).
+  const marketplaceJson = json(marketplace);
+  files.set(
+    toPosix(path.join(".claude-plugin", "marketplace.json")),
+    marketplaceJson,
+  );
+  files.set(
+    toPosix(path.join(".github", "plugin", "marketplace.json")),
+    marketplaceJson,
+  );
 
   return artifact(target, outDir, files);
 }

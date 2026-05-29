@@ -101,6 +101,10 @@ const CONFIG = `export default {
     claude: {
       outDir: "out-claude",
       plugins: { glean: { from: ["glean"] } }
+    },
+    copilot: {
+      outDir: "out-copilot",
+      plugins: { glean: { from: ["glean"] } }
     }
   }
 };
@@ -219,6 +223,51 @@ describe("emitted output conforms to external target schemas", () => {
       execFileSync("claude", ["plugin", "validate", "--strict", pluginDir], {
         stdio: "pipe",
       });
+    },
+  );
+
+  it("copilot emits the official copilot-plugins marketplace layout", async () => {
+    const result = await runBin("build", "--target", "copilot");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+
+    // Copilot reads the marketplace from both locations; they must be identical.
+    const rootJson = fs.readFileSync(
+      path.join(project.baseDir, "out-copilot/.claude-plugin/marketplace.json"),
+      "utf8",
+    );
+    const mirrorJson = fs.readFileSync(
+      path.join(project.baseDir, "out-copilot/.github/plugin/marketplace.json"),
+      "utf8",
+    );
+    expect(rootJson).toBe(mirrorJson);
+
+    const marketplace = readJson(
+      project.baseDir,
+      "out-copilot/.claude-plugin/marketplace.json",
+    );
+    expect(marketplace.metadata).toMatchObject({ version: "2.1.1" });
+    expect((marketplace.plugins as unknown[])[0]).toMatchObject({
+      name: "glean",
+      source: "./plugins/glean",
+      version: "2.1.1",
+      skills: ["./skills/example"],
+    });
+  });
+
+  it.skipIf(!hasClaude)(
+    "claude plugin validate accepts the emitted Copilot marketplace",
+    async () => {
+      const result = await runBin("build", "--target", "copilot");
+      expect(result.exitCode, String(result.stderr)).toBe(0);
+
+      // Copilot reuses the Claude marketplace schema, so claude's validator is a
+      // genuine external oracle. Non-strict: Copilot adds skills[]/version fields
+      // that Claude's runtime tolerates but --strict would reject.
+      execFileSync(
+        "claude",
+        ["plugin", "validate", path.join(project.baseDir, "out-copilot")],
+        { stdio: "pipe" },
+      );
     },
   );
 });

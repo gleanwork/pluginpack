@@ -86,17 +86,41 @@ async function validateCopilot(
   root: string,
   issues: ValidationIssue[],
 ): Promise<void> {
-  const skillsDir = path.join(root, ".github", "skills");
-  if (!(await exists(skillsDir))) {
-    error(issues, "Copilot output must contain .github/skills.");
-    return;
-  }
-  await validateFrontmatter(
-    path.join(root, ".github"),
-    "copilot",
-    "copilot",
+  const marketplacePath = path.join(root, ".claude-plugin", "marketplace.json");
+  const marketplace = await readJson(
+    marketplacePath,
+    "Marketplace manifest",
     issues,
   );
+  if (!marketplace) {
+    return;
+  }
+  validateMarketplaceBasics(marketplace, issues);
+  if (
+    !(await exists(path.join(root, ".github", "plugin", "marketplace.json")))
+  ) {
+    error(
+      issues,
+      "Copilot output must mirror the marketplace at .github/plugin/marketplace.json.",
+    );
+  }
+  const plugins = Array.isArray(marketplace.plugins) ? marketplace.plugins : [];
+  if (plugins.length === 0) {
+    error(issues, 'Marketplace "plugins" must be a non-empty array.');
+    return;
+  }
+  for (const [index, entry] of plugins.entries()) {
+    const pluginName = validatePluginEntry(entry, index, root, issues);
+    if (!pluginName) {
+      continue;
+    }
+    await validateFrontmatter(
+      path.join(root, entry.source),
+      pluginName,
+      "copilot",
+      issues,
+    );
+  }
 }
 
 async function validateCursor(
