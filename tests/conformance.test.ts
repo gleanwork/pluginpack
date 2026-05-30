@@ -88,7 +88,7 @@ const CONFIG = `export default {
   version: "2.1.1",
   metadata: {
     description: "Official Glean plugin.",
-    owner: { name: "Glean", email: "support@glean.com" },
+    owner: { name: "Glean" },
     author: { name: "Glean" },
     license: "MIT",
     keywords: ["glean", "enterprise-search"]

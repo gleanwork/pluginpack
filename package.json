@@ -25,7 +25,6 @@
   "license": "MIT",
   "author": {
     "name": "Glean",
-    "email": "support@glean.com",
     "url": "https://glean.com"
   },
   "type": "module",
