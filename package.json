@@ -1,7 +1,7 @@
 {
   "name": "@gleanwork/pluginpack",
   "version": "0.1.0",
-  "description": "Compile portable agent skills and plugin capabilities into native AI app plugin formats.",
+  "description": "Compile one source of agent plugins — skills, commands, hooks, and MCP servers — into the native plugin format each AI app expects.",
   "keywords": [
     "agent-skills",
     "ai-agents",
@@ -9,7 +9,10 @@
     "cursor",
     "plugins",
     "skills",
-    "pluginpack"
+    "pluginpack",
+    "gemini",
+    "copilot",
+    "mcp"
   ],
   "homepage": "https://github.com/gleanwork/pluginpack#readme",
   "bugs": {

@@ -17,13 +17,9 @@ async function main(): Promise<void> {
 
 function createProgram(): Command {
   const program = new Command();
+  const pkg = readPackageJson();
 
-  program
-    .name("pluginpack")
-    .description(
-      "Compile portable agent skills and plugin capabilities into native AI app plugin formats.",
-    )
-    .version(readPackageVersion());
+  program.name("pluginpack").description(pkg.description).version(pkg.version);
 
   program
     .command("init")
@@ -297,14 +293,17 @@ function replaceGeneratedSection(readme: string, content: string): string {
   return `${readme.slice(0, startIndex + start.length)}\n\n${content}\n${readme.slice(endIndex)}`;
 }
 
-function readPackageVersion(): string {
+function readPackageJson(): { version: string; description: string } {
   const packageJson = JSON.parse(
     readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-  ) as { version?: unknown };
+  ) as { version?: unknown; description?: unknown };
   if (typeof packageJson.version !== "string") {
     throw new Error("package.json is missing a string version.");
   }
-  return packageJson.version;
+  if (typeof packageJson.description !== "string") {
+    throw new Error("package.json is missing a string description.");
+  }
+  return { version: packageJson.version, description: packageJson.description };
 }
 
 function renderCliReference(program: Command): string {
