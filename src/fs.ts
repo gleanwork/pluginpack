@@ -45,3 +45,12 @@ export function isSafeRelativePath(value: string): boolean {
   const normalized = path.posix.normalize(value.replace(/\\/g, "/"));
   return normalized !== ".." && !normalized.startsWith("../");
 }
+
+export async function exists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}

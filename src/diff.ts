@@ -2,7 +2,8 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { build } from "./build.js";
-import { exists, loadConfig } from "./config.js";
+import { loadConfig } from "./config.js";
+import { exists } from "./fs.js";
 import { normalizeManagedPath, readManagedManifest } from "./managed.js";
 import type { DiffEntry, DiffResult, TargetName } from "./types.js";
 

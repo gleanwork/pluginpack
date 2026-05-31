@@ -1,8 +1,7 @@
 import { promises as fs, statSync } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
-import { exists } from "./config.js";
-import { isSafeRelativePath, toPosix, walkFiles } from "./fs.js";
+import { exists, isSafeRelativePath, toPosix, walkFiles } from "./fs.js";
 import type { TargetName, ValidationIssue, ValidationResult } from "./types.js";
 
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;

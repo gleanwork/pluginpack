@@ -4,7 +4,9 @@ import { pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
 import { z } from "zod";
 import { componentDirs } from "./components.js";
+import { exists } from "./fs.js";
 import { configSchema, sourcePluginManifestSchema } from "./schema.js";
+import { createFilesystemSourceProvider } from "./source.js";
 import type {
   ResolvedProject,
   PluginpackConfig,
@@ -30,6 +32,7 @@ export async function loadConfig(
     ...projectConfig,
     sourceRoot,
     plugins,
+    source: createFilesystemSourceProvider(plugins),
   };
 }
 
@@ -182,13 +185,4 @@ function parseWithContext(
     .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
     .join("; ");
   throw new Error(`Invalid pluginpack config in ${context}: ${details}`);
-}
-
-export async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
 }

@@ -28,12 +28,27 @@ export type SourcePlugin = {
   includeStaticFiles?: boolean;
 };
 
+// The one surface pluginpack uses to acquire source. A filesystem provider
+// backs it today; an API-backed provider (Glean Skills API) can implement the
+// same three methods without touching the emit/validate/diff pipeline.
+export interface SourceProvider {
+  listPlugins(): Promise<Map<string, SourcePlugin>>;
+  readPluginFiles(
+    pluginId: string,
+    target: TargetName,
+  ): Promise<Map<string, FileValue>>;
+  readMcpServers(
+    pluginId: string,
+  ): Promise<Record<string, unknown> | undefined>;
+}
+
 export type ResolvedProject = {
   rootDir: string;
   configPath: string;
   config: PluginpackConfig;
   sourceRoot: string;
   plugins: Map<string, SourcePlugin>;
+  source: SourceProvider;
 };
 
 export type ResolvedProjectConfig = {
