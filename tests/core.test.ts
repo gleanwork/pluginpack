@@ -540,6 +540,108 @@ export default defineConfig({
       /overlapping output paths/,
     );
   });
+
+  it("applies per-target and per-plugin version overrides", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-version-"));
+    roots.push(root);
+    await mkdir(path.join(root, "plugins/a/skills/sa"), { recursive: true });
+    await mkdir(path.join(root, "plugins/b/skills/sb"), { recursive: true });
+    await writeFile(
+      path.join(root, "plugins/a/skills/sa/SKILL.md"),
+      skill("sa", "SA."),
+    );
+    await writeFile(
+      path.join(root, "plugins/b/skills/sb/SKILL.md"),
+      skill("sb", "SB."),
+    );
+    await writeFile(
+      path.join(root, "pluginpack.config.ts"),
+      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "ver-plugins",
+  version: "1.0.0",
+  metadata: { description: "V", author: { name: "V" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      version: "2.0.0",
+      plugins: {
+        a: { from: ["a"] },
+        b: { from: ["b"], version: "3.0.0" }
+      }
+    }
+  }
+});
+`,
+    );
+
+    await build({ cwd: root, target: "claude" });
+
+    const read = async (p: string) =>
+      JSON.parse(await readFile(path.join(root, p), "utf8")) as Record<
+        string,
+        unknown
+      >;
+    // Marketplace + un-overridden plugin take the target version (not config 1.0.0).
+    expect(
+      (await read("dist/claude/.claude-plugin/marketplace.json")).version,
+    ).toBe("2.0.0");
+    expect(
+      (await read("dist/claude/plugins/a/.claude-plugin/plugin.json")).version,
+    ).toBe("2.0.0");
+    // Per-plugin override wins.
+    expect(
+      (await read("dist/claude/plugins/b/.claude-plugin/plugin.json")).version,
+    ).toBe("3.0.0");
+  });
+
+  it("deep-merges manifest overrides without dropping sibling keys", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-merge-"));
+    roots.push(root);
+    await mkdir(path.join(root, "skills/demo"), { recursive: true });
+    await writeFile(
+      path.join(root, "skills/demo/SKILL.md"),
+      skill("demo", "Demo skill."),
+    );
+    await writeFile(
+      path.join(root, "pluginpack.config.ts"),
+      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "merge-plugins",
+  version: "1.0.0",
+  source: { skills: "skills", rootPlugin: { id: "core" } },
+  metadata: {
+    description: "Base desc",
+    keywords: ["a", "b"],
+    author: { name: "X" },
+    license: "MIT"
+  },
+  targets: {
+    cursor: {
+      outDir: "dist/cursor",
+      manifest: { metadata: { description: "Overridden desc" } },
+      plugins: { demo: { from: ["core"], components: ["skills"] } }
+    }
+  }
+});
+`,
+    );
+
+    await build({ cwd: root, target: "cursor" });
+
+    const marketplace = JSON.parse(
+      await readFile(
+        path.join(root, "dist/cursor/.cursor-plugin/marketplace.json"),
+        "utf8",
+      ),
+    ) as { metadata: { description: string; keywords: string[] } };
+    // Override replaced description...
+    expect(marketplace.metadata.description).toBe("Overridden desc");
+    // ...but the sibling keywords survived (shallow spread would have dropped them).
+    expect(marketplace.metadata.keywords).toEqual(["a", "b"]);
+  });
 });
 
 async function fixture(): Promise<string> {

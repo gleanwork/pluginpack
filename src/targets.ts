@@ -126,7 +126,7 @@ async function emitCursor(
   outDir: string,
 ): Promise<Artifact> {
   const marketplaceDir = targetConfig.marketplaceDir ?? ".cursor-plugin";
-  const version = project.config.version;
+  const version = targetConfig.version ?? project.config.version;
   const files = new Map<string, string | Buffer>();
 
   const plugins = await emitPlugins(project, target, targetConfig, files, {
@@ -143,7 +143,7 @@ async function emitCursor(
     ) =>
       cursorPluginManifest(
         metadata,
-        version,
+        pluginConfig.version ?? version,
         pluginName,
         pluginConfig,
         componentDirs,
@@ -153,20 +153,25 @@ async function emitCursor(
     mcp: "file",
   });
 
-  const marketplace = {
-    name: project.config.name,
-    owner: project.config.metadata?.owner ?? project.config.metadata?.author,
-    metadata: {
-      description: project.config.metadata?.description,
-      keywords: project.config.metadata?.keywords,
-    },
-    plugins,
-    version,
-    ...targetConfig.manifest,
-  };
+  const marketplace = stripUndefined(
+    deepMerge(
+      {
+        name: project.config.name,
+        owner:
+          project.config.metadata?.owner ?? project.config.metadata?.author,
+        metadata: {
+          description: project.config.metadata?.description,
+          keywords: project.config.metadata?.keywords,
+        },
+        plugins,
+        version,
+      },
+      targetConfig.manifest ?? {},
+    ),
+  );
   files.set(
     toPosix(path.join(marketplaceDir, "marketplace.json")),
-    json(stripUndefined(marketplace)),
+    json(marketplace),
   );
 
   return artifact(target, outDir, files);
@@ -180,7 +185,7 @@ async function emitClaude(
 ): Promise<Artifact> {
   const marketplaceDir = targetConfig.marketplaceDir ?? ".claude-plugin";
   const pluginRoot = targetConfig.pluginRoot ?? "plugins";
-  const version = project.config.version;
+  const version = targetConfig.version ?? project.config.version;
   const files = new Map<string, string | Buffer>();
 
   const plugins = await emitPlugins(project, target, targetConfig, files, {
@@ -189,23 +194,33 @@ async function emitClaude(
     pluginManifestPath: (pluginPath) =>
       path.join(pluginPath, marketplaceDir, "plugin.json"),
     buildManifest: (metadata, pluginName, pluginConfig) =>
-      claudePluginManifest(metadata, version, pluginName, pluginConfig),
+      claudePluginManifest(
+        metadata,
+        pluginConfig.version ?? version,
+        pluginName,
+        pluginConfig,
+      ),
     entrySource: (pluginPath) => `./${pluginPath}`,
     mcp: "file",
   });
 
-  const marketplace = {
-    $schema: "https://anthropic.com/claude-code/marketplace.schema.json",
-    name: project.config.name,
-    version,
-    description: project.config.metadata?.description,
-    owner: project.config.metadata?.owner ?? project.config.metadata?.author,
-    plugins,
-    ...targetConfig.manifest,
-  };
+  const marketplace = stripUndefined(
+    deepMerge(
+      {
+        $schema: "https://anthropic.com/claude-code/marketplace.schema.json",
+        name: project.config.name,
+        version,
+        description: project.config.metadata?.description,
+        owner:
+          project.config.metadata?.owner ?? project.config.metadata?.author,
+        plugins,
+      },
+      targetConfig.manifest ?? {},
+    ),
+  );
   files.set(
     toPosix(path.join(marketplaceDir, "marketplace.json")),
-    json(stripUndefined(marketplace)),
+    json(marketplace),
   );
 
   return artifact(target, outDir, files);
@@ -217,7 +232,7 @@ async function emitGemini(
   targetConfig: TargetConfig,
   outDir: string,
 ): Promise<Artifact> {
-  const version = project.config.version;
+  const version = targetConfig.version ?? project.config.version;
   const files = new Map<string, string | Buffer>();
 
   await emitPlugins(project, target, targetConfig, files, {
@@ -226,7 +241,13 @@ async function emitGemini(
     pluginManifestPath: (pluginPath) =>
       path.join(pluginPath, "gemini-extension.json"),
     buildManifest: (metadata, pluginName, pluginConfig, _componentDirs, mcp) =>
-      geminiExtensionManifest(metadata, version, pluginName, pluginConfig, mcp),
+      geminiExtensionManifest(
+        metadata,
+        pluginConfig.version ?? version,
+        pluginName,
+        pluginConfig,
+        mcp,
+      ),
     mcp: "inline",
   });
 
@@ -239,7 +260,7 @@ async function emitCopilot(
   targetConfig: TargetConfig,
   outDir: string,
 ): Promise<Artifact> {
-  const version = project.config.version;
+  const version = targetConfig.version ?? project.config.version;
   const pluginRoot = targetConfig.pluginRoot ?? "plugins";
   const files = new Map<string, string | Buffer>();
   const plugins: Record<string, unknown>[] = [];
@@ -279,24 +300,29 @@ async function emitCopilot(
         name: pluginName,
         source: `./${pluginPath}`,
         description: pluginConfig.description ?? metadata?.description,
-        version,
+        version: pluginConfig.version ?? version,
         skills,
         mcpServers: mcpServers ? ".mcp.json" : undefined,
       }),
     );
   }
 
-  const marketplace = stripUndefined({
-    name: project.config.name,
-    metadata: stripUndefined({
-      description: project.config.metadata?.description,
-      version,
-      keywords: project.config.metadata?.keywords,
-    }),
-    owner: project.config.metadata?.owner ?? project.config.metadata?.author,
-    plugins,
-    ...targetConfig.manifest,
-  });
+  const marketplace = stripUndefined(
+    deepMerge(
+      {
+        name: project.config.name,
+        metadata: stripUndefined({
+          description: project.config.metadata?.description,
+          version,
+          keywords: project.config.metadata?.keywords,
+        }),
+        owner:
+          project.config.metadata?.owner ?? project.config.metadata?.author,
+        plugins,
+      },
+      targetConfig.manifest ?? {},
+    ),
+  );
   // Copilot reuses the Claude marketplace schema and reads it from both the
   // repo-root .claude-plugin/ and .github/plugin/ (see github/copilot-plugins).
   const marketplaceJson = json(marketplace);
@@ -366,7 +392,7 @@ function cursorPluginManifest(
   if (mcpServers) {
     manifest.mcpServers = "./.mcp.json";
   }
-  return stripUndefined({ ...manifest, ...pluginConfig.manifest });
+  return stripUndefined(deepMerge(manifest, pluginConfig.manifest ?? {}));
 }
 
 function claudePluginManifest(
@@ -375,7 +401,7 @@ function claudePluginManifest(
   pluginName: string,
   pluginConfig: EmittedPluginConfig,
 ): Record<string, unknown> {
-  return stripUndefined({
+  const manifest: Record<string, unknown> = {
     name: pluginName,
     version,
     description: pluginConfig.description ?? metadata?.description,
@@ -384,8 +410,8 @@ function claudePluginManifest(
     repository: metadata?.repository,
     license: metadata?.license,
     keywords: metadata?.keywords,
-    ...pluginConfig.manifest,
-  });
+  };
+  return stripUndefined(deepMerge(manifest, pluginConfig.manifest ?? {}));
 }
 
 function geminiExtensionManifest(
@@ -395,13 +421,13 @@ function geminiExtensionManifest(
   pluginConfig: EmittedPluginConfig,
   mcpServers: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
-  return stripUndefined({
+  const manifest: Record<string, unknown> = {
     name: pluginName,
     version,
     description: pluginConfig.description ?? metadata?.description,
     mcpServers,
-    ...pluginConfig.manifest,
-  });
+  };
+  return stripUndefined(deepMerge(manifest, pluginConfig.manifest ?? {}));
 }
 
 function artifact(
@@ -425,6 +451,30 @@ function stripUndefined<T extends Record<string, unknown>>(value: T): T {
     }
   }
   return value;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Deep-merge an override onto a generated manifest. Nested objects merge so a
+// sibling key isn't lost; arrays and scalars from the override replace (not
+// concatenate, so keywords/tags don't double up). This is the general escape
+// hatch — any field, at any depth, can be overridden via a target/plugin
+// `manifest`.
+function deepMerge(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    const existing = result[key];
+    result[key] =
+      isPlainObject(existing) && isPlainObject(value)
+        ? deepMerge(existing, value)
+        : value;
+  }
+  return result;
 }
 
 function titleCase(value: string): string {

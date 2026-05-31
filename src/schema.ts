@@ -35,6 +35,7 @@ const sourceSchema = z.object({
 const emittedPluginSchema = z.object({
   from: z.array(z.string().min(1)).min(1),
   path: z.string().optional(),
+  version: z.string().optional(),
   description: z.string().optional(),
   displayName: z.string().optional(),
   manifest: z.record(z.string(), z.unknown()).optional(),
@@ -45,6 +46,7 @@ const targetSchema = z.object({
   outDir: z.string().min(1),
   marketplaceDir: z.string().optional(),
   pluginRoot: z.string().optional(),
+  version: z.string().optional(),
   plugins: z.record(z.string(), emittedPluginSchema),
   manifest: z.record(z.string(), z.unknown()).optional(),
   ignoredDiffPaths: z.array(z.string()).optional(),
