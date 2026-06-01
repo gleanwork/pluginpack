@@ -47,7 +47,9 @@
     "build": "tsup",
     "check": "npm run test:all",
     "dev": "tsx src/cli.ts",
-    "docs": "node dist/cli.js docs --check",
+    "docs": "npm run docs:check",
+    "docs:check": "node dist/cli.js docs --check && markdown-code check",
+    "docs:sync": "node dist/cli.js docs && markdown-code sync",
     "format": "prettier --write \"**/*.{ts,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,json,md,yml,yaml}\"",
     "lint": "eslint .",
@@ -74,6 +76,7 @@
     "bintastic": "^4.0.2",
     "eslint": "^9.39.4",
     "fixturify-project": "^7.1.3",
+    "markdown-code": "^1.1.0",
     "prettier": "^3.8.3",
     "release-it": "^20.0.1",
     "sort-package-json": "^3.6.1",
@@ -83,7 +86,7 @@
     "vitest": "^4.0.14"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=24.15.0"
   },
   "publishConfig": {
     "access": "public",

@@ -59,13 +59,13 @@ Users should install portable skills from the `skills/` subpath, for example `np
 
 ## Install
 
-```bash
+```bash snippet=readme/snippet-01.bash
 npm install -D @gleanwork/pluginpack
 ```
 
 ## Config
 
-```ts
+```ts snippet=readme/snippet-02.ts
 import { defineConfig } from "@gleanwork/pluginpack";
 
 export default defineConfig({
@@ -124,21 +124,39 @@ Each target has a smart default component list. By default, `claude`, `cursor`, 
 
 Use `components` only when a plugin needs an exact target-specific component set:
 
-```ts
-targets: {
-  gemini: {
-    outDir: "plugins/gemini",
-    plugins: {
-      acme: { from: ["core"], components: ["skills", "commands"] },
+```ts snippet=readme/snippet-03.ts
+import { defineConfig } from "@gleanwork/pluginpack";
+
+export default defineConfig({
+  name: "acme-plugins",
+  version: "0.1.0",
+  source: {
+    skills: "skills",
+    rootPlugin: {
+      id: "core",
+      description: "Acme portable skills.",
     },
   },
-  claude: {
-    outDir: "plugins/claude",
-    plugins: {
-      acme: { from: ["core"], components: ["skills"] },
+  metadata: {
+    description: "Acme agent plugins.",
+    author: { name: "Acme" },
+    license: "MIT",
+  },
+  targets: {
+    gemini: {
+      outDir: "plugins/gemini",
+      plugins: {
+        acme: { from: ["core"], components: ["skills", "commands"] },
+      },
+    },
+    claude: {
+      outDir: "plugins/claude",
+      plugins: {
+        acme: { from: ["core"], components: ["skills"] },
+      },
     },
   },
-}
+});
 ```
 
 ## Other Shapes
@@ -206,7 +224,7 @@ For one target, copying files by hand may be enough. `pluginpack` starts to earn
 
 `pluginpack diff` is designed for automation. It builds into a temporary directory, compares generated managed files against an existing plugin repo, and exits non-zero when the plugin repo is stale:
 
-```bash
+```bash snippet=readme/snippet-04.bash
 pluginpack diff --target cursor --against ../cursor-plugins
 pluginpack diff --target claude --against ../claude-plugins
 ```
