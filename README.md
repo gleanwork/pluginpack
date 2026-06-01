@@ -90,7 +90,6 @@ export default defineConfig({
         acme: {
           from: ["core"],
           path: "plugins/cursor/acme",
-          components: ["skills"],
         },
       },
     },
@@ -118,6 +117,29 @@ export default defineConfig({
 ```
 
 `source.skills` points at the repo-level skills directory. `source.rootPlugin.id` creates the source plugin name used by each target's `from` array.
+
+In `pluginpack`, a component is a top-level plugin capability directory such as `skills/`, `agents/`, `commands/`, `rules/`, `hooks/`, `scripts/`, `assets/`, `policies/`, or `themes/`. This is `pluginpack`'s umbrella term for the parts of a source plugin that may or may not exist in every target ecosystem. Target adapters translate those component directories into each app's native layout and manifest fields.
+
+Each target has a smart default component list. By default, `claude`, `cursor`, and `copilot` emit skills and other native plugin support files but omit `commands`, since those ecosystems increasingly expose skills as slash commands. `gemini` keeps `commands` by default because Gemini CLI still has a distinct custom commands surface.
+
+Use `components` only when a plugin needs an exact target-specific component set:
+
+```ts
+targets: {
+  gemini: {
+    outDir: "plugins/gemini",
+    plugins: {
+      acme: { from: ["core"], components: ["skills", "commands"] },
+    },
+  },
+  claude: {
+    outDir: "plugins/claude",
+    plugins: {
+      acme: { from: ["core"], components: ["skills"] },
+    },
+  },
+}
+```
 
 ## Other Shapes
 

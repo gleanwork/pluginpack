@@ -1,3 +1,4 @@
+import { isComponentPath } from "./components.js";
 import type { FileValue, ResolvedProject, TargetName } from "./types.js";
 
 // Merge the files of one or more source plugins into a single emitted-plugin
@@ -7,6 +8,7 @@ export async function collectPluginFiles(
   project: ResolvedProject,
   target: TargetName,
   sourceIds: string[],
+  components?: Set<string>,
 ): Promise<Map<string, FileValue>> {
   const files = new Map<string, FileValue>();
   for (const sourceId of sourceIds) {
@@ -17,6 +19,9 @@ export async function collectPluginFiles(
     }
     const pluginFiles = await project.source.readPluginFiles(sourceId, target);
     for (const [relativePath, value] of pluginFiles) {
+      if (!shouldEmitFile(relativePath, components)) {
+        continue;
+      }
       setFile(files, relativePath, value, sourceId);
     }
   }
@@ -50,6 +55,16 @@ export async function resolveMcpServers(
     }
   }
   return found ? merged : undefined;
+}
+
+function shouldEmitFile(
+  relativePath: string,
+  components: Set<string> | undefined,
+): boolean {
+  if (!components || !isComponentPath(relativePath)) {
+    return true;
+  }
+  return components.has(relativePath.split("/")[0]);
 }
 
 function setFile(

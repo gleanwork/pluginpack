@@ -1,6 +1,7 @@
 import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "./render.js";
 import { json, toPosix } from "./fs.js";
+import { resolveTargetComponents } from "./components.js";
 import type {
   Artifact,
   EmittedPluginConfig,
@@ -80,6 +81,7 @@ async function emitPlugins(
       project,
       target,
       pluginConfig.from,
+      resolveTargetComponents(target, pluginConfig),
     );
     const componentDirs = new Set(
       [...pluginFiles.keys()].map((file) => file.split("/")[0]),
@@ -274,6 +276,7 @@ async function emitCopilot(
       project,
       target,
       pluginConfig.from,
+      resolveTargetComponents(target, pluginConfig),
     );
     for (const [relativePath, value] of pluginFiles) {
       files.set(toPosix(path.join(pluginPath, relativePath)), value);

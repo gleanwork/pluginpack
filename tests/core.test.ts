@@ -1,13 +1,6 @@
-import {
-  access,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { access, readFile, rm } from "node:fs/promises";
 import path from "node:path";
+import { Project, type ProjectArgs } from "fixturify-project";
 import { afterEach, describe, expect, it } from "vitest";
 import { build } from "../src/build.js";
 import { clean, prune } from "../src/cleanup.js";
@@ -15,18 +8,19 @@ import { loadConfig } from "../src/config.js";
 import { diffTarget } from "../src/diff.js";
 import { validateOutput } from "../src/validate.js";
 
-const roots: string[] = [];
+type DirJSON = NonNullable<ProjectArgs["files"]>;
+
+let project: Project | undefined;
 
 afterEach(async () => {
-  await Promise.all(
-    roots.map((root) => rm(root, { recursive: true, force: true })),
-  );
-  roots.length = 0;
+  await project?.dispose();
+  project = undefined;
 });
 
 describe("pluginpack core", () => {
   it("builds all supported target outputs from one source plugin", async () => {
-    const root = await fixture();
+    const project = await fixture();
+    const root = project.baseDir;
     const artifacts = await build({ cwd: root });
 
     expect(artifacts.map((artifact) => artifact.target).sort()).toEqual([
@@ -75,14 +69,23 @@ describe("pluginpack core", () => {
   });
 
   it("uses target-specific file overrides", async () => {
-    const root = await fixture();
-    await mkdir(path.join(root, "plugins/demo/skills/demo/targets/cursor"), {
-      recursive: true,
+    const project = await fixture();
+    const root = project.baseDir;
+    await mergeFixture(project, {
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              targets: {
+                cursor: {
+                  "SKILL.md": skill("demo", "Cursor-only description."),
+                },
+              },
+            },
+          },
+        },
+      },
     });
-    await writeFile(
-      path.join(root, "plugins/demo/skills/demo/targets/cursor/SKILL.md"),
-      skill("demo", "Cursor-only description."),
-    );
 
     await build({ cwd: root, target: "cursor" });
 
@@ -93,8 +96,82 @@ describe("pluginpack core", () => {
     expect(built).toContain("Cursor-only description.");
   });
 
+  it("applies target component defaults and explicit component overrides", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "component-plugins",
+  version: "1.0.0",
+  metadata: { description: "Components", author: { name: "C" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: {
+        defaulted: { from: ["core"] },
+        legacy: { from: ["core"], components: ["skills", "commands"] }
+      }
+    },
+    cursor: {
+      outDir: "dist/cursor",
+      plugins: { defaulted: { from: ["core"] } }
+    },
+    copilot: {
+      outDir: "dist/copilot",
+      plugins: { defaulted: { from: ["core"] } }
+    },
+    gemini: {
+      outDir: "dist/gemini",
+      plugins: { defaulted: { from: ["core"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        core: {
+          skills: {
+            demo: {
+              "SKILL.md": skill("demo", "Demo skill."),
+            },
+          },
+          commands: {
+            "review.md": command("review", "Review command."),
+          },
+          "README.md": "# Core\n",
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root });
+
+    await expectMissing(
+      path.join(root, "dist/claude/plugins/defaulted/commands/review.md"),
+    );
+    await access(path.join(root, "dist/claude/plugins/defaulted/README.md"));
+    await access(
+      path.join(root, "dist/claude/plugins/legacy/commands/review.md"),
+    );
+    await expectMissing(
+      path.join(root, "dist/cursor/defaulted/commands/review.md"),
+    );
+    await expectMissing(
+      path.join(root, "dist/copilot/plugins/defaulted/commands/review.md"),
+    );
+    await access(path.join(root, "dist/gemini/defaulted/commands/review.md"));
+
+    const cursorManifest = JSON.parse(
+      await readFile(
+        path.join(root, "dist/cursor/defaulted/.cursor-plugin/plugin.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(cursorManifest.commands).toBeUndefined();
+  });
+
   it("uses source plugin manifests as emitted plugin metadata", async () => {
-    const root = await fixture();
+    const project = await fixture();
+    const root = project.baseDir;
 
     await build({ cwd: root, target: "cursor" });
     await build({ cwd: root, target: "claude" });
@@ -126,7 +203,8 @@ describe("pluginpack core", () => {
   });
 
   it("builds from a top-level skills directory source", async () => {
-    const root = await rootSkillsFixture();
+    const project = await rootSkillsFixture();
+    const root = project.baseDir;
 
     await build({ cwd: root });
 
@@ -145,12 +223,22 @@ describe("pluginpack core", () => {
   });
 
   it("reports stale managed files with diff", async () => {
-    const root = await fixture();
+    const project = await fixture();
+    const root = project.baseDir;
     await build({ cwd: root, target: "cursor" });
-    await writeFile(
-      path.join(root, "dist/cursor/demo/skills/demo/SKILL.md"),
-      skill("demo", "Stale content."),
-    );
+    await mergeFixture(project, {
+      dist: {
+        cursor: {
+          demo: {
+            skills: {
+              demo: {
+                "SKILL.md": skill("demo", "Stale content."),
+              },
+            },
+          },
+        },
+      },
+    });
 
     const result = await diffTarget({
       cwd: root,
@@ -166,12 +254,11 @@ describe("pluginpack core", () => {
   });
 
   it("reports managed files that should be removed with diff", async () => {
-    const root = await rootSkillsFixture();
-    await mkdir(path.join(root, "skills/old-skill"), { recursive: true });
-    await writeFile(
-      path.join(root, "skills/old-skill/SKILL.md"),
-      skill("old-skill", "Old skill."),
-    );
+    const project = await rootSkillsFixture();
+    const root = project.baseDir;
+    await mergeFixture(project, {
+      skills: { "old-skill": { "SKILL.md": skill("old-skill", "Old skill.") } },
+    });
     await build({ cwd: root, target: "cursor" });
     await rm(path.join(root, "skills/old-skill"), {
       recursive: true,
@@ -191,12 +278,11 @@ describe("pluginpack core", () => {
   });
 
   it("prunes stale managed files and cleans managed outputs", async () => {
-    const root = await rootSkillsFixture();
-    await mkdir(path.join(root, "skills/old-skill"), { recursive: true });
-    await writeFile(
-      path.join(root, "skills/old-skill/SKILL.md"),
-      skill("old-skill", "Old skill."),
-    );
+    const project = await rootSkillsFixture();
+    const root = project.baseDir;
+    await mergeFixture(project, {
+      skills: { "old-skill": { "SKILL.md": skill("old-skill", "Old skill.") } },
+    });
     await build({ cwd: root, target: "cursor" });
     await rm(path.join(root, "skills/old-skill"), {
       recursive: true,
@@ -230,16 +316,8 @@ describe("pluginpack core", () => {
   });
 
   it("refuses to prune source paths unless forced", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-guard-test-"));
-    roots.push(root);
-    await mkdir(path.join(root, "skills/demo"), { recursive: true });
-    await writeFile(
-      path.join(root, "skills/demo/SKILL.md"),
-      skill("demo", "Demo skill."),
-    );
-    await writeFile(
-      path.join(root, "pluginpack.config.ts"),
-      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
   name: "demo-plugins",
@@ -256,18 +334,22 @@ export default defineConfig({
   }
 });
 `,
-    );
+      skills: {
+        demo: {
+          "SKILL.md": skill("demo", "Demo skill."),
+        },
+      },
+      ".pluginpack": {
+        "cursor.json": `${JSON.stringify(
+          { version: 1, target: "cursor", files: ["skills/demo/SKILL.md"] },
+          null,
+          2,
+        )}\n`,
+      },
+    });
+    const root = project.baseDir;
     // Seed a managed manifest that lists a source path as previously managed,
     // simulating manifest drift under an outDir that overlaps the source tree.
-    await mkdir(path.join(root, ".pluginpack"), { recursive: true });
-    await writeFile(
-      path.join(root, ".pluginpack/cursor.json"),
-      `${JSON.stringify(
-        { version: 1, target: "cursor", files: ["skills/demo/SKILL.md"] },
-        null,
-        2,
-      )}\n`,
-    );
 
     await expect(prune({ cwd: root, target: "cursor" })).rejects.toThrow(
       /Refusing to prune/,
@@ -280,20 +362,29 @@ export default defineConfig({
   });
 
   it("ignores configured diff paths", async () => {
-    const root = await fixture();
+    const project = await fixture();
+    const root = project.baseDir;
     const configPath = path.join(root, "pluginpack.config.ts");
-    await writeFile(
-      configPath,
-      (await readFile(configPath, "utf8")).replace(
+    await mergeFixture(project, {
+      "pluginpack.config.ts": (await readFile(configPath, "utf8")).replace(
         'plugins: {\n        demo: { from: ["demo"], components: ["skills"] }',
         'ignoredDiffPaths: ["demo/skills/demo/SKILL.md"],\n      plugins: {\n        demo: { from: ["demo"], components: ["skills"] }',
       ),
-    );
+    });
     await build({ cwd: root, target: "cursor" });
-    await writeFile(
-      path.join(root, "dist/cursor/demo/skills/demo/SKILL.md"),
-      skill("demo", "Ignored stale content."),
-    );
+    await mergeFixture(project, {
+      dist: {
+        cursor: {
+          demo: {
+            skills: {
+              demo: {
+                "SKILL.md": skill("demo", "Ignored stale content."),
+              },
+            },
+          },
+        },
+      },
+    });
 
     const result = await diffTarget({
       cwd: root,
@@ -305,7 +396,8 @@ export default defineConfig({
   });
 
   it("builds the recommended single-repo shape with no path collisions", async () => {
-    const root = await recommendedShapeFixture();
+    const project = await recommendedShapeFixture();
+    const root = project.baseDir;
 
     await build({ cwd: root });
 
@@ -330,32 +422,20 @@ export default defineConfig({
   });
 
   it("does not register generated output dirs as source plugins on rebuild", async () => {
-    const root = await recommendedShapeFixture();
+    const project = await recommendedShapeFixture();
+    const root = project.baseDir;
     await build({ cwd: root });
 
     // After a build, plugins/{cursor,claude,copilot} exist as generated output.
     // Loading config again must not treat them as source plugins.
-    const project = await loadConfig(root);
+    const loaded = await loadConfig(root);
 
-    expect([...project.plugins.keys()]).toEqual(["core"]);
+    expect([...loaded.plugins.keys()]).toEqual(["core"]);
   });
 
   it("merges multiple source plugins and rejects colliding files", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-merge-test-"));
-    roots.push(root);
-    await mkdir(path.join(root, "plugins/a/skills/alpha"), { recursive: true });
-    await mkdir(path.join(root, "plugins/b/skills/beta"), { recursive: true });
-    await writeFile(
-      path.join(root, "plugins/a/skills/alpha/SKILL.md"),
-      skill("alpha", "Alpha skill."),
-    );
-    await writeFile(
-      path.join(root, "plugins/b/skills/beta/SKILL.md"),
-      skill("beta", "Beta skill."),
-    );
-    await writeFile(
-      path.join(root, "pluginpack.config.ts"),
-      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
   name: "merge-plugins",
@@ -371,18 +451,41 @@ export default defineConfig({
   }
 });
 `,
-    );
+      plugins: {
+        a: {
+          skills: {
+            alpha: {
+              "SKILL.md": skill("alpha", "Alpha skill."),
+            },
+          },
+        },
+        b: {
+          skills: {
+            beta: {
+              "SKILL.md": skill("beta", "Beta skill."),
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
 
     await build({ cwd: root, target: "cursor" });
     await access(path.join(root, "dist/cursor/combined/skills/alpha/SKILL.md"));
     await access(path.join(root, "dist/cursor/combined/skills/beta/SKILL.md"));
 
     // A skill path present in both source plugins must collide, not overwrite.
-    await mkdir(path.join(root, "plugins/b/skills/alpha"), { recursive: true });
-    await writeFile(
-      path.join(root, "plugins/b/skills/alpha/SKILL.md"),
-      skill("alpha", "Colliding alpha."),
-    );
+    await mergeFixture(project, {
+      plugins: {
+        b: {
+          skills: {
+            alpha: {
+              "SKILL.md": skill("alpha", "Colliding alpha."),
+            },
+          },
+        },
+      },
+    });
 
     await expect(build({ cwd: root, target: "cursor" })).rejects.toThrow(
       /Duplicate emitted file/,
@@ -390,33 +493,8 @@ export default defineConfig({
   });
 
   it("packages MCP servers across targets from both source forms", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-mcp-test-"));
-    roots.push(root);
-    await mkdir(path.join(root, "plugins/filed/skills/s1"), {
-      recursive: true,
-    });
-    await writeFile(
-      path.join(root, "plugins/filed/.mcp.json"),
-      `${JSON.stringify({ mcpServers: { srv: { command: "node" } } }, null, 2)}\n`,
-    );
-    await writeFile(
-      path.join(root, "plugins/filed/skills/s1/SKILL.md"),
-      skill("s1", "S1."),
-    );
-    await mkdir(path.join(root, "plugins/manifested/skills/s2"), {
-      recursive: true,
-    });
-    await writeFile(
-      path.join(root, "plugins/manifested/plugin.pluginpack.json"),
-      `${JSON.stringify({ mcpServers: { msrv: { command: "py" } } }, null, 2)}\n`,
-    );
-    await writeFile(
-      path.join(root, "plugins/manifested/skills/s2/SKILL.md"),
-      skill("s2", "S2."),
-    );
-    await writeFile(
-      path.join(root, "pluginpack.config.ts"),
-      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
   name: "mcp-plugins",
@@ -430,7 +508,26 @@ export default defineConfig({
   }
 });
 `,
-    );
+      plugins: {
+        filed: {
+          ".mcp.json": `${JSON.stringify({ mcpServers: { srv: { command: "node" } } }, null, 2)}\n`,
+          skills: {
+            s1: {
+              "SKILL.md": skill("s1", "S1."),
+            },
+          },
+        },
+        manifested: {
+          "plugin.pluginpack.json": `${JSON.stringify({ mcpServers: { msrv: { command: "py" } } }, null, 2)}\n`,
+          skills: {
+            s2: {
+              "SKILL.md": skill("s2", "S2."),
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
 
     await build({ cwd: root });
 
@@ -470,29 +567,8 @@ export default defineConfig({
   });
 
   it("rejects MCP server name collisions when merging source plugins", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-mcp-dup-"));
-    roots.push(root);
-    await mkdir(path.join(root, "plugins/a/skills/sa"), { recursive: true });
-    await mkdir(path.join(root, "plugins/b/skills/sb"), { recursive: true });
-    await writeFile(
-      path.join(root, "plugins/a/.mcp.json"),
-      `${JSON.stringify({ mcpServers: { dup: { command: "a" } } }, null, 2)}\n`,
-    );
-    await writeFile(
-      path.join(root, "plugins/b/.mcp.json"),
-      `${JSON.stringify({ mcpServers: { dup: { command: "b" } } }, null, 2)}\n`,
-    );
-    await writeFile(
-      path.join(root, "plugins/a/skills/sa/SKILL.md"),
-      skill("sa", "SA."),
-    );
-    await writeFile(
-      path.join(root, "plugins/b/skills/sb/SKILL.md"),
-      skill("sb", "SB."),
-    );
-    await writeFile(
-      path.join(root, "pluginpack.config.ts"),
-      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
   name: "mcp-dup",
@@ -503,7 +579,26 @@ export default defineConfig({
   }
 });
 `,
-    );
+      plugins: {
+        a: {
+          ".mcp.json": `${JSON.stringify({ mcpServers: { dup: { command: "a" } } }, null, 2)}\n`,
+          skills: {
+            sa: {
+              "SKILL.md": skill("sa", "SA."),
+            },
+          },
+        },
+        b: {
+          ".mcp.json": `${JSON.stringify({ mcpServers: { dup: { command: "b" } } }, null, 2)}\n`,
+          skills: {
+            sb: {
+              "SKILL.md": skill("sb", "SB."),
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
 
     await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
       /Duplicate MCP server "dup"/,
@@ -511,17 +606,8 @@ export default defineConfig({
   });
 
   it("detects cross-target output path collisions", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-collide-"));
-    roots.push(root);
-    await mkdir(path.join(root, "skills/demo"), { recursive: true });
-    await writeFile(
-      path.join(root, "skills/demo/SKILL.md"),
-      skill("demo", "Demo skill."),
-    );
-    // claude and copilot both write .claude-plugin/marketplace.json at outDir ".".
-    await writeFile(
-      path.join(root, "pluginpack.config.ts"),
-      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
   name: "collide-plugins",
@@ -534,7 +620,14 @@ export default defineConfig({
   }
 });
 `,
-    );
+      skills: {
+        demo: {
+          "SKILL.md": skill("demo", "Demo skill."),
+        },
+      },
+    });
+    const root = project.baseDir;
+    // claude and copilot both write .claude-plugin/marketplace.json at outDir ".".
 
     await expect(build({ cwd: root })).rejects.toThrow(
       /overlapping output paths/,
@@ -542,21 +635,8 @@ export default defineConfig({
   });
 
   it("applies per-target and per-plugin version overrides", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-version-"));
-    roots.push(root);
-    await mkdir(path.join(root, "plugins/a/skills/sa"), { recursive: true });
-    await mkdir(path.join(root, "plugins/b/skills/sb"), { recursive: true });
-    await writeFile(
-      path.join(root, "plugins/a/skills/sa/SKILL.md"),
-      skill("sa", "SA."),
-    );
-    await writeFile(
-      path.join(root, "plugins/b/skills/sb/SKILL.md"),
-      skill("sb", "SB."),
-    );
-    await writeFile(
-      path.join(root, "pluginpack.config.ts"),
-      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
   name: "ver-plugins",
@@ -574,7 +654,24 @@ export default defineConfig({
   }
 });
 `,
-    );
+      plugins: {
+        a: {
+          skills: {
+            sa: {
+              "SKILL.md": skill("sa", "SA."),
+            },
+          },
+        },
+        b: {
+          skills: {
+            sb: {
+              "SKILL.md": skill("sb", "SB."),
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
 
     await build({ cwd: root, target: "claude" });
 
@@ -597,16 +694,8 @@ export default defineConfig({
   });
 
   it("deep-merges manifest overrides without dropping sibling keys", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "pluginpack-merge-"));
-    roots.push(root);
-    await mkdir(path.join(root, "skills/demo"), { recursive: true });
-    await writeFile(
-      path.join(root, "skills/demo/SKILL.md"),
-      skill("demo", "Demo skill."),
-    );
-    await writeFile(
-      path.join(root, "pluginpack.config.ts"),
-      `import { defineConfig } from "${path.resolve("src/index.ts")}";
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
   name: "merge-plugins",
@@ -627,7 +716,13 @@ export default defineConfig({
   }
 });
 `,
-    );
+      skills: {
+        demo: {
+          "SKILL.md": skill("demo", "Demo skill."),
+        },
+      },
+    });
+    const root = project.baseDir;
 
     await build({ cwd: root, target: "cursor" });
 
@@ -644,13 +739,20 @@ export default defineConfig({
   });
 });
 
-async function fixture(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), "pluginpack-test-"));
-  roots.push(root);
-  await mkdir(path.join(root, "plugins/demo/skills/demo"), { recursive: true });
-  await writeFile(
-    path.join(root, "pluginpack.config.ts"),
-    `import { defineConfig } from "${path.resolve("src/index.ts")}";
+async function fixtureProject(files: DirJSON): Promise<Project> {
+  project = new Project("pluginpack-test", "1.0.0", { files });
+  await project.write();
+  return project;
+}
+
+async function mergeFixture(project: Project, files: DirJSON): Promise<void> {
+  project.mergeFiles(files);
+  await project.write();
+}
+
+async function fixture(): Promise<Project> {
+  return fixtureProject({
+    "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
   name: "demo-plugins",
@@ -688,32 +790,29 @@ export default defineConfig({
   }
 });
 `,
-  );
-  await writeFile(
-    path.join(root, "plugins/demo/plugin.pluginpack.json"),
-    `${JSON.stringify(
-      {
-        description: "Source plugin description.",
-        displayName: "Demo Source",
+    plugins: {
+      demo: {
+        "plugin.pluginpack.json": `${JSON.stringify(
+          {
+            description: "Source plugin description.",
+            displayName: "Demo Source",
+          },
+          null,
+          2,
+        )}\n`,
+        skills: {
+          demo: {
+            "SKILL.md": skill("demo", "Demo skill."),
+          },
+        },
       },
-      null,
-      2,
-    )}\n`,
-  );
-  await writeFile(
-    path.join(root, "plugins/demo/skills/demo/SKILL.md"),
-    skill("demo", "Demo skill."),
-  );
-  return root;
+    },
+  });
 }
 
-async function rootSkillsFixture(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), "pluginpack-root-test-"));
-  roots.push(root);
-  await mkdir(path.join(root, "skills/demo"), { recursive: true });
-  await writeFile(
-    path.join(root, "pluginpack.config.ts"),
-    `import { defineConfig } from "${path.resolve("src/index.ts")}";
+async function rootSkillsFixture(): Promise<Project> {
+  return fixtureProject({
+    "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
   name: "demo-plugins",
@@ -747,26 +846,18 @@ export default defineConfig({
   }
 });
 `,
-  );
-  await writeFile(
-    path.join(root, "skills/demo/SKILL.md"),
-    skill("demo", "Demo skill."),
-  );
-  await writeFile(path.join(root, "README.md"), "# Root docs\n");
-  return root;
+    skills: {
+      demo: {
+        "SKILL.md": skill("demo", "Demo skill."),
+      },
+    },
+    "README.md": "# Root docs\n",
+  });
 }
 
-async function recommendedShapeFixture(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), "pluginpack-recommended-"));
-  roots.push(root);
-  await mkdir(path.join(root, "skills/release-notes"), { recursive: true });
-  await writeFile(
-    path.join(root, "skills/release-notes/SKILL.md"),
-    skill("release-notes", "Release notes skill."),
-  );
-  await writeFile(
-    path.join(root, "pluginpack.config.ts"),
-    `import { defineConfig } from "${path.resolve("src/index.ts")}";
+async function recommendedShapeFixture(): Promise<Project> {
+  return fixtureProject({
+    "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
   name: "acme-plugins",
@@ -795,8 +886,12 @@ export default defineConfig({
   }
 });
 `,
-  );
-  return root;
+    skills: {
+      "release-notes": {
+        "SKILL.md": skill("release-notes", "Release notes skill."),
+      },
+    },
+  });
 }
 
 async function expectMissing(filePath: string): Promise<void> {
@@ -804,6 +899,16 @@ async function expectMissing(filePath: string): Promise<void> {
 }
 
 function skill(name: string, description: string): string {
+  return `---
+name: ${name}
+description: ${description}
+---
+
+# ${name}
+`;
+}
+
+function command(name: string, description: string): string {
   return `---
 name: ${name}
 description: ${description}
