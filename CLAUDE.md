@@ -38,8 +38,9 @@ diff, prune, and validate all derive from it.
 - `src/render.ts` — `collectPluginFiles` (component dirs + static files, with
   `targets/<name>/` override resolution) and `resolveMcpServers`.
 - `src/targets.ts` — `emitTarget` + per-target emitters. `cursor`/`claude`/
-  `gemini` share the `emitPlugins` engine via callbacks; `emitCopilot` is bespoke
-  (no per-plugin manifest, dual marketplace). Manifest builders live here too.
+  `antigravity` share the `emitPlugins` engine via callbacks; `emitCopilot` is
+  bespoke (no per-plugin manifest, dual marketplace). Manifest builders live here
+  too.
 - `src/build.ts` — `build()`: emit all targets → `assertNoCrossTargetCollisions`
   → write/prune/manifest. Holds the delete guard.
 - `src/managed.ts` — the managed-file manifest (`.pluginpack/<target>.json`),
@@ -50,7 +51,7 @@ diff, prune, and validate all derive from it.
 
 ## Targets
 
-`cursor`, `claude`, `gemini`, `copilot`. Adding a target currently touches ~5
+`cursor`, `claude`, `antigravity`, `copilot`. Adding a target currently touches ~5
 places: the `TargetName` union (`types.ts`), the `targets` array + `parseTarget`
 (`cli.ts`), `allTargets` (`build.ts`), the `emitters` map + a new `emitFoo`
 (`targets.ts`), and a branch + `validateFoo` (`validate.ts`). If you are adding a
@@ -62,9 +63,9 @@ target, consider introducing a single target registry first to localize this.
 Schema for any target, so the harness uses the strongest available oracle per
 target: Cursor against vendored published schemas (`tests/fixtures/cursor/`,
 provenance in `SOURCE.md`); Claude via `claude plugin validate --strict` (when
-the CLI is present); Copilot and Gemini structurally against their real formats
-(`github/copilot-plugins`, `google-gemini/gemini-cli`). Don't fetch schemas at
-runtime — vendor a pinned copy with recorded provenance.
+the CLI is present); Copilot and Antigravity structurally against their real
+formats (`github/copilot-plugins`, Antigravity CLI plugin docs). Don't fetch
+schemas at runtime — vendor a pinned copy with recorded provenance.
 
 ## Shapes and gotchas
 
@@ -75,7 +76,7 @@ runtime — vendor a pinned copy with recorded provenance.
 - **MCP:** a source plugin declares servers via a `.mcp.json` file (standard
   `{ mcpServers: {...} }`) or an `mcpServers` key in `plugin.pluginpack.json`
   (file wins). claude ships the file (auto-discovered); cursor/copilot reference
-  it; gemini inlines the map into `gemini-extension.json`.
+  it; antigravity writes `mcp_config.json`.
 
 ## Conventions
 

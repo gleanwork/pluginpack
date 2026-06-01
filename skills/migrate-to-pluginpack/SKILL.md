@@ -1,6 +1,6 @@
 ---
 name: migrate-to-pluginpack
-description: Use when someone has an existing native plugin repo (a Claude Code marketplace, a Cursor plugin, a Gemini CLI extension, or a GitHub Copilot plugin) and wants to manage it from one portable source via pluginpack — generating the source layout and config, then proving the output matches the original with diff.
+description: Use when someone has an existing native plugin repo (a Claude Code marketplace, a Cursor plugin, an Antigravity CLI plugin, or a GitHub Copilot plugin) and wants to manage it from one portable source via pluginpack — generating the source layout and config, then proving the output matches the original with diff.
 ---
 
 # Migrating an existing plugin repo into pluginpack

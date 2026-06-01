@@ -22,7 +22,7 @@ const emitters: Record<TargetName, TargetEmitter> = {
   claude: emitClaude,
   copilot: emitCopilot,
   cursor: emitCursor,
-  gemini: emitGemini,
+  antigravity: emitAntigravity,
 };
 
 export async function emitTarget(
@@ -62,7 +62,7 @@ type EmitPluginsOptions = {
     mcpServers: Record<string, unknown> | undefined,
   ) => Record<string, unknown>;
   entrySource?: (pluginPath: string) => string;
-  mcp?: "file" | "inline";
+  mcp?: "file" | "antigravity";
 };
 
 async function emitPlugins(
@@ -94,6 +94,11 @@ async function emitPlugins(
     if (mcpServers && options.mcp === "file") {
       files.set(
         toPosix(path.join(pluginPath, ".mcp.json")),
+        json({ mcpServers }),
+      );
+    } else if (mcpServers && options.mcp === "antigravity") {
+      files.set(
+        toPosix(path.join(pluginPath, "mcp_config.json")),
         json({ mcpServers }),
       );
     }
@@ -228,7 +233,7 @@ async function emitClaude(
   return artifact(target, outDir, files);
 }
 
-async function emitGemini(
+async function emitAntigravity(
   project: ResolvedProject,
   target: TargetName,
   targetConfig: TargetConfig,
@@ -240,17 +245,15 @@ async function emitGemini(
   await emitPlugins(project, target, targetConfig, files, {
     resolvePluginPath: (pluginName, pluginConfig) =>
       pluginConfig.path ?? pluginName,
-    pluginManifestPath: (pluginPath) =>
-      path.join(pluginPath, "gemini-extension.json"),
-    buildManifest: (metadata, pluginName, pluginConfig, _componentDirs, mcp) =>
-      geminiExtensionManifest(
+    pluginManifestPath: (pluginPath) => path.join(pluginPath, "plugin.json"),
+    buildManifest: (metadata, pluginName, pluginConfig) =>
+      antigravityPluginManifest(
         metadata,
         pluginConfig.version ?? version,
         pluginName,
         pluginConfig,
-        mcp,
       ),
-    mcp: "inline",
+    mcp: "antigravity",
   });
 
   return artifact(target, outDir, files);
@@ -417,18 +420,16 @@ function claudePluginManifest(
   return stripUndefined(deepMerge(manifest, pluginConfig.manifest ?? {}));
 }
 
-function geminiExtensionManifest(
+function antigravityPluginManifest(
   metadata: Metadata | undefined,
   version: string,
   pluginName: string,
   pluginConfig: EmittedPluginConfig,
-  mcpServers: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   const manifest: Record<string, unknown> = {
     name: pluginName,
     version,
     description: pluginConfig.description ?? metadata?.description,
-    mcpServers,
   };
   return stripUndefined(deepMerge(manifest, pluginConfig.manifest ?? {}));
 }

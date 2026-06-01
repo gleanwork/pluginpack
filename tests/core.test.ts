@@ -24,10 +24,10 @@ describe("pluginpack core", () => {
     const artifacts = await build({ cwd: root });
 
     expect(artifacts.map((artifact) => artifact.target).sort()).toEqual([
+      "antigravity",
       "claude",
       "copilot",
       "cursor",
-      "gemini",
     ]);
     await expect(
       readFile(
@@ -42,10 +42,7 @@ describe("pluginpack core", () => {
       ),
     ).resolves.toContain('"name": "demo"');
     await expect(
-      readFile(
-        path.join(root, "dist/gemini/demo/gemini-extension.json"),
-        "utf8",
-      ),
+      readFile(path.join(root, "dist/antigravity/demo/plugin.json"), "utf8"),
     ).resolves.toContain('"name": "demo"');
     await expect(
       readFile(
@@ -61,7 +58,7 @@ describe("pluginpack core", () => {
       validateOutput("claude", path.join(root, "dist/claude")),
     ).resolves.toMatchObject({ ok: true });
     await expect(
-      validateOutput("gemini", path.join(root, "dist/gemini")),
+      validateOutput("antigravity", path.join(root, "dist/antigravity")),
     ).resolves.toMatchObject({ ok: true });
     await expect(
       validateOutput("copilot", path.join(root, "dist/copilot")),
@@ -120,8 +117,8 @@ export default defineConfig({
       outDir: "dist/copilot",
       plugins: { defaulted: { from: ["core"] } }
     },
-    gemini: {
-      outDir: "dist/gemini",
+    antigravity: {
+      outDir: "dist/antigravity",
       plugins: { defaulted: { from: ["core"] } }
     }
   }
@@ -158,7 +155,9 @@ export default defineConfig({
     await expectMissing(
       path.join(root, "dist/copilot/plugins/defaulted/commands/review.md"),
     );
-    await access(path.join(root, "dist/gemini/defaulted/commands/review.md"));
+    await expectMissing(
+      path.join(root, "dist/antigravity/defaulted/commands/review.md"),
+    );
 
     const cursorManifest = JSON.parse(
       await readFile(
@@ -175,7 +174,7 @@ export default defineConfig({
 
     await build({ cwd: root, target: "cursor" });
     await build({ cwd: root, target: "claude" });
-    await build({ cwd: root, target: "gemini" });
+    await build({ cwd: root, target: "antigravity" });
 
     const cursorManifest = JSON.parse(
       await readFile(
@@ -189,9 +188,9 @@ export default defineConfig({
         "utf8",
       ),
     ) as Record<string, unknown>;
-    const geminiManifest = JSON.parse(
+    const antigravityManifest = JSON.parse(
       await readFile(
-        path.join(root, "dist/gemini/demo/gemini-extension.json"),
+        path.join(root, "dist/antigravity/demo/plugin.json"),
         "utf8",
       ),
     ) as Record<string, unknown>;
@@ -199,7 +198,7 @@ export default defineConfig({
     expect(cursorManifest.description).toBe("Source plugin description.");
     expect(cursorManifest.displayName).toBe("Demo Source");
     expect(claudeManifest.description).toBe("Source plugin description.");
-    expect(geminiManifest.description).toBe("Source plugin description.");
+    expect(antigravityManifest.description).toBe("Source plugin description.");
   });
 
   it("builds from a top-level skills directory source", async () => {
@@ -503,7 +502,7 @@ export default defineConfig({
   targets: {
     cursor: { outDir: "dist/cursor", plugins: { filed: { from: ["filed"], path: "filed", components: ["skills"] } } },
     claude: { outDir: "dist/claude", plugins: { filed: { from: ["filed"] } } },
-    gemini: { outDir: "dist/gemini", plugins: { filed: { from: ["filed"] } } },
+    antigravity: { outDir: "dist/antigravity", plugins: { filed: { from: ["filed"] } } },
     copilot: { outDir: "dist/copilot", plugins: { manifested: { from: ["manifested"] } } }
   }
 });
@@ -544,14 +543,14 @@ export default defineConfig({
     // claude auto-discovers .mcp.json at the plugin root
     await access(path.join(root, "dist/claude/plugins/filed/.mcp.json"));
 
-    // gemini inlines the server map into the extension manifest
-    const geminiManifest = JSON.parse(
+    // antigravity writes MCP config beside plugin.json
+    const antigravityMcpConfig = JSON.parse(
       await readFile(
-        path.join(root, "dist/gemini/filed/gemini-extension.json"),
+        path.join(root, "dist/antigravity/filed/mcp_config.json"),
         "utf8",
       ),
     ) as Record<string, unknown>;
-    expect(geminiManifest.mcpServers).toMatchObject({
+    expect(antigravityMcpConfig.mcpServers).toMatchObject({
       srv: { command: "node" },
     });
 
@@ -775,8 +774,8 @@ export default defineConfig({
         demo: { from: ["demo"] }
       }
     },
-    gemini: {
-      outDir: "dist/gemini",
+    antigravity: {
+      outDir: "dist/antigravity",
       plugins: {
         demo: { from: ["demo"] }
       }

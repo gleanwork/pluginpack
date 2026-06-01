@@ -18,7 +18,7 @@ export const targetDefaultComponents: Record<TargetName, readonly string[]> = {
   claude: ["skills", "agents", "hooks", "scripts", "assets"],
   copilot: ["skills", "agents", "hooks", "scripts", "assets"],
   cursor: ["skills", "agents", "rules", "hooks", "scripts", "assets"],
-  gemini: componentDirs,
+  antigravity: ["skills", "agents", "rules", "hooks", "scripts", "assets"],
 };
 
 export function resolveTargetComponents(

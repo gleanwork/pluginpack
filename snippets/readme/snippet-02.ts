@@ -32,8 +32,8 @@ export default defineConfig({
         acme: { from: ["core"] },
       },
     },
-    gemini: {
-      outDir: "plugins/gemini",
+    antigravity: {
+      outDir: "plugins/antigravity",
       plugins: {
         acme: { from: ["core"] },
       },

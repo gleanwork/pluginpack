@@ -16,8 +16,8 @@ export default defineConfig({
     license: "MIT",
   },
   targets: {
-    gemini: {
-      outDir: "plugins/gemini",
+    antigravity: {
+      outDir: "plugins/antigravity",
       plugins: {
         acme: { from: ["core"], components: ["skills", "commands"] },
       },

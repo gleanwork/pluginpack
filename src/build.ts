@@ -9,7 +9,7 @@ import {
 import { emitTarget } from "./targets.js";
 import type { Artifact, BuildOptions, TargetName } from "./types.js";
 
-const allTargets: TargetName[] = ["cursor", "claude", "gemini", "copilot"];
+const allTargets: TargetName[] = ["cursor", "claude", "antigravity", "copilot"];
 
 export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
   const project = await loadConfig(options.cwd, options.configPath);

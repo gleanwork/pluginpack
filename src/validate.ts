@@ -17,8 +17,8 @@ export async function validateOutput(
     await validateCursor(root, issues);
   } else if (target === "claude") {
     await validateClaude(root, issues);
-  } else if (target === "gemini") {
-    await validateGemini(root, issues);
+  } else if (target === "antigravity") {
+    await validateAntigravity(root, issues);
   } else {
     await validateCopilot(root, issues);
   }
@@ -28,56 +28,60 @@ export async function validateOutput(
   };
 }
 
-async function validateGemini(
+async function validateAntigravity(
   root: string,
   issues: ValidationIssue[],
 ): Promise<void> {
   const entries = await fs.readdir(root, { withFileTypes: true });
-  const extensionDirs = entries
+  const pluginDirs = entries
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
     .map((entry) => path.join(root, entry.name));
-  if (extensionDirs.length === 0) {
+  if (pluginDirs.length === 0) {
     error(
       issues,
-      "Gemini output must contain at least one extension directory.",
+      "Antigravity output must contain at least one plugin directory.",
     );
     return;
   }
-  for (const extensionDir of extensionDirs) {
+  for (const pluginDir of pluginDirs) {
     const manifest = await readJson(
-      path.join(extensionDir, "gemini-extension.json"),
-      "Gemini extension manifest",
+      path.join(pluginDir, "plugin.json"),
+      "Antigravity plugin manifest",
       issues,
     );
     if (!manifest) {
       continue;
     }
-    const extensionName = path.basename(extensionDir);
+    const pluginName = path.basename(pluginDir);
     if (
       typeof manifest.name !== "string" ||
       !pluginNamePattern.test(manifest.name)
     ) {
       error(
         issues,
-        `${extensionName}: gemini-extension.json must have a lowercase kebab-case "name".`,
+        `${pluginName}: plugin.json must have a lowercase kebab-case "name".`,
       );
     }
-    if (manifest.name && manifest.name !== extensionName) {
+    if (manifest.name && manifest.name !== pluginName) {
       error(
         issues,
-        `${extensionName}: manifest name must match extension directory name.`,
+        `${pluginName}: manifest name must match plugin directory name.`,
       );
     }
     for (const field of ["version", "description"]) {
       if (typeof manifest[field] !== "string" || !manifest[field]) {
         error(
           issues,
-          `${extensionName}: gemini-extension.json is missing required field "${field}".`,
+          `${pluginName}: plugin.json is missing required field "${field}".`,
         );
       }
     }
-    await validateFrontmatter(extensionDir, extensionName, "gemini", issues);
-    await validateHooks(extensionDir, extensionName, issues);
+    const mcpConfigPath = path.join(pluginDir, "mcp_config.json");
+    if (await exists(mcpConfigPath)) {
+      await readJson(mcpConfigPath, `${pluginName} MCP config`, issues);
+    }
+    await validateFrontmatter(pluginDir, pluginName, "antigravity", issues);
+    await validateHooks(pluginDir, pluginName, issues);
   }
 }
 
@@ -369,7 +373,11 @@ async function validateFrontmatter(
         ["description"],
         issues,
       );
-      if (target === "cursor" || target === "gemini" || target === "copilot") {
+      if (
+        target === "cursor" ||
+        target === "antigravity" ||
+        target === "copilot"
+      ) {
         requireFrontmatter(
           pluginName,
           kind,

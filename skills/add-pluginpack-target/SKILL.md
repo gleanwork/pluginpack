@@ -38,8 +38,9 @@ Adding a target currently means editing ~5 places:
 
 If the app supports MCP servers, decide whether it reads a `.mcp.json` file
 (reference it from the manifest, like cursor/copilot, or rely on auto-discovery,
-like claude) or expects the server map inline (like gemini). `resolveMcpServers`
-already merges a plugin's servers; thread the result into your emitter.
+like claude), a target-specific config file (like Antigravity's
+`mcp_config.json`), or another native shape. `resolveMcpServers` already merges
+a plugin's servers; thread the result into your emitter.
 
 ## Verify
 

@@ -1,10 +1,19 @@
 # pluginpack
 
+[![Experimental](https://img.shields.io/badge/-Experimental-D8FD49?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMzIgMzIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0yNC4zMDA2IDIuOTU0MjdMMjAuNzY1NiAwLjE5OTk1MUwxNy45MDI4IDMuOTk1MjdDMTMuNTY1MyAxLjkzNDk1IDguMjMwMTkgMy4wODQzOSA1LjE5Mzk0IDcuMDA5ODNDMS42NTg4OCAxMS41NjQyIDIuNDgzIDE4LjExMzggNy4wMzczOCAyMS42NDg5QzguNzcyMzggMjIuOTkzNSAxMC43ODkzIDIzLjcwOTIgMTIuODI3OSAyMy44MTc3QzE2LjE0NjEgMjQuMDEyOCAxOS41MDc3IDIyLjYyNDggMjEuNjc2NSAxOS44MDU1QzI0LjczNDQgMTUuODggMjQuNTE3NSAxMC40MTQ4IDIxLjQ1OTYgNi43Mjc4OUwyNC4zMDA2IDIuOTU0MjdaTTE4LjExOTcgMTcuMDUxMkMxNi4xMDI4IDE5LjYzMiAxMi4zNzI1IDIwLjEwOTEgOS43NzAwMSAxOC4wOTIyQzcuMTg5MTkgMTYuMDc1MiA2LjcxMjA3IDEyLjMyMzMgOC43MjkwMSA5Ljc0MjQ2QzkuNzA0OTQgOC40ODQ1OCAxMS4xMTQ2IDcuNjgyMTQgMTIuNjc2MSA3LjQ4Njk2QzEzLjA0NDggNy40NDM1OCAxMy40MTM1IDcuNDIxOSAxMy43ODIyIDcuNDQzNThDMTQuOTc1IDcuNTA4NjUgMTYuMTI0NCA3Ljk0MjM5IDE3LjA3ODcgOC42Nzk3N0MxOS42NTk1IDEwLjcxODQgMjAuMTM2NiAxNC40NzAzIDE4LjExOTcgMTcuMDUxMloiIGZpbGw9IndoaXRlIi8+CjxwYXRoIGQ9Ik0yNC41MTc2IDIxLjY5MjJDMjMuOTMyIDIyLjQ1MTMgMjMuMjgxNCAyMy4xMjM2IDIyLjU2NTcgMjMuNzUyNUMyMS44NzE3IDI0LjMzODEgMjEuMTEyNyAyNC44ODAzIDIwLjMxMDIgMjUuMzM1N0MxOS41Mjk1IDI1Ljc2OTUgMTguNjgzNyAyNi4xMzgyIDE3LjgzNzggMjYuNDIwMUMxNi45OTIgMjYuNzAyIDE2LjEwMjggMjYuODk3MiAxNS4yMTM3IDI3LjAwNTdDMTQuMzI0NSAyNy4xMTQxIDEzLjQzNTMgMjcuMTU3NSAxMi41MjQ0IDI3LjA5MjRDMTEuNjEzNSAyNy4wMjczIDEwLjcyNDMgMjYuODc1NSA5Ljg1Njg0IDI2LjY1ODdMOS42NjE2NSAyNy4zNzQzTDguNzcyNDYgMzAuOTk2MkM5LjkwMDIxIDMxLjI5OTggMTEuMDQ5NyAzMS40NzMzIDEyLjIyMDggMzEuNTZDMTIuMjY0MiAzMS41NiAxMi4zMjkyIDMxLjU2IDEyLjM3MjYgMzEuNTZDMTMuNTAwMyAzMS42MjUxIDE0LjY0OTggMzEuNTgxNyAxNS43NTU4IDMxLjQ1MTZDMTYuOTI3IDMxLjI5OTggMTguMDk4MSAzMS4wMzk1IDE5LjIyNTggMzAuNjcwOEMyMC4zNTM2IDMwLjMwMjIgMjEuNDU5NyAyOS44MjUgMjIuNTAwNyAyOS4yMzk1QzIzLjU2MzQgMjguNjUzOSAyNC41NjEgMjcuOTM4MiAyNS40OTM1IDI3LjE1NzVDMjYuNDQ3OCAyNi4zNTUgMjcuMzE1MyAyNS40NDQyIDI4LjA3NDQgMjQuNDQ2NUMyOC4xODI4IDI0LjMxNjQgMjguMjY5NSAyNC4xNjQ2IDI4LjM3OCAyNC4wMTI4TDI0Ljc3NzkgMjEuMzQ1MkMyNC42Njk0IDIxLjQ1MzcgMjQuNjA0NCAyMS41ODM4IDI0LjUxNzYgMjEuNjkyMloiIGZpbGw9IndoaXRlIi8+Cjwvc3ZnPg==&labelColor=343CED)](https://github.com/gleanwork/.github/blob/main/docs/repository-stability.md#experimental)
+[![npm version](https://img.shields.io/npm/v/@gleanwork/pluginpack.svg)](https://www.npmjs.com/package/@gleanwork/pluginpack)
+[![CI](https://github.com/gleanwork/pluginpack/actions/workflows/ci.yml/badge.svg)](https://github.com/gleanwork/pluginpack/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 One source of truth for agent plugins across AI app ecosystems.
 
 `pluginpack` compiles portable skills, commands, agents, rules, hooks, assets, and metadata into the native plugin layouts expected by each AI app.
 
 `pluginpack` is intentionally boring: it copies files, writes the manifests each target expects, and validates the result. It is a build tool, not a package manager or publisher.
+
+<p align="center">
+  <img src="assets/pluginpack-flow.svg" alt="pluginpack packages source components into Claude, Cursor, Antigravity, and Copilot plugin targets">
+</p>
 
 ## Why
 
@@ -40,12 +49,24 @@ plugins/
     acme/
       .claude-plugin/plugin.json
       skills/
-  gemini/
+  antigravity/
     .pluginpack/
-      gemini.json
+      antigravity.json
     acme/
-      gemini-extension.json
+      mcp_config.json
+      plugin.json
       skills/
+  copilot/
+    .claude-plugin/
+      marketplace.json
+    .github/
+      plugin/
+        marketplace.json
+    .pluginpack/
+      copilot.json
+    plugins/
+      acme/
+        skills/
 .claude-plugin/
   marketplace.json
 .pluginpack/
@@ -100,8 +121,8 @@ export default defineConfig({
         acme: { from: ["core"] },
       },
     },
-    gemini: {
-      outDir: "plugins/gemini",
+    antigravity: {
+      outDir: "plugins/antigravity",
       plugins: {
         acme: { from: ["core"] },
       },
@@ -120,7 +141,7 @@ export default defineConfig({
 
 In `pluginpack`, a component is a top-level plugin capability directory such as `skills/`, `agents/`, `commands/`, `rules/`, `hooks/`, `scripts/`, `assets/`, `policies/`, or `themes/`. This is `pluginpack`'s umbrella term for the parts of a source plugin that may or may not exist in every target ecosystem. Target adapters translate those component directories into each app's native layout and manifest fields.
 
-Each target has a smart default component list. By default, `claude`, `cursor`, and `copilot` emit skills and other native plugin support files but omit `commands`, since those ecosystems increasingly expose skills as slash commands. `gemini` keeps `commands` by default because Gemini CLI still has a distinct custom commands surface.
+Each target has a smart default component list. By default, `claude`, `cursor`, `antigravity`, and `copilot` emit skills and other native plugin support files but omit `commands`, since those ecosystems increasingly expose skills as slash commands.
 
 Use `components` only when a plugin needs an exact target-specific component set:
 
@@ -143,8 +164,8 @@ export default defineConfig({
     license: "MIT",
   },
   targets: {
-    gemini: {
-      outDir: "plugins/gemini",
+    antigravity: {
+      outDir: "plugins/antigravity",
       plugins: {
         acme: { from: ["core"], components: ["skills", "commands"] },
       },
@@ -184,7 +205,7 @@ A target can emit a source plugin directly, rename it, or merge multiple source 
 
 A source plugin declares MCP servers with a standard `.mcp.json` file at its root (`{ "mcpServers": { "name": { ... } } }`), or with an `mcpServers` key in `plugin.pluginpack.json`. The file wins if both are present, and merging plugins with the same server name is an error.
 
-Each target wires MCP into its native shape: `claude` ships `.mcp.json` at the plugin root (auto-discovered), `cursor` references it from `plugin.json` (`"mcpServers": "./.mcp.json"`), `copilot` references it from the marketplace entry, and `gemini` inlines the server map into `gemini-extension.json`.
+Each target wires MCP into its native shape: `claude` ships `.mcp.json` at the plugin root (auto-discovered), `cursor` references it from `plugin.json` (`"mcpServers": "./.mcp.json"`), `copilot` references it from the marketplace entry, and `antigravity` writes `mcp_config.json` beside `plugin.json`.
 
 There are two reasonable alternatives when the single-repo shape is not enough:
 
@@ -209,10 +230,10 @@ The first adapters are:
 
 - `cursor`
 - `claude`
-- `gemini`
+- `antigravity`
 - `copilot`
 
-`gemini` emits Gemini CLI extensions with a `gemini-extension.json` manifest. `copilot` emits the GitHub Copilot plugins format (per [`github/copilot-plugins`](https://github.com/github/copilot-plugins)): a `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`, each plugin under `plugins/<name>/` with a `skills` array per marketplace entry. Because Copilot reuses the Claude marketplace layout, the `claude` and `copilot` targets both write `.claude-plugin/marketplace.json` and therefore need separate output roots (distinct `outDir`s or separate repos).
+`antigravity` emits Antigravity CLI plugins with a `plugin.json` manifest and optional `mcp_config.json`. `copilot` emits the GitHub Copilot plugins format (per [`github/copilot-plugins`](https://github.com/github/copilot-plugins)): a `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`, each plugin under `plugins/<name>/` with a `skills` array per marketplace entry. Because Copilot reuses the Claude marketplace layout, the `claude` and `copilot` targets both write `.claude-plugin/marketplace.json` and therefore need separate output roots (distinct `outDir`s or separate repos).
 
 More targets should be added from official docs or real plugin examples, not guessed abstractions.
 
@@ -259,7 +280,7 @@ Exit codes:
 Compile configured source plugins into target-native plugin payloads.
 
 ```bash
-pluginpack build [--target cursor|claude|gemini|copilot] [--out-dir <path>] [--dry-run]
+pluginpack build [--target cursor|claude|antigravity|copilot] [--out-dir <path>] [--dry-run]
 ```
 
 Options:
@@ -284,7 +305,7 @@ Exit codes:
 Validate an existing target output directory for native manifest, path, and frontmatter requirements.
 
 ```bash
-pluginpack validate --target cursor|claude|gemini|copilot [--dir <path>]
+pluginpack validate --target cursor|claude|antigravity|copilot [--dir <path>]
 ```
 
 Options:
@@ -306,7 +327,7 @@ Exit codes:
 Build into a temporary directory and compare generated managed files with an existing target repo.
 
 ```bash
-pluginpack diff --target cursor|claude|gemini|copilot --against <path>
+pluginpack diff --target cursor|claude|antigravity|copilot --against <path>
 ```
 
 Options:
@@ -328,7 +349,7 @@ Exit codes:
 Remove stale managed files that are no longer emitted by the current config.
 
 ```bash
-pluginpack prune [--target cursor|claude|gemini|copilot] [--dry-run]
+pluginpack prune [--target cursor|claude|antigravity|copilot] [--dry-run]
 ```
 
 Options:
@@ -352,7 +373,7 @@ Exit codes:
 Remove all managed files for configured target outputs.
 
 ```bash
-pluginpack clean [--target cursor|claude|gemini|copilot] [--dry-run]
+pluginpack clean [--target cursor|claude|antigravity|copilot] [--dry-run]
 ```
 
 Options:

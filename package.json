@@ -10,7 +10,7 @@
     "plugins",
     "skills",
     "pluginpack",
-    "gemini",
+    "antigravity",
     "copilot",
     "mcp"
   ],
@@ -38,6 +38,7 @@
     "pluginpack": "dist/cli.js"
   },
   "files": [
+    "assets",
     "dist",
     "CHANGELOG.md",
     "LICENSE",

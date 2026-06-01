@@ -61,7 +61,7 @@ const configSchema = z.object({
     claude: targetSchema.optional(),
     copilot: targetSchema.optional(),
     cursor: targetSchema.optional(),
-    gemini: targetSchema.optional(),
+    antigravity: targetSchema.optional(),
   }),
 });
 

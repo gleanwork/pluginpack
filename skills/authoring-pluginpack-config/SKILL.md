@@ -1,6 +1,6 @@
 ---
 name: authoring-pluginpack-config
-description: Use when someone wants to ship one set of agent skills/plugins to multiple AI apps (Claude Code, Cursor, Gemini CLI, GitHub Copilot) from a single source, and needs to create or update a pluginpack.config.ts — choosing targets, source layout, MCP servers, and output directories.
+description: Use when someone wants to ship one set of agent skills/plugins to multiple AI apps (Claude Code, Cursor, Antigravity CLI, GitHub Copilot) from a single source, and needs to create or update a pluginpack.config.ts — choosing targets, source layout, MCP servers, and output directories.
 ---
 
 # Authoring a pluginpack config
@@ -51,7 +51,10 @@ export default defineConfig({
       pluginRoot: "plugins/claude",
       plugins: { acme: { from: ["core"] } },
     },
-    gemini: { outDir: "plugins/gemini", plugins: { acme: { from: ["core"] } } },
+    antigravity: {
+      outDir: "plugins/antigravity",
+      plugins: { acme: { from: ["core"] } },
+    },
     copilot: {
       outDir: "plugins/copilot",
       plugins: { acme: { from: ["core"] } },

@@ -8,7 +8,7 @@ import { diffTarget } from "./diff.js";
 import { validateOutput } from "./validate.js";
 import type { TargetName } from "./types.js";
 
-const targets = ["cursor", "claude", "gemini", "copilot"] as const;
+const targets = ["cursor", "claude", "antigravity", "copilot"] as const;
 
 async function main(): Promise<void> {
   const program = createProgram();
@@ -34,7 +34,7 @@ function createProgram(): Command {
       "Compile configured source plugins into target-native plugin payloads.",
     )
     .usage(
-      "[--target cursor|claude|gemini|copilot] [--out-dir <path>] [--dry-run]",
+      "[--target cursor|claude|antigravity|copilot] [--out-dir <path>] [--dry-run]",
     )
     .addOption(
       new Option(
@@ -79,7 +79,7 @@ function createProgram(): Command {
     .description(
       "Validate an existing target output directory for native manifest, path, and frontmatter requirements.",
     )
-    .usage("--target cursor|claude|gemini|copilot [--dir <path>]")
+    .usage("--target cursor|claude|antigravity|copilot [--dir <path>]")
     .requiredOption(
       "--target <target>",
       "Required target validator.",
@@ -116,7 +116,7 @@ function createProgram(): Command {
     .description(
       "Build into a temporary directory and compare generated managed files with an existing target repo.",
     )
-    .usage("--target cursor|claude|gemini|copilot --against <path>")
+    .usage("--target cursor|claude|antigravity|copilot --against <path>")
     .requiredOption(
       "--target <target>",
       "Required target to build and compare.",
@@ -147,7 +147,7 @@ function createProgram(): Command {
     .description(
       "Remove stale managed files that are no longer emitted by the current config.",
     )
-    .usage("[--target cursor|claude|gemini|copilot] [--dry-run]")
+    .usage("[--target cursor|claude|antigravity|copilot] [--dry-run]")
     .addOption(
       new Option(
         "--target <target>",
@@ -173,7 +173,7 @@ function createProgram(): Command {
   program
     .command("clean")
     .description("Remove all managed files for configured target outputs.")
-    .usage("[--target cursor|claude|gemini|copilot] [--dry-run]")
+    .usage("[--target cursor|claude|antigravity|copilot] [--dry-run]")
     .addOption(
       new Option(
         "--target <target>",
@@ -274,10 +274,10 @@ function parseTarget(value: string): TargetName {
   if (
     value !== "cursor" &&
     value !== "claude" &&
-    value !== "gemini" &&
+    value !== "antigravity" &&
     value !== "copilot"
   ) {
-    throw new Error("Expected cursor, claude, gemini, or copilot.");
+    throw new Error("Expected cursor, claude, antigravity, or copilot.");
   }
   return value;
 }
@@ -456,8 +456,8 @@ export default defineConfig({
         example: { from: ["example"] }
       }
     },
-    gemini: {
-      outDir: "dist/gemini",
+    antigravity: {
+      outDir: "dist/antigravity",
       plugins: {
         example: { from: ["example"] }
       }
