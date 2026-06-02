@@ -7,84 +7,40 @@
 
 One source of truth for agent plugins across AI app ecosystems.
 
-`pluginpack` compiles portable skills, commands, agents, rules, hooks, assets, and metadata into the native plugin layouts expected by each AI app.
-
-`pluginpack` is intentionally boring: it copies files, writes the manifests each target expects, and validates the result. It is a build tool, not a package manager or publisher.
+`pluginpack` is a build tool for compiling portable skills, commands, agents, rules, hooks, assets, and metadata into the native plugin layouts expected by each AI app. It copies files, writes target manifests, and validates generated output; it is not a package manager or publisher.
 
 <p align="center">
   <img src="assets/pluginpack-flow.svg" alt="pluginpack packages source components into Claude, Cursor, Antigravity, and Copilot plugin targets">
 </p>
 
-## Why
+## Quick Start
 
-Agent apps increasingly support similar ideas: skills, commands, agents, rules, hooks, MCP configuration, and plugin marketplaces. The packaging formats are different enough that maintaining one repo per app quickly drifts.
-
-`pluginpack` helps when you want to:
-
-- keep skills and related plugin files in one source repo
-- emit installable plugin directories for more than one app
-- allow target-specific overrides where portability breaks down
-- detect when generated plugin repos are stale
-
-It does not try to make every app behave the same. Target adapters own target-specific layout, manifests, and validation.
-
-## Recommended Shape
-
-The preferred path is one public plugin repository with a top-level `skills/` directory as the portable install surface, plus generated native plugin outputs in the same repo.
-
-```txt
-skills/
-  release-notes/
-    SKILL.md
-pluginpack.config.ts
-
-.cursor-plugin/
-  marketplace.json
-plugins/
-  cursor/
-    acme/
-      .cursor-plugin/plugin.json
-      skills/
-  claude/
-    acme/
-      .claude-plugin/plugin.json
-      skills/
-  antigravity/
-    .pluginpack/
-      antigravity.json
-    acme/
-      mcp_config.json
-      plugin.json
-      skills/
-  copilot/
-    .claude-plugin/
-      marketplace.json
-    .github/
-      plugin/
-        marketplace.json
-    .pluginpack/
-      copilot.json
-    plugins/
-      acme/
-        skills/
-.claude-plugin/
-  marketplace.json
-.pluginpack/
-  cursor.json
-  claude.json
-```
-
-Users should install portable skills from the `skills/` subpath, for example `npx skills add owner/repo/skills --skill '*'`. The repo root is intentionally also home to generated native plugin outputs, so the subpath keeps `skills` CLI discovery focused on the canonical portable skills. Claude, Cursor, and other native plugin users install from the generated marketplace/plugin layout their app expects.
-
-`pluginpack` writes a `.pluginpack/<target>.json` managed-file manifest for each built target. That manifest lets builds and cleanup commands remove stale generated files without touching source files or unmanaged repo content.
-
-## Install
+Start with portable plugin components, declare the native targets you want, then run `pluginpack build`.
 
 ```bash snippet=readme/snippet-01.bash
 npm install -D @gleanwork/pluginpack
 ```
 
-## Config
+Create repo-level component directories:
+
+```tree
+skills/
+  release-notes/
+    SKILL.md
+agents/
+  search-assistant.md
+commands/
+  summarize.md
+rules/
+  style.mdc
+hooks/
+  before-run.sh
+assets/
+  icon.png
+pluginpack.config.ts
+```
+
+Add a config that maps that portable source into native plugin outputs. `source.skills` gives the repo a simple portable install surface; sibling component directories are included when the selected target supports them or when you opt into them with `components`.
 
 ```ts snippet=readme/snippet-02.ts
 import { defineConfig } from "@gleanwork/pluginpack";
@@ -137,11 +93,117 @@ export default defineConfig({
 });
 ```
 
-`source.skills` points at the repo-level skills directory. `source.rootPlugin.id` creates the source plugin name used by each target's `from` array.
+Build and validate the generated outputs:
 
-In `pluginpack`, a component is a top-level plugin capability directory such as `skills/`, `agents/`, `commands/`, `rules/`, `hooks/`, `scripts/`, `assets/`, `policies/`, or `themes/`. This is `pluginpack`'s umbrella term for the parts of a source plugin that may or may not exist in every target ecosystem. Target adapters translate those component directories into each app's native layout and manifest fields.
+```bash
+npx pluginpack build
+npx pluginpack validate --target cursor
+```
 
-Each target has a smart default component list. By default, `claude`, `cursor`, `antigravity`, and `copilot` emit skills and other native plugin support files but omit `commands`, since those ecosystems increasingly expose skills as slash commands.
+Users who only want portable skills install from the `skills/` subpath, for example `npx skills add owner/repo/skills --skill '*'`. Claude, Cursor, Antigravity, and Copilot users install from the generated native layout that can include skills, agents, rules, hooks, assets, MCP config, and target-specific manifests.
+
+## Mental Model
+
+Agent apps increasingly support similar ideas: skills, commands, agents, rules, hooks, MCP configuration, and plugin marketplaces. The packaging formats are different enough that maintaining one repo per app quickly drifts.
+
+`pluginpack` does four things:
+
+- reads a portable source plugin from your repo
+- copies selected component directories into each target
+- writes the manifests each target expects
+- validates, diffs, prunes, and cleans generated output
+
+It does not try to make every app behave the same. Target adapters own target-specific layout, manifests, and validation.
+
+## Recommended Shape
+
+The preferred path is one public plugin repository with top-level component directories. `skills/` remains the portable `skills` CLI install surface, while the other component directories feed native plugin outputs.
+
+```tree
+skills/
+  release-notes/
+    SKILL.md
+agents/
+  search-assistant.md
+commands/
+  summarize.md
+rules/
+  style.mdc
+hooks/
+  before-run.sh
+assets/
+  icon.png
+pluginpack.config.ts
+
+.cursor-plugin/
+  marketplace.json
+plugins/
+  cursor/
+    acme/
+      .cursor-plugin/plugin.json
+      agents/
+      rules/
+      hooks/
+      skills/
+  claude/
+    acme/
+      .claude-plugin/plugin.json
+      agents/
+      hooks/
+      skills/
+  antigravity/
+    .pluginpack/
+      antigravity.json
+    acme/
+      mcp_config.json
+      plugin.json
+      agents/
+      rules/
+      hooks/
+      skills/
+  copilot/
+    .claude-plugin/
+      marketplace.json
+    .github/
+      plugin/
+        marketplace.json
+    .pluginpack/
+      copilot.json
+    plugins/
+      acme/
+        agents/
+        hooks/
+        skills/
+.claude-plugin/
+  marketplace.json
+.pluginpack/
+  cursor.json
+  claude.json
+```
+
+`source.skills` points at the repo-level skills directory and creates a root source plugin from the sibling component directories. `source.rootPlugin.id` creates the source plugin name used by each target's `from` array. The repo root is intentionally also home to generated native plugin outputs, so the `skills/` subpath keeps `skills` CLI discovery focused on the canonical portable skills.
+
+`pluginpack` writes a `.pluginpack/<target>.json` managed-file manifest for each built target. That manifest lets builds and cleanup commands remove stale generated files without touching source files or unmanaged repo content.
+
+## Components
+
+In `pluginpack`, a component is a top-level plugin capability directory. Components are the portable pieces of a source plugin that may or may not exist in every target ecosystem.
+
+Supported component directories are:
+
+```txt
+skills/
+agents/
+commands/
+rules/
+hooks/
+scripts/
+assets/
+policies/
+themes/
+```
+
+Target adapters translate those component directories into each app's native layout and manifest fields. Each target has a smart default component list. By default, `claude`, `cursor`, `antigravity`, and `copilot` emit skills and other native plugin support files but omit `commands`, since those ecosystems increasingly expose skills as slash commands.
 
 Use `components` only when a plugin needs an exact target-specific component set:
 
@@ -180,11 +242,26 @@ export default defineConfig({
 });
 ```
 
-## Other Shapes
+## Targets
 
-For more complex source content, keep source plugins under `plugins/` and emit them into one or more target outputs:
+The first adapters are:
 
-```txt
+- `cursor`
+- `claude`
+- `antigravity`
+- `copilot`
+
+`cursor` emits Cursor plugin and marketplace manifests. `claude` emits Claude plugin and marketplace manifests. `antigravity` emits Antigravity CLI plugins with a `plugin.json` manifest and optional `mcp_config.json`. `copilot` emits the GitHub Copilot plugins format (per [`github/copilot-plugins`](https://github.com/github/copilot-plugins)): a `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`, each plugin under `plugins/<name>/` with a `skills` array per marketplace entry.
+
+Because Copilot reuses the Claude marketplace layout, the `claude` and `copilot` targets both write `.claude-plugin/marketplace.json` and therefore need separate output roots (distinct `outDir`s or separate repos).
+
+More targets should be added from official docs or real plugin examples, not guessed abstractions.
+
+## Source Plugins
+
+The quick-start shape treats repo-level component directories as one source plugin. For more complex source content, keep source plugins under `plugins/` and emit them into one or more target outputs:
+
+```tree
 plugins/
   core/
     plugin.pluginpack.json
@@ -207,11 +284,6 @@ A source plugin declares MCP servers with a standard `.mcp.json` file at its roo
 
 Each target wires MCP into its native shape: `claude` ships `.mcp.json` at the plugin root (auto-discovered), `cursor` references it from `plugin.json` (`"mcpServers": "./.mcp.json"`), `copilot` references it from the marketplace entry, and `antigravity` writes `mcp_config.json` beside `plugin.json`.
 
-There are two reasonable alternatives when the single-repo shape is not enough:
-
-- Single source repo, multiple output repos: best when each target ecosystem expects its own repo root shape.
-- Single source repo, release artifacts: best when users install zipped plugin payloads or release assets instead of browsing generated files in Git.
-
 ## Target Overrides
 
 Skill files are not always perfectly portable. When one app needs different frontmatter or content, add a target override next to the base file:
@@ -224,18 +296,12 @@ skills/release-notes/targets/claude/SKILL.md
 
 Resolution order is target override first, then the base file.
 
-## Current Targets
+## Other Shapes
 
-The first adapters are:
+There are two reasonable alternatives when the single-repo shape is not enough:
 
-- `cursor`
-- `claude`
-- `antigravity`
-- `copilot`
-
-`antigravity` emits Antigravity CLI plugins with a `plugin.json` manifest and optional `mcp_config.json`. `copilot` emits the GitHub Copilot plugins format (per [`github/copilot-plugins`](https://github.com/github/copilot-plugins)): a `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`, each plugin under `plugins/<name>/` with a `skills` array per marketplace entry. Because Copilot reuses the Claude marketplace layout, the `claude` and `copilot` targets both write `.claude-plugin/marketplace.json` and therefore need separate output roots (distinct `outDir`s or separate repos).
-
-More targets should be added from official docs or real plugin examples, not guessed abstractions.
+- Single source repo, multiple output repos: best when each target ecosystem expects its own repo root shape.
+- Single source repo, release artifacts: best when users install zipped plugin payloads or release assets instead of browsing generated files in Git.
 
 ## Why Not Just Copy Files?
 
