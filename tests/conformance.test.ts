@@ -126,7 +126,7 @@ describe("emitted output conforms to external target schemas", () => {
 
   beforeEach(async () => {
     project = await setupProject();
-    project.files = {
+    await project.write({
       "pluginpack.config.ts": CONFIG,
       plugins: {
         glean: {
@@ -147,8 +147,7 @@ describe("emitted output conforms to external target schemas", () => {
           },
         },
       },
-    };
-    await project.write();
+    });
   });
 
   afterEach(() => {
