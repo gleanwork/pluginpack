@@ -1,6 +1,6 @@
 {
   "name": "@gleanwork/pluginpack",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Compile one source of agent plugins — skills, commands, hooks, and MCP servers — into the native plugin format each AI app expects.",
   "keywords": [
     "agent-skills",
