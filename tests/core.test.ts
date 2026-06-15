@@ -93,6 +93,80 @@ describe("pluginpack core", () => {
     expect(built).toContain("Cursor-only description.");
   });
 
+  it("emits per-target root files from source and manages them", async () => {
+    const root = (
+      await fixtureProject({
+        "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "root-files-plugins",
+  version: "1.0.0",
+  metadata: { description: "Root files", author: { name: "R" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      rootFiles: { "README.md": "roots/claude/README.md" },
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+        roots: { claude: { "README.md": "# Claude output readme\n" } },
+        plugins: {
+          demo: {
+            skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+          },
+        },
+      })
+    ).baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    await expect(
+      readFile(path.join(root, "dist/claude/README.md"), "utf8"),
+    ).resolves.toContain("Claude output readme");
+
+    const manifest = JSON.parse(
+      await readFile(
+        path.join(root, "dist/claude/.pluginpack/claude.json"),
+        "utf8",
+      ),
+    ) as { files: string[] };
+    expect(manifest.files).toContain("README.md");
+  });
+
+  it("rejects a root file that collides with a generated file", async () => {
+    const root = (
+      await fixtureProject({
+        "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "root-collision-plugins",
+  version: "1.0.0",
+  metadata: { description: "Collide", author: { name: "R" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      rootFiles: { ".claude-plugin/marketplace.json": "roots/x.json" },
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+        roots: { "x.json": "{}\n" },
+        plugins: {
+          demo: {
+            skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+          },
+        },
+      })
+    ).baseDir;
+
+    await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
+      /collides/,
+    );
+  });
+
   it("applies target component defaults and explicit component overrides", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";

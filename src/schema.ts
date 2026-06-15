@@ -50,6 +50,11 @@ const targetSchema = z.object({
   plugins: z.record(z.string(), emittedPluginSchema),
   manifest: z.record(z.string(), z.unknown()).optional(),
   ignoredDiffPaths: z.array(z.string()).optional(),
+  // Files emitted verbatim at the output repo root (relative to outDir), keyed
+  // by output path → source path (relative to the config root). Managed like
+  // any other emitted file, so a repo-root README/LICENSE is authored once in
+  // the source repo and synced to every target instead of hand-maintained.
+  rootFiles: z.record(z.string(), z.string()).optional(),
 });
 
 const configSchema = z.object({

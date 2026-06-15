@@ -320,6 +320,8 @@ Use that in CI to fail clearly or to trigger an action that opens a PR against t
 
 When a generated target repo intentionally owns a path, add `ignoredDiffPaths` to that target config. Entries are target-output-relative paths; a directory entry ignores everything below it.
 
+To publish a repo-root file (for example a README authored once in the source repo) into a target's output, add `rootFiles` to that target config — a map of output path to source path (relative to the config root). Emitted root files are managed like any other generated file, so an output repo's README stays synced from source instead of hand-maintained per repo.
+
 <!-- pluginpack-cli:start -->
 
 ## CLI Reference

@@ -1,6 +1,7 @@
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "./render.js";
-import { json, toPosix } from "./fs.js";
+import { isSafeRelativePath, json, toPosix } from "./fs.js";
 import { resolveTargetComponents } from "./components.js";
 import type {
   Artifact,
@@ -39,7 +40,46 @@ export async function emitTarget(
     project.rootDir,
     outDir ?? targetConfig.outDir,
   );
-  return emitter(project, target, targetConfig, resolvedOutDir);
+  const result = await emitter(project, target, targetConfig, resolvedOutDir);
+  return withRootFiles(project, targetConfig, result);
+}
+
+// Emit per-target repo-root files (e.g. a README authored once in the source
+// repo) into the artifact so they are managed, pruned, and synced like every
+// other generated file — rather than hand-maintained in each output repo.
+async function withRootFiles(
+  project: ResolvedProject,
+  targetConfig: TargetConfig,
+  result: Artifact,
+): Promise<Artifact> {
+  const rootFiles = targetConfig.rootFiles;
+  if (!rootFiles || Object.keys(rootFiles).length === 0) {
+    return result;
+  }
+  const files = new Map(result.files);
+  for (const [dest, source] of Object.entries(rootFiles)) {
+    const destPath = toPosix(dest);
+    if (!isSafeRelativePath(destPath)) {
+      throw new Error(
+        `Target "${result.target}" rootFiles destination "${dest}" must be a safe relative path.`,
+      );
+    }
+    if (files.has(destPath)) {
+      throw new Error(
+        `Target "${result.target}" rootFiles destination "${dest}" collides with a generated file.`,
+      );
+    }
+    let contents: Buffer;
+    try {
+      contents = await fs.readFile(path.resolve(project.rootDir, source));
+    } catch {
+      throw new Error(
+        `Target "${result.target}" rootFiles source "${source}" could not be read.`,
+      );
+    }
+    files.set(destPath, contents);
+  }
+  return artifact(result.target, result.outDir, files);
 }
 
 type MarketplaceEntry = {
