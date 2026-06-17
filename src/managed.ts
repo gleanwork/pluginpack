@@ -48,7 +48,12 @@ export async function readManagedManifest(
     }
     throw error;
   }
-  const parsed = JSON.parse(raw) as Partial<ManagedManifest>;
+  let parsed: Partial<ManagedManifest>;
+  try {
+    parsed = JSON.parse(raw) as Partial<ManagedManifest>;
+  } catch {
+    throw new Error(`Invalid managed manifest: ${manifestPath}`);
+  }
   if (
     parsed.version !== 1 ||
     parsed.target !== target ||

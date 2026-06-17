@@ -59,7 +59,21 @@ export async function exists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
     return true;
-  } catch {
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+// ENOENT/ENOTDIR mean the path simply isn't there; any other errno (EACCES,
+// ELOOP, …) is a real IO/permission failure that should surface rather than be
+// silently read as "does not exist".
+export function isNotFoundError(error: unknown): boolean {
+  if (!(error instanceof Error) || !("code" in error)) {
     return false;
   }
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "ENOENT" || code === "ENOTDIR";
 }

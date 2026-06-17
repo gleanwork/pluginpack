@@ -17,7 +17,6 @@ export function createFilesystemSourceProvider(
   plugins: Map<string, SourcePlugin>,
 ): SourceProvider {
   return {
-    listPlugins: () => Promise.resolve(plugins),
     readPluginFiles: (pluginId, target) =>
       readPluginFiles(pluginOrThrow(plugins, pluginId), target),
     readMcpServers: (pluginId) =>

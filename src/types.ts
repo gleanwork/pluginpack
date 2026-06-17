@@ -30,9 +30,8 @@ export type SourcePlugin = {
 
 // The one surface pluginpack uses to acquire source. A filesystem provider
 // backs it today; an API-backed provider (Glean Skills API) can implement the
-// same three methods without touching the emit/validate/diff pipeline.
+// same two methods without touching the emit/validate/diff pipeline.
 export interface SourceProvider {
-  listPlugins(): Promise<Map<string, SourcePlugin>>;
   readPluginFiles(
     pluginId: string,
     target: TargetName,

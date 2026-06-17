@@ -418,6 +418,19 @@ export default defineConfig({
     await expectMissing(path.join(root, "dist/cursor/.pluginpack/cursor.json"));
   });
 
+  it("rejects a corrupt managed manifest with a clear error", async () => {
+    const project = await rootSkillsFixture();
+    const root = project.baseDir;
+    await build({ cwd: root, target: "cursor" });
+    await writeFile(
+      path.join(root, "dist/cursor/.pluginpack/cursor.json"),
+      "{ not json",
+    );
+    await expect(prune({ cwd: root, target: "cursor" })).rejects.toThrow(
+      /Invalid managed manifest/,
+    );
+  });
+
   it("refuses to prune source paths unless forced", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";

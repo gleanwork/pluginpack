@@ -1,7 +1,13 @@
 import { promises as fs, statSync } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
-import { exists, isSafeRelativePath, toPosix, walkFiles } from "./fs.js";
+import {
+  exists,
+  isNotFoundError,
+  isSafeRelativePath,
+  toPosix,
+  walkFiles,
+} from "./fs.js";
 import type { TargetName, ValidationIssue } from "./types.js";
 
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
@@ -505,8 +511,11 @@ function pathExistsSync(filePath: string): boolean {
   try {
     statSync(filePath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return false;
+    }
+    throw error;
   }
 }
 
