@@ -6,6 +6,7 @@ import { resolveTargetComponents } from "./components.js";
 import type {
   Artifact,
   EmittedPluginConfig,
+  FileValue,
   Metadata,
   ResolvedProject,
   TargetConfig,
@@ -50,10 +51,15 @@ export async function withRootFiles(
   return artifact(result.target, result.outDir, files);
 }
 
-type MarketplaceEntry = {
-  name: string;
-  source: string;
-  description?: string;
+type EmitPluginContext = {
+  pluginName: string;
+  pluginPath: string;
+  pluginConfig: EmittedPluginConfig;
+  metadata: Metadata | undefined;
+  componentDirs: Set<string>;
+  mcpServers: Record<string, unknown> | undefined;
+  pluginFiles: Map<string, FileValue>;
+  manifest: Record<string, unknown> | undefined;
 };
 
 type EmitPluginsOptions = {
@@ -61,15 +67,19 @@ type EmitPluginsOptions = {
     pluginName: string,
     pluginConfig: EmittedPluginConfig,
   ) => string;
-  pluginManifestPath: (pluginPath: string) => string;
-  buildManifest: (
-    metadata: Metadata | undefined,
-    pluginName: string,
-    pluginConfig: EmittedPluginConfig,
-    componentDirs: Set<string>,
-    mcpServers: Record<string, unknown> | undefined,
-  ) => Record<string, unknown>;
-  entrySource?: (pluginPath: string) => string;
+  // Some targets (Copilot) carry no per-plugin manifest; omit to skip writing one.
+  pluginManifest?: {
+    path: (pluginPath: string) => string;
+    build: (
+      metadata: Metadata | undefined,
+      pluginName: string,
+      pluginConfig: EmittedPluginConfig,
+      componentDirs: Set<string>,
+      mcpServers: Record<string, unknown> | undefined,
+    ) => Record<string, unknown>;
+  };
+  // Build this plugin's marketplace entry; omit when the target has no marketplace.
+  buildEntry?: (ctx: EmitPluginContext) => Record<string, unknown> | undefined;
   mcp?: "file" | "antigravity";
 };
 
@@ -79,8 +89,8 @@ async function emitPlugins(
   targetConfig: TargetConfig,
   files: Map<string, string | Buffer>,
   options: EmitPluginsOptions,
-): Promise<MarketplaceEntry[]> {
-  const entries: MarketplaceEntry[] = [];
+): Promise<Record<string, unknown>[]> {
+  const entries: Record<string, unknown>[] = [];
   for (const [pluginName, pluginConfig] of Object.entries(
     targetConfig.plugins,
   )) {
@@ -112,23 +122,33 @@ async function emitPlugins(
     }
 
     const metadata = emittedPluginMetadata(project, pluginConfig);
-    const manifest = options.buildManifest(
-      metadata,
+    let manifest: Record<string, unknown> | undefined;
+    if (options.pluginManifest) {
+      manifest = options.pluginManifest.build(
+        metadata,
+        pluginName,
+        pluginConfig,
+        componentDirs,
+        mcpServers,
+      );
+      files.set(
+        toPosix(options.pluginManifest.path(pluginPath)),
+        json(manifest),
+      );
+    }
+
+    const entry = options.buildEntry?.({
       pluginName,
+      pluginPath,
       pluginConfig,
+      metadata,
       componentDirs,
       mcpServers,
-    );
-    files.set(toPosix(options.pluginManifestPath(pluginPath)), json(manifest));
-
-    if (options.entrySource) {
-      entries.push({
-        name: pluginName,
-        source: options.entrySource(pluginPath),
-        description:
-          pluginConfig.description ??
-          (manifest.description as string | undefined),
-      });
+      pluginFiles,
+      manifest,
+    });
+    if (entry) {
+      entries.push(entry);
     }
   }
   return entries;
@@ -147,24 +167,26 @@ export async function emitCursor(
   const plugins = await emitPlugins(project, target, targetConfig, files, {
     resolvePluginPath: (pluginName, pluginConfig) =>
       pluginConfig.path ?? pluginName,
-    pluginManifestPath: (pluginPath) =>
-      path.join(pluginPath, marketplaceDir, "plugin.json"),
-    buildManifest: (
-      metadata,
-      pluginName,
-      pluginConfig,
-      componentDirs,
-      mcpServers,
-    ) =>
-      cursorPluginManifest(
-        metadata,
-        pluginConfig.version ?? version,
-        pluginName,
-        pluginConfig,
-        componentDirs,
-        mcpServers,
-      ),
-    entrySource: (pluginPath) => pluginPath,
+    pluginManifest: {
+      path: (pluginPath) =>
+        path.join(pluginPath, marketplaceDir, "plugin.json"),
+      build: (metadata, pluginName, pluginConfig, componentDirs, mcpServers) =>
+        cursorPluginManifest(
+          metadata,
+          pluginConfig.version ?? version,
+          pluginName,
+          pluginConfig,
+          componentDirs,
+          mcpServers,
+        ),
+    },
+    buildEntry: ({ pluginName, pluginPath, pluginConfig, manifest }) => ({
+      name: pluginName,
+      source: pluginPath,
+      description:
+        pluginConfig.description ??
+        (manifest?.description as string | undefined),
+    }),
     mcp: "file",
   });
 
@@ -206,16 +228,24 @@ export async function emitClaude(
   const plugins = await emitPlugins(project, target, targetConfig, files, {
     resolvePluginPath: (pluginName, pluginConfig) =>
       pluginConfig.path ?? toPosix(path.join(pluginRoot, pluginName)),
-    pluginManifestPath: (pluginPath) =>
-      path.join(pluginPath, marketplaceDir, "plugin.json"),
-    buildManifest: (metadata, pluginName, pluginConfig) =>
-      claudePluginManifest(
-        metadata,
-        pluginConfig.version ?? version,
-        pluginName,
-        pluginConfig,
-      ),
-    entrySource: (pluginPath) => `./${pluginPath}`,
+    pluginManifest: {
+      path: (pluginPath) =>
+        path.join(pluginPath, marketplaceDir, "plugin.json"),
+      build: (metadata, pluginName, pluginConfig) =>
+        claudePluginManifest(
+          metadata,
+          pluginConfig.version ?? version,
+          pluginName,
+          pluginConfig,
+        ),
+    },
+    buildEntry: ({ pluginName, pluginPath, pluginConfig, manifest }) => ({
+      name: pluginName,
+      source: `./${pluginPath}`,
+      description:
+        pluginConfig.description ??
+        (manifest?.description as string | undefined),
+    }),
     mcp: "file",
   });
 
@@ -253,14 +283,16 @@ export async function emitAntigravity(
   await emitPlugins(project, target, targetConfig, files, {
     resolvePluginPath: (pluginName, pluginConfig) =>
       pluginConfig.path ?? pluginName,
-    pluginManifestPath: (pluginPath) => path.join(pluginPath, "plugin.json"),
-    buildManifest: (metadata, pluginName, pluginConfig) =>
-      antigravityPluginManifest(
-        metadata,
-        pluginConfig.version ?? version,
-        pluginName,
-        pluginConfig,
-      ),
+    pluginManifest: {
+      path: (pluginPath) => path.join(pluginPath, "plugin.json"),
+      build: (metadata, pluginName, pluginConfig) =>
+        antigravityPluginManifest(
+          metadata,
+          pluginConfig.version ?? version,
+          pluginName,
+          pluginConfig,
+        ),
+    },
     mcp: "antigravity",
   });
 
@@ -276,50 +308,37 @@ export async function emitCopilot(
   const version = targetConfig.version ?? project.config.version;
   const pluginRoot = targetConfig.pluginRoot ?? "plugins";
   const files = new Map<string, string | Buffer>();
-  const plugins: Record<string, unknown>[] = [];
 
-  for (const [pluginName, pluginConfig] of Object.entries(
-    targetConfig.plugins,
-  )) {
-    const pluginPath =
-      pluginConfig.path ?? toPosix(path.join(pluginRoot, pluginName));
-    const pluginFiles = await collectPluginFiles(
-      project,
-      target,
-      pluginConfig.from,
-      resolveTargetComponents(target, pluginConfig),
-    );
-    for (const [relativePath, value] of pluginFiles) {
-      files.set(toPosix(path.join(pluginPath, relativePath)), value);
-    }
-
-    const mcpServers = await resolveMcpServers(project, pluginConfig.from);
-    if (mcpServers) {
-      files.set(
-        toPosix(path.join(pluginPath, ".mcp.json")),
-        json({ mcpServers }),
-      );
-    }
-
-    const skills = [
-      ...new Set(
-        [...pluginFiles.keys()]
-          .filter((file) => file.startsWith("skills/"))
-          .map((file) => `./skills/${file.split("/")[1]}`),
-      ),
-    ].sort();
-    const metadata = emittedPluginMetadata(project, pluginConfig);
-    plugins.push(
+  // Copilot has no per-plugin manifest; each plugin's data lives in its
+  // marketplace entry (with a derived skills list), so this omits pluginManifest
+  // and builds the entry directly.
+  const plugins = await emitPlugins(project, target, targetConfig, files, {
+    resolvePluginPath: (pluginName, pluginConfig) =>
+      pluginConfig.path ?? toPosix(path.join(pluginRoot, pluginName)),
+    buildEntry: ({
+      pluginName,
+      pluginPath,
+      pluginConfig,
+      metadata,
+      mcpServers,
+      pluginFiles,
+    }) =>
       stripUndefined({
         name: pluginName,
         source: `./${pluginPath}`,
         description: pluginConfig.description ?? metadata?.description,
         version: pluginConfig.version ?? version,
-        skills,
+        skills: [
+          ...new Set(
+            [...pluginFiles.keys()]
+              .filter((file) => file.startsWith("skills/"))
+              .map((file) => `./skills/${file.split("/")[1]}`),
+          ),
+        ].sort(),
         mcpServers: mcpServers ? ".mcp.json" : undefined,
       }),
-    );
-  }
+    mcp: "file",
+  });
 
   const marketplace = stripUndefined(
     deepMerge(
