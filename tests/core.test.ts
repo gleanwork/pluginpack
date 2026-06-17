@@ -1,4 +1,4 @@
-import { access, readFile, rm } from "node:fs/promises";
+import { access, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Project, type ProjectArgs } from "fixturify-project";
 import { afterEach, describe, expect, it } from "vitest";
@@ -165,6 +165,36 @@ export default defineConfig({
     await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
       /collides/,
     );
+  });
+
+  it("produces byte-identical output across rebuilds (determinism)", async () => {
+    const project = await fixture();
+    const root = project.baseDir;
+    const serialize = (artifacts: Awaited<ReturnType<typeof build>>) =>
+      artifacts
+        .map((a) => ({
+          target: a.target,
+          files: [...a.files].map(
+            ([p, v]) => [p, Buffer.from(v).toString("base64")] as const,
+          ),
+        }))
+        .sort((x, y) => x.target.localeCompare(y.target));
+
+    const first = serialize(await build({ cwd: root }));
+    const second = serialize(await build({ cwd: root }));
+    expect(second).toEqual(first);
+  });
+
+  it("flags invalid output (validator negative path)", async () => {
+    const project = await fixture();
+    const root = project.baseDir;
+    await build({ cwd: root, target: "claude" });
+    const dir = path.join(root, "dist/claude");
+    await writeFile(path.join(dir, ".claude-plugin/marketplace.json"), "{}");
+
+    const result = await validateOutput("claude", dir);
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.level === "error")).toBe(true);
   });
 
   it("applies target component defaults and explicit component overrides", async () => {

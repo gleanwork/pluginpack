@@ -1,4 +1,14 @@
 import { z } from "zod";
+import { isSafeRelativePath } from "./fs.js";
+
+// Paths that get written to / read from disk relative to a root — reject
+// absolute paths and ".." escapes so a config can't write or read outside.
+const safeRelativePath = z
+  .string()
+  .refine(
+    isSafeRelativePath,
+    'must be a safe relative path (no absolute paths or ".." segments)',
+  );
 
 const authorSchema = z.object({
   name: z.string().min(1),
@@ -34,7 +44,7 @@ const sourceSchema = z.object({
 
 const emittedPluginSchema = z.object({
   from: z.array(z.string().min(1)).min(1),
-  path: z.string().optional(),
+  path: safeRelativePath.optional(),
   version: z.string().optional(),
   description: z.string().optional(),
   displayName: z.string().optional(),
@@ -44,8 +54,8 @@ const emittedPluginSchema = z.object({
 
 const targetSchema = z.object({
   outDir: z.string().min(1),
-  marketplaceDir: z.string().optional(),
-  pluginRoot: z.string().optional(),
+  marketplaceDir: safeRelativePath.optional(),
+  pluginRoot: safeRelativePath.optional(),
   version: z.string().optional(),
   plugins: z.record(z.string(), emittedPluginSchema),
   manifest: z.record(z.string(), z.unknown()).optional(),
@@ -54,7 +64,7 @@ const targetSchema = z.object({
   // by output path → source path (relative to the config root). Managed like
   // any other emitted file, so a repo-root README/LICENSE is authored once in
   // the source repo and synced to every target instead of hand-maintained.
-  rootFiles: z.record(z.string(), z.string()).optional(),
+  rootFiles: z.record(safeRelativePath, safeRelativePath).optional(),
 });
 
 const configSchema = z.object({

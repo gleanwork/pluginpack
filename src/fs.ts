@@ -21,8 +21,17 @@ export async function writeArtifact(
   outDir: string,
   files: Map<string, FileValue>,
 ): Promise<void> {
+  const resolvedOut = path.resolve(outDir);
   for (const [relativePath, value] of files) {
-    const destination = path.join(outDir, relativePath);
+    const destination = path.resolve(outDir, relativePath);
+    if (
+      destination !== resolvedOut &&
+      !destination.startsWith(resolvedOut + path.sep)
+    ) {
+      throw new Error(
+        `Refusing to write outside the output directory: ${relativePath}`,
+      );
+    }
     await fs.mkdir(path.dirname(destination), { recursive: true });
     await fs.writeFile(destination, value);
   }
