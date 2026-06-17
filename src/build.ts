@@ -6,16 +6,14 @@ import {
   pruneManagedFiles,
   writeManagedManifest,
 } from "./managed.js";
-import { emitTarget } from "./targets.js";
+import { emitTarget, targetNames } from "./adapters.js";
 import type { Artifact, BuildOptions, TargetName } from "./types.js";
-
-const allTargets: TargetName[] = ["cursor", "claude", "antigravity", "copilot"];
 
 export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
   const project = await loadConfig(options.cwd, options.configPath);
   const targets = options.target
     ? [options.target]
-    : allTargets.filter((target) => project.config.targets[target]);
+    : targetNames.filter((target) => project.config.targets[target]);
   const guard = buildDeleteGuard(
     project.rootDir,
     project.config,

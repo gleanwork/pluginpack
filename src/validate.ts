@@ -2,33 +2,12 @@ import { promises as fs, statSync } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import { exists, isSafeRelativePath, toPosix, walkFiles } from "./fs.js";
-import type { TargetName, ValidationIssue, ValidationResult } from "./types.js";
+import type { TargetName, ValidationIssue } from "./types.js";
 
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 const marketplaceNamePattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
-export async function validateOutput(
-  target: TargetName,
-  dir: string,
-): Promise<ValidationResult> {
-  const root = path.resolve(dir);
-  const issues: ValidationIssue[] = [];
-  if (target === "cursor") {
-    await validateCursor(root, issues);
-  } else if (target === "claude") {
-    await validateClaude(root, issues);
-  } else if (target === "antigravity") {
-    await validateAntigravity(root, issues);
-  } else {
-    await validateCopilot(root, issues);
-  }
-  return {
-    ok: issues.every((issue) => issue.level !== "error"),
-    issues,
-  };
-}
-
-async function validateAntigravity(
+export async function validateAntigravity(
   root: string,
   issues: ValidationIssue[],
 ): Promise<void> {
@@ -85,7 +64,7 @@ async function validateAntigravity(
   }
 }
 
-async function validateCopilot(
+export async function validateCopilot(
   root: string,
   issues: ValidationIssue[],
 ): Promise<void> {
@@ -126,7 +105,7 @@ async function validateCopilot(
   }
 }
 
-async function validateCursor(
+export async function validateCursor(
   root: string,
   issues: ValidationIssue[],
 ): Promise<void> {
@@ -176,7 +155,7 @@ async function validateCursor(
   }
 }
 
-async function validateClaude(
+export async function validateClaude(
   root: string,
   issues: ValidationIssue[],
 ): Promise<void> {

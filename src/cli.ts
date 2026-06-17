@@ -5,10 +5,8 @@ import { build } from "./build.js";
 import { clean, prune } from "./cleanup.js";
 import { loadConfig } from "./config.js";
 import { diffTarget } from "./diff.js";
-import { validateOutput } from "./validate.js";
+import { targetNames, validateOutput } from "./adapters.js";
 import type { TargetName } from "./types.js";
-
-const targets = ["cursor", "claude", "antigravity", "copilot"] as const;
 
 async function main(): Promise<void> {
   const program = createProgram();
@@ -40,7 +38,7 @@ function createProgram(): Command {
       new Option(
         "--target <target>",
         "Build only one configured target.",
-      ).choices([...targets]),
+      ).choices([...targetNames]),
     )
     .option(
       "--out-dir <path>",
@@ -152,7 +150,7 @@ function createProgram(): Command {
       new Option(
         "--target <target>",
         "Prune only one configured target.",
-      ).choices([...targets]),
+      ).choices([...targetNames]),
     )
     .option("--dry-run", "Print stale managed files without deleting them.")
     .option(
@@ -178,7 +176,7 @@ function createProgram(): Command {
       new Option(
         "--target <target>",
         "Clean only one configured target.",
-      ).choices([...targets]),
+      ).choices([...targetNames]),
     )
     .option("--dry-run", "Print managed files without deleting them.")
     .option(
@@ -271,15 +269,10 @@ async function init(): Promise<void> {
 }
 
 function parseTarget(value: string): TargetName {
-  if (
-    value !== "cursor" &&
-    value !== "claude" &&
-    value !== "antigravity" &&
-    value !== "copilot"
-  ) {
-    throw new Error("Expected cursor, claude, antigravity, or copilot.");
+  if (!(targetNames as string[]).includes(value)) {
+    throw new Error(`Expected one of: ${targetNames.join(", ")}.`);
   }
-  return value;
+  return value as TargetName;
 }
 
 function replaceGeneratedSection(readme: string, content: string): string {

@@ -2,7 +2,7 @@ export { defineConfig, loadConfig } from "./config.js";
 export { build } from "./build.js";
 export { clean, prune } from "./cleanup.js";
 export { diffTarget } from "./diff.js";
-export { validateOutput } from "./validate.js";
+export { validateOutput } from "./adapters.js";
 export type {
   Artifact,
   Author,

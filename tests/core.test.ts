@@ -6,7 +6,7 @@ import { build } from "../src/build.js";
 import { clean, prune } from "../src/cleanup.js";
 import { loadConfig } from "../src/config.js";
 import { diffTarget } from "../src/diff.js";
-import { validateOutput } from "../src/validate.js";
+import { validateOutput } from "../src/adapters.js";
 
 type DirJSON = NonNullable<ProjectArgs["files"]>;
 

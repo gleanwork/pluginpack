@@ -12,42 +12,10 @@ import type {
   TargetName,
 } from "./types.js";
 
-type TargetEmitter = (
-  project: ResolvedProject,
-  target: TargetName,
-  targetConfig: TargetConfig,
-  outDir: string,
-) => Promise<Artifact>;
-
-const emitters: Record<TargetName, TargetEmitter> = {
-  claude: emitClaude,
-  copilot: emitCopilot,
-  cursor: emitCursor,
-  antigravity: emitAntigravity,
-};
-
-export async function emitTarget(
-  project: ResolvedProject,
-  target: TargetName,
-  outDir?: string,
-): Promise<Artifact> {
-  const targetConfig = project.config.targets[target];
-  if (!targetConfig) {
-    throw new Error(`Target "${target}" is not configured.`);
-  }
-  const emitter = emitters[target];
-  const resolvedOutDir = path.resolve(
-    project.rootDir,
-    outDir ?? targetConfig.outDir,
-  );
-  const result = await emitter(project, target, targetConfig, resolvedOutDir);
-  return withRootFiles(project, targetConfig, result);
-}
-
 // Emit per-target repo-root files (e.g. a README authored once in the source
 // repo) into the artifact so they are managed, pruned, and synced like every
 // other generated file — rather than hand-maintained in each output repo.
-async function withRootFiles(
+export async function withRootFiles(
   project: ResolvedProject,
   targetConfig: TargetConfig,
   result: Artifact,
@@ -166,7 +134,7 @@ async function emitPlugins(
   return entries;
 }
 
-async function emitCursor(
+export async function emitCursor(
   project: ResolvedProject,
   target: TargetName,
   targetConfig: TargetConfig,
@@ -224,7 +192,7 @@ async function emitCursor(
   return artifact(target, outDir, files);
 }
 
-async function emitClaude(
+export async function emitClaude(
   project: ResolvedProject,
   target: TargetName,
   targetConfig: TargetConfig,
@@ -273,7 +241,7 @@ async function emitClaude(
   return artifact(target, outDir, files);
 }
 
-async function emitAntigravity(
+export async function emitAntigravity(
   project: ResolvedProject,
   target: TargetName,
   targetConfig: TargetConfig,
@@ -299,7 +267,7 @@ async function emitAntigravity(
   return artifact(target, outDir, files);
 }
 
-async function emitCopilot(
+export async function emitCopilot(
   project: ResolvedProject,
   target: TargetName,
   targetConfig: TargetConfig,
