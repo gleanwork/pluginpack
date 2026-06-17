@@ -322,6 +322,103 @@ When a generated target repo intentionally owns a path, add `ignoredDiffPaths` t
 
 To publish a repo-root file (for example a README authored once in the source repo) into a target's output, add `rootFiles` to that target config — a map of output path to source path (relative to the config root). Emitted root files are managed like any other generated file, so an output repo's README stays synced from source instead of hand-maintained per repo.
 
+## Configuration Reference
+
+`pluginpack.config.ts` exports a config object (wrap it in `defineConfig` for types). `src/schema.ts` is the source of truth; this table enumerates every field. Paths marked _safe relative_ reject absolute paths and `..` escapes.
+
+**Top level**
+
+| Field      | Type   | Required | Meaning                                                                    |
+| ---------- | ------ | -------- | -------------------------------------------------------------------------- |
+| `name`     | string | yes      | Marketplace/source name written into generated manifests.                  |
+| `version`  | string | yes      | Default version stamped into manifests (per-target/plugin overridable).    |
+| `source`   | object | no       | Where source plugins come from (see **`source`**).                         |
+| `metadata` | object | no       | Shared metadata merged into manifests (see **`metadata`**).                |
+| `targets`  | object | yes      | Per-target output config, keyed by target name (see **`targets.<name>`**). |
+
+**`source`**
+
+| Field        | Type   | Required | Meaning                                                                                                                                                                      |
+| ------------ | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plugins`    | string | no       | Directory to discover source plugins from. Defaults to `plugins`.                                                                                                            |
+| `skills`     | string | no       | Repo-level skills directory; creates a root source plugin from sibling component dirs.                                                                                       |
+| `rootPlugin` | object | no       | Metadata for that root skills plugin. Accepts all **`metadata`** fields plus `id`, `name`, `description`. `id` is the source-plugin name used in each target's `from` array. |
+
+**`metadata`** (and `source.rootPlugin`)
+
+| Field         | Type                     | Meaning                              |
+| ------------- | ------------------------ | ------------------------------------ |
+| `displayName` | string                   | Human-readable name.                 |
+| `description` | string                   | Short description.                   |
+| `author`      | `{ name, email?, url? }` | Author identity (`name` required).   |
+| `owner`       | `{ name, email?, url? }` | Marketplace owner (`name` required). |
+| `homepage`    | string                   | Homepage URL.                        |
+| `repository`  | string                   | Repository URL.                      |
+| `license`     | string                   | SPDX license id.                     |
+| `logo`        | string                   | Logo path or URL.                    |
+| `keywords`    | string[]                 | Marketplace keywords.                |
+| `category`    | string                   | Marketplace category.                |
+| `tags`        | string[]                 | Free-form tags.                      |
+
+**`targets.<name>`** — `<name>` is one of `cursor`, `claude`, `antigravity`, `copilot`.
+
+| Field              | Type                   | Required | Meaning                                                                                  |
+| ------------------ | ---------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| `outDir`           | string                 | yes      | Output directory for this target, relative to the config root.                           |
+| `plugins`          | record                 | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**). |
+| `marketplaceDir`   | string (safe relative) | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).            |
+| `pluginRoot`       | string (safe relative) | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                          |
+| `version`          | string                 | no       | Override the version for this target (defaults to top-level `version`).                  |
+| `manifest`         | object                 | no       | Deep-merged into the generated marketplace manifest.                                     |
+| `ignoredDiffPaths` | string[]               | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).          |
+| `rootFiles`        | record (safe relative) | no       | Map of output path → source path emitted verbatim at the output root.                    |
+
+**`targets.<name>.plugins.<name>`**
+
+| Field         | Type                   | Required | Meaning                                                                                                              |
+| ------------- | ---------------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
+| `from`        | string[] (min 1)       | yes      | Source plugin ids to merge into this emitted plugin.                                                                 |
+| `path`        | string (safe relative) | no       | Output path for the plugin, relative to `outDir`. Defaults to the plugin name (or `pluginRoot/<name>` for `claude`). |
+| `version`     | string                 | no       | Per-plugin version override.                                                                                         |
+| `displayName` | string                 | no       | Per-plugin display name.                                                                                             |
+| `description` | string                 | no       | Per-plugin description override.                                                                                     |
+| `manifest`    | object                 | no       | Deep-merged into the generated plugin manifest.                                                                      |
+| `components`  | string[]               | no       | Exact component set, overriding the target's smart default.                                                          |
+
+## Programmatic API
+
+Everything the CLI does is exported from the package entry, so you can script builds (the [`pluginpack-action`](https://github.com/gleanwork/pluginpack-action) consumes these directly):
+
+```ts
+import {
+  defineConfig,
+  loadConfig,
+  build,
+  diffTarget,
+  validateOutput,
+  prune,
+  clean,
+} from "@gleanwork/pluginpack";
+```
+
+| Function                        | Returns                     | Purpose                                                          |
+| ------------------------------- | --------------------------- | ---------------------------------------------------------------- |
+| `defineConfig(config)`          | `PluginpackConfig`          | Identity helper that types `pluginpack.config.ts`.               |
+| `loadConfig(cwd?, configPath?)` | `Promise<ResolvedProject>`  | Resolve config and discover source plugins.                      |
+| `build(options?)`               | `Promise<Artifact[]>`       | Emit configured targets; writes to disk unless `options.dryRun`. |
+| `diffTarget(options)`           | `Promise<DiffResult>`       | Build into a temp dir and compare against an existing repo.      |
+| `validateOutput(target, dir)`   | `Promise<ValidationResult>` | Validate an existing target output directory.                    |
+| `prune(options?)`               | `Promise<CleanupResult[]>`  | Remove stale managed files no longer emitted by the config.      |
+| `clean(options?)`               | `Promise<CleanupResult[]>`  | Remove all managed files for configured targets.                 |
+
+Option objects:
+
+- `build` — `{ cwd?, configPath?, target?, outDir?, dryRun? }`
+- `diffTarget` — `{ cwd?, configPath?, target, against }`
+- `prune` / `clean` — `{ cwd?, configPath?, target?, dryRun?, force? }`
+
+The result and config types (`Artifact`, `DiffResult`/`DiffEntry`, `ValidationResult`/`ValidationIssue`, `CleanupResult`/`CleanupEntry`, `ResolvedProject`, `PluginpackConfig`, `TargetConfig`, `TargetName`, …) are all exported for use in TypeScript.
+
 <!-- pluginpack-cli:start -->
 
 ## CLI Reference
