@@ -2,6 +2,7 @@ import path from "node:path";
 import {
   emitAntigravity,
   emitClaude,
+  emitCodex,
   emitCopilot,
   emitCursor,
   withRootFiles,
@@ -9,6 +10,7 @@ import {
 import {
   validateAntigravity,
   validateClaude,
+  validateCodex,
   validateCopilot,
   validateCursor,
 } from "./validate.js";
@@ -47,6 +49,7 @@ export const adapters: Record<TargetName, TargetAdapter> = {
   claude: { emit: emitClaude, validate: validateClaude },
   antigravity: { emit: emitAntigravity, validate: validateAntigravity },
   copilot: { emit: emitCopilot, validate: validateCopilot },
+  codex: { emit: emitCodex, validate: validateCodex },
 };
 
 export const targetNames = Object.keys(adapters) as TargetName[];

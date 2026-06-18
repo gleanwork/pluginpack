@@ -16,6 +16,7 @@ async function main(): Promise<void> {
 function createProgram(): Command {
   const program = new Command();
   const pkg = readPackageJson();
+  const targetList = targetNames.join("|");
 
   program.name("pluginpack").description(pkg.description).version(pkg.version);
 
@@ -31,9 +32,7 @@ function createProgram(): Command {
     .description(
       "Compile configured source plugins into target-native plugin payloads.",
     )
-    .usage(
-      "[--target cursor|claude|antigravity|copilot] [--out-dir <path>] [--dry-run]",
-    )
+    .usage(`[--target ${targetList}] [--out-dir <path>] [--dry-run]`)
     .addOption(
       new Option(
         "--target <target>",
@@ -77,7 +76,7 @@ function createProgram(): Command {
     .description(
       "Validate an existing target output directory for native manifest, path, and frontmatter requirements.",
     )
-    .usage("--target cursor|claude|antigravity|copilot [--dir <path>]")
+    .usage(`--target ${targetList} [--dir <path>]`)
     .requiredOption(
       "--target <target>",
       "Required target validator.",
@@ -114,7 +113,7 @@ function createProgram(): Command {
     .description(
       "Build into a temporary directory and compare generated managed files with an existing target repo.",
     )
-    .usage("--target cursor|claude|antigravity|copilot --against <path>")
+    .usage(`--target ${targetList} --against <path>`)
     .requiredOption(
       "--target <target>",
       "Required target to build and compare.",
@@ -145,7 +144,7 @@ function createProgram(): Command {
     .description(
       "Remove stale managed files that are no longer emitted by the current config.",
     )
-    .usage("[--target cursor|claude|antigravity|copilot] [--dry-run]")
+    .usage(`[--target ${targetList}] [--dry-run]`)
     .addOption(
       new Option(
         "--target <target>",
@@ -171,7 +170,7 @@ function createProgram(): Command {
   program
     .command("clean")
     .description("Remove all managed files for configured target outputs.")
-    .usage("[--target cursor|claude|antigravity|copilot] [--dry-run]")
+    .usage(`[--target ${targetList}] [--dry-run]`)
     .addOption(
       new Option(
         "--target <target>",

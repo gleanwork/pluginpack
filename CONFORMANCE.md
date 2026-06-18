@@ -8,12 +8,13 @@ format.
 There is no single, referenceable, upstream JSON Schema for any supported target.
 Each app's source of truth is something other than a stable schema URL:
 
-| Target        | Canonical source of truth                                                                                   | Referenceable schema?                                                                                                                                                                                                              |
-| ------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `claude`      | `claude plugin validate` CLI + [plugins-reference docs](https://code.claude.com/docs/en/plugins-reference)  | **No.** The `$schema` URL the manifest declares (`https://anthropic.com/claude-code/marketplace.schema.json`) returns 404.                                                                                                         |
-| `cursor`      | Glean-authored schemas in `gleanwork/cursor-plugins/schemas/`                                               | **No upstream.** The schema `$id` (`https://cursor.com/schemas/cursor-plugin/...`) 500s; no Cursor-published schema found.                                                                                                         |
-| `antigravity` | Antigravity CLI plugin docs (`plugin.json`, optional `mcp_config.json`)                                     | **No.** Defined by product docs and observed CLI layout, not a published schema.                                                                                                                                                   |
-| `copilot`     | [`github/copilot-plugins`](https://github.com/github/copilot-plugins) — a Claude-marketplace-derived format | **Structural.** Copilot shares the Claude marketplace base but extends entries (`skills[]`, `mcpServers` as a path), which `claude plugin validate` rejects — so conformance is asserted structurally against the official format. |
+| Target        | Canonical source of truth                                                                                                                            | Referenceable schema?                                                                                                                                                                                                              |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude`      | `claude plugin validate` CLI + [plugins-reference docs](https://code.claude.com/docs/en/plugins-reference)                                           | **No.** The `$schema` URL the manifest declares (`https://anthropic.com/claude-code/marketplace.schema.json`) returns 404.                                                                                                         |
+| `cursor`      | Glean-authored schemas in `gleanwork/cursor-plugins/schemas/`                                                                                        | **No upstream.** The schema `$id` (`https://cursor.com/schemas/cursor-plugin/...`) 500s; no Cursor-published schema found.                                                                                                         |
+| `antigravity` | Antigravity CLI plugin docs (`plugin.json`, optional `mcp_config.json`)                                                                              | **No.** Defined by product docs and observed CLI layout, not a published schema.                                                                                                                                                   |
+| `copilot`     | [`github/copilot-plugins`](https://github.com/github/copilot-plugins) — a Claude-marketplace-derived format                                          | **Structural.** Copilot shares the Claude marketplace base but extends entries (`skills[]`, `mcpServers` as a path), which `claude plugin validate` rejects — so conformance is asserted structurally against the official format. |
+| `codex`       | [OpenAI Codex CLI plugin docs](https://developers.openai.com/codex/plugins/build) (`.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json`) | **No published schema.** Defined by product docs; conformance is asserted structurally against the documented format (retrieved 2026-06-17).                                                                                       |
 
 ## Oracles the harness uses
 
@@ -47,6 +48,14 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   `tests/core.test.ts` (required `plugin.json` fields present; optional
   `mcp_config.json` written when MCP servers are present). Antigravity CLI does
   not expose a published schema to validate against.
+- **codex** — asserted structurally in `tests/conformance.test.ts` against the
+  [documented Codex plugin format](https://developers.openai.com/codex/plugins/build):
+  a repo-scoped `.agents/plugins/marketplace.json` (`{ name, interface, plugins }`)
+  plus a per-plugin `.codex-plugin/plugin.json` (`{ name, version, description,
+skills }`) and optional `.mcp.json`. No published JSON Schema exists; the test
+  pins the documented shape and confirms a per-plugin `entry` passthrough lands in
+  the marketplace entry. Codex shares no marketplace path with the other targets,
+  so it needs no separate output root.
 
 ## Refreshing vendored schemas
 
