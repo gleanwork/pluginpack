@@ -105,6 +105,18 @@ const CONFIG = `export default {
     copilot: {
       outDir: "out-copilot",
       plugins: { glean: { from: ["glean"] } }
+    },
+    codex: {
+      outDir: "out-codex",
+      plugins: {
+        glean: {
+          from: ["glean"],
+          entry: {
+            policy: { installation: "AVAILABLE", authentication: "NONE" },
+            category: "Developer Tools"
+          }
+        }
+      }
     }
   }
 };
@@ -257,6 +269,39 @@ describe("emitted output conforms to external target schemas", () => {
       version: "2.1.1",
       skills: ["./skills/example"],
       mcpServers: ".mcp.json",
+    });
+  });
+
+  it("codex emits the documented Codex plugin marketplace layout", async () => {
+    const result = await runBin("build", "--target", "codex");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+
+    const marketplace = readJson(
+      project.baseDir,
+      "out-codex/.agents/plugins/marketplace.json",
+    );
+    expect(marketplace).toMatchObject({
+      name: "glean-plugins",
+      interface: { displayName: "glean-plugins" },
+    });
+    // Base entry fields + the per-plugin `entry` passthrough (policy/category).
+    expect((marketplace.plugins as unknown[])[0]).toMatchObject({
+      name: "glean",
+      source: "./plugins/glean",
+      version: "2.1.1",
+      policy: { installation: "AVAILABLE", authentication: "NONE" },
+      category: "Developer Tools",
+    });
+
+    const plugin = readJson(
+      project.baseDir,
+      "out-codex/plugins/glean/.codex-plugin/plugin.json",
+    );
+    expect(plugin).toMatchObject({
+      name: "glean",
+      version: "2.1.1",
+      skills: "./skills/",
+      mcpServers: "./.mcp.json",
     });
   });
 });

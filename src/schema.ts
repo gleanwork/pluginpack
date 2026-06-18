@@ -49,6 +49,10 @@ const emittedPluginSchema = z.object({
   description: z.string().optional(),
   displayName: z.string().optional(),
   manifest: z.record(z.string(), z.unknown()).optional(),
+  // Deep-merged into this plugin's generated marketplace entry (the object in
+  // the marketplace `plugins` array), letting a config supply target-specific
+  // entry fields a target can't derive — e.g. Codex `policy`/`category`.
+  entry: z.record(z.string(), z.unknown()).optional(),
   components: z.array(z.string()).optional(),
 });
 
@@ -77,6 +81,7 @@ const configSchema = z.object({
     copilot: targetSchema.optional(),
     cursor: targetSchema.optional(),
     antigravity: targetSchema.optional(),
+    codex: targetSchema.optional(),
   }),
 });
 

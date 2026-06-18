@@ -19,6 +19,7 @@ export const targetDefaultComponents: Record<TargetName, readonly string[]> = {
   copilot: ["skills", "agents", "hooks", "scripts", "assets"],
   cursor: ["skills", "agents", "rules", "hooks", "scripts", "assets"],
   antigravity: ["skills", "agents", "rules", "hooks", "scripts", "assets"],
+  codex: ["skills", "agents", "hooks", "scripts", "assets"],
 };
 
 export function resolveTargetComponents(

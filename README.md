@@ -250,8 +250,9 @@ The first adapters are:
 - `claude`
 - `antigravity`
 - `copilot`
+- `codex`
 
-`cursor` emits Cursor plugin and marketplace manifests. `claude` emits Claude plugin and marketplace manifests. `antigravity` emits Antigravity CLI plugins with a `plugin.json` manifest and optional `mcp_config.json`. `copilot` emits the GitHub Copilot plugins format (per [`github/copilot-plugins`](https://github.com/github/copilot-plugins)): a `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`, each plugin under `plugins/<name>/` with a `skills` array per marketplace entry.
+`cursor` emits Cursor plugin and marketplace manifests. `claude` emits Claude plugin and marketplace manifests. `antigravity` emits Antigravity CLI plugins with a `plugin.json` manifest and optional `mcp_config.json`. `copilot` emits the GitHub Copilot plugins format (per [`github/copilot-plugins`](https://github.com/github/copilot-plugins)): a `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`, each plugin under `plugins/<name>/` with a `skills` array per marketplace entry. `codex` emits the [OpenAI Codex CLI plugin format](https://developers.openai.com/codex/plugins/build): a repo-scoped `.agents/plugins/marketplace.json` plus a per-plugin `.codex-plugin/plugin.json` manifest and optional `.mcp.json`.
 
 Because Copilot reuses the Claude marketplace layout, the `claude` and `copilot` targets both write `.claude-plugin/marketplace.json` and therefore need separate output roots (distinct `outDir`s or separate repos).
 
@@ -360,7 +361,7 @@ To publish a repo-root file (for example a README authored once in the source re
 | `category`    | string                   | Marketplace category.                |
 | `tags`        | string[]                 | Free-form tags.                      |
 
-**`targets.<name>`** — `<name>` is one of `cursor`, `claude`, `antigravity`, `copilot`.
+**`targets.<name>`** — `<name>` is one of `cursor`, `claude`, `antigravity`, `copilot`, `codex`.
 
 | Field              | Type                   | Required | Meaning                                                                                  |
 | ------------------ | ---------------------- | -------- | ---------------------------------------------------------------------------------------- |
@@ -375,15 +376,16 @@ To publish a repo-root file (for example a README authored once in the source re
 
 **`targets.<name>.plugins.<name>`**
 
-| Field         | Type                   | Required | Meaning                                                                                                              |
-| ------------- | ---------------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| `from`        | string[] (min 1)       | yes      | Source plugin ids to merge into this emitted plugin.                                                                 |
-| `path`        | string (safe relative) | no       | Output path for the plugin, relative to `outDir`. Defaults to the plugin name (or `pluginRoot/<name>` for `claude`). |
-| `version`     | string                 | no       | Per-plugin version override.                                                                                         |
-| `displayName` | string                 | no       | Per-plugin display name.                                                                                             |
-| `description` | string                 | no       | Per-plugin description override.                                                                                     |
-| `manifest`    | object                 | no       | Deep-merged into the generated plugin manifest.                                                                      |
-| `components`  | string[]               | no       | Exact component set, overriding the target's smart default.                                                          |
+| Field         | Type                   | Required | Meaning                                                                                                                                                                                          |
+| ------------- | ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `from`        | string[] (min 1)       | yes      | Source plugin ids to merge into this emitted plugin.                                                                                                                                             |
+| `path`        | string (safe relative) | no       | Output path for the plugin, relative to `outDir`. Defaults to the plugin name (or `pluginRoot/<name>` for `claude`).                                                                             |
+| `version`     | string                 | no       | Per-plugin version override.                                                                                                                                                                     |
+| `displayName` | string                 | no       | Per-plugin display name.                                                                                                                                                                         |
+| `description` | string                 | no       | Per-plugin description override.                                                                                                                                                                 |
+| `manifest`    | object                 | no       | Deep-merged into the generated plugin manifest.                                                                                                                                                  |
+| `entry`       | object                 | no       | Deep-merged into the generated marketplace entry (the object in the marketplace `plugins` array). Use for target-specific entry fields pluginpack can't derive — e.g. Codex `policy`/`category`. |
+| `components`  | string[]               | no       | Exact component set, overriding the target's smart default.                                                                                                                                      |
 
 ## Programmatic API
 
@@ -445,7 +447,7 @@ Exit codes:
 Compile configured source plugins into target-native plugin payloads.
 
 ```bash
-pluginpack build [--target cursor|claude|antigravity|copilot] [--out-dir <path>] [--dry-run]
+pluginpack build [--target cursor|claude|antigravity|copilot|codex] [--out-dir <path>] [--dry-run]
 ```
 
 Options:
@@ -470,7 +472,7 @@ Exit codes:
 Validate an existing target output directory for native manifest, path, and frontmatter requirements.
 
 ```bash
-pluginpack validate --target cursor|claude|antigravity|copilot [--dir <path>]
+pluginpack validate --target cursor|claude|antigravity|copilot|codex [--dir <path>]
 ```
 
 Options:
@@ -492,7 +494,7 @@ Exit codes:
 Build into a temporary directory and compare generated managed files with an existing target repo.
 
 ```bash
-pluginpack diff --target cursor|claude|antigravity|copilot --against <path>
+pluginpack diff --target cursor|claude|antigravity|copilot|codex --against <path>
 ```
 
 Options:
@@ -514,7 +516,7 @@ Exit codes:
 Remove stale managed files that are no longer emitted by the current config.
 
 ```bash
-pluginpack prune [--target cursor|claude|antigravity|copilot] [--dry-run]
+pluginpack prune [--target cursor|claude|antigravity|copilot|codex] [--dry-run]
 ```
 
 Options:
@@ -538,7 +540,7 @@ Exit codes:
 Remove all managed files for configured target outputs.
 
 ```bash
-pluginpack clean [--target cursor|claude|antigravity|copilot] [--dry-run]
+pluginpack clean [--target cursor|claude|antigravity|copilot|codex] [--dry-run]
 ```
 
 Options:

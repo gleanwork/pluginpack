@@ -18,7 +18,12 @@ export type {
   SourcePluginManifest,
 };
 
-export type TargetName = "claude" | "copilot" | "cursor" | "antigravity";
+export type TargetName =
+  | "claude"
+  | "copilot"
+  | "cursor"
+  | "antigravity"
+  | "codex";
 
 export type SourcePlugin = {
   id: string;
