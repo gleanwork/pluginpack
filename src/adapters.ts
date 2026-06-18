@@ -1,19 +1,15 @@
 import path from "node:path";
-import {
-  emitAntigravity,
-  emitClaude,
-  emitCodex,
-  emitCopilot,
-  emitCursor,
-  withRootFiles,
-} from "./targets.js";
-import {
-  validateAntigravity,
-  validateClaude,
-  validateCodex,
-  validateCopilot,
-  validateCursor,
-} from "./validate.js";
+import { emitAntigravity } from "./targets/antigravity.js";
+import { emitClaude } from "./targets/claude.js";
+import { emitCodex } from "./targets/codex.js";
+import { emitCopilot } from "./targets/copilot.js";
+import { emitCursor } from "./targets/cursor.js";
+import { withRootFiles } from "./targets/engine.js";
+import { validateAntigravity } from "./validate/antigravity.js";
+import { validateClaude } from "./validate/claude.js";
+import { validateCodex } from "./validate/codex.js";
+import { validateCopilot } from "./validate/copilot.js";
+import { validateCursor } from "./validate/cursor.js";
 import type {
   Artifact,
   ResolvedProject,

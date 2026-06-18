@@ -37,25 +37,30 @@ diff, prune, and validate all derive from it.
   generated output is never misread as source), and the root-skills plugin.
 - `src/render.ts` — `collectPluginFiles` (component dirs + static files, with
   `targets/<name>/` override resolution) and `resolveMcpServers`.
-- `src/targets.ts` — `emitTarget` + per-target emitters. `cursor`/`claude`/
-  `antigravity` share the `emitPlugins` engine via callbacks; `emitCopilot` is
-  bespoke (no per-plugin manifest, dual marketplace). Manifest builders live here
-  too.
+- `src/adapters.ts` — the target registry: one `adapters` entry per target wiring
+  its `emit` + `validate`, plus the `emitTarget`/`validateOutput` dispatch and
+  `targetNames`. The CLI `--target` choices and `build()`'s target set derive from it.
+- `src/targets/` — per-target emitters (`cursor`/`claude`/`antigravity`/`copilot`/
+  `codex`), each with its manifest builder. They share the `emitPlugins` engine and
+  helpers in `engine.ts` via callbacks; `copilot` carries no per-plugin manifest
+  (dual marketplace), `antigravity` writes no marketplace.
 - `src/build.ts` — `build()`: emit all targets → `assertNoCrossTargetCollisions`
   → write/prune/manifest. Holds the delete guard.
 - `src/managed.ts` — the managed-file manifest (`.pluginpack/<target>.json`),
   `prune`/`clean`, the delete guard, and path-safety checks.
 - `src/diff.ts` — `diffTarget`: build to a temp dir and compare against an
   existing target repo (the CI staleness gate).
-- `src/validate.ts` — per-target output validation.
+- `src/validate/` — per-target output validation (`<name>.ts`), with shared
+  marketplace/frontmatter/manifest checks in `shared.ts`.
 
 ## Targets
 
-`cursor`, `claude`, `antigravity`, `copilot`. Adding a target currently touches ~5
-places: the `TargetName` union (`types.ts`), the `targets` array + `parseTarget`
-(`cli.ts`), `allTargets` (`build.ts`), the `emitters` map + a new `emitFoo`
-(`targets.ts`), and a branch + `validateFoo` (`validate.ts`). If you are adding a
-target, consider introducing a single target registry first to localize this.
+`cursor`, `claude`, `antigravity`, `copilot`, `codex`. Adding a target touches: the
+`TargetName` union (`types.ts`), the `targets` schema (`schema.ts`), its default
+components (`components.ts`), an `adapters` entry wiring `emit`+`validate`
+(`adapters.ts`), and the emitter/validator modules (`targets/<name>.ts`,
+`validate/<name>.ts`). The CLI `--target` choices, `parseTarget`, and `build()`'s
+iteration all derive from the registry.
 
 ## Conformance
 
@@ -80,6 +85,6 @@ schemas at runtime — vendor a pinned copy with recorded provenance.
 
 ## Conventions
 
-- Strict TypeScript, no `any` (the one exception is `readJson` in `validate.ts`).
+- Strict TypeScript, no `any` (the one exception is `readJson` in `validate/shared.ts`).
 - Prettier + eslint enforced by the gate.
 - Conventional commits. Keep the README CLI reference regenerated.
