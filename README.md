@@ -244,19 +244,19 @@ export default defineConfig({
 
 ## Targets
 
-The first adapters are:
+Each target compiles the same source into one app's native plugin layout:
 
-- `cursor`
-- `claude`
-- `antigravity`
-- `copilot`
-- `codex`
+| Target        | Native format                                                                 | Output it writes                                                                                                 |
+| ------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `cursor`      | Cursor plugin + marketplace                                                   | `.cursor-plugin/marketplace.json`; a `.cursor-plugin/plugin.json` per plugin                                     |
+| `claude`      | Claude plugin + marketplace                                                   | `.claude-plugin/marketplace.json`; a `.claude-plugin/plugin.json` per plugin                                     |
+| `antigravity` | Antigravity CLI plugin                                                        | a `plugin.json` per plugin + optional `mcp_config.json` (no marketplace)                                         |
+| `copilot`     | [GitHub Copilot plugins](https://github.com/github/copilot-plugins)           | `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`; plugins under `plugins/<name>/` |
+| `codex`       | [OpenAI Codex CLI plugins](https://developers.openai.com/codex/plugins/build) | `.agents/plugins/marketplace.json`; a `.codex-plugin/plugin.json` per plugin + optional `.mcp.json`              |
 
-`cursor` emits Cursor plugin and marketplace manifests. `claude` emits Claude plugin and marketplace manifests. `antigravity` emits Antigravity CLI plugins with a `plugin.json` manifest and optional `mcp_config.json`. `copilot` emits the GitHub Copilot plugins format (per [`github/copilot-plugins`](https://github.com/github/copilot-plugins)): a `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`, each plugin under `plugins/<name>/` with a `skills` array per marketplace entry. `codex` emits the [OpenAI Codex CLI plugin format](https://developers.openai.com/codex/plugins/build): a repo-scoped `.agents/plugins/marketplace.json` plus a per-plugin `.codex-plugin/plugin.json` manifest and optional `.mcp.json`.
+> **Heads up:** `claude` and `copilot` both write `.claude-plugin/marketplace.json`, so they need distinct `outDir`s (or separate repos). `build` errors on overlapping output paths.
 
-Because Copilot reuses the Claude marketplace layout, the `claude` and `copilot` targets both write `.claude-plugin/marketplace.json` and therefore need separate output roots (distinct `outDir`s or separate repos).
-
-More targets should be added from official docs or real plugin examples, not guessed abstractions.
+New targets are added from official docs or real plugin examples — not guessed abstractions.
 
 ## Source Plugins
 
@@ -283,7 +283,15 @@ A target can emit a source plugin directly, rename it, or merge multiple source 
 
 A source plugin declares MCP servers with a standard `.mcp.json` file at its root (`{ "mcpServers": { "name": { ... } } }`), or with an `mcpServers` key in `plugin.pluginpack.json`. The file wins if both are present, and merging plugins with the same server name is an error.
 
-Each target wires MCP into its native shape: `claude` ships `.mcp.json` at the plugin root (auto-discovered), `cursor` references it from `plugin.json` (`"mcpServers": "./.mcp.json"`), `copilot` references it from the marketplace entry, and `antigravity` writes `mcp_config.json` beside `plugin.json`.
+Each target wires that MCP config into its native shape:
+
+| Target        | How MCP is wired                                         |
+| ------------- | -------------------------------------------------------- |
+| `claude`      | ships `.mcp.json` at the plugin root (auto-discovered)   |
+| `cursor`      | ships `.mcp.json`, referenced from `plugin.json`         |
+| `codex`       | ships `.mcp.json`, referenced from `plugin.json`         |
+| `copilot`     | ships `.mcp.json`, referenced from the marketplace entry |
+| `antigravity` | writes `mcp_config.json` beside `plugin.json`            |
 
 ## Target Overrides
 
