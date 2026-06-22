@@ -105,5 +105,10 @@
     "npm": {
       "publish": true
     }
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "undici": "^7.28.0",
+    "tmp": "^0.2.7"
   }
 }
