@@ -112,7 +112,10 @@ const CONFIG = `export default {
         glean: {
           from: ["glean"],
           entry: {
-            policy: { installation: "AVAILABLE", authentication: "NONE" },
+            policy: {
+              installation: "AVAILABLE",
+              authentication: "ON_INSTALL",
+            },
             category: "Developer Tools"
           }
         }
@@ -289,7 +292,10 @@ describe("emitted output conforms to external target schemas", () => {
       name: "glean",
       source: "./plugins/glean",
       version: "2.1.1",
-      policy: { installation: "AVAILABLE", authentication: "NONE" },
+      policy: {
+        installation: "AVAILABLE",
+        authentication: "ON_INSTALL",
+      },
       category: "Developer Tools",
     });
 
