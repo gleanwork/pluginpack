@@ -42,6 +42,13 @@ const sourceSchema = z.object({
   rootPlugin: rootPluginSchema.optional(),
 });
 
+// Opt-in generated session-start hook that nudges the user when the installed
+// plugin is older than the latest git tag of `repository` (defaults to
+// `metadata.repository`). Only claude and cursor support hooks.
+const updateCheckSchema = z.object({
+  repository: z.string().min(1).optional(),
+});
+
 const emittedPluginSchema = z.object({
   from: z.array(z.string().min(1)).min(1),
   path: safeRelativePath.optional(),
@@ -54,6 +61,7 @@ const emittedPluginSchema = z.object({
   // entry fields a target can't derive — e.g. Codex `policy`/`category`.
   entry: z.record(z.string(), z.unknown()).optional(),
   components: z.array(z.string()).optional(),
+  updateCheck: z.literal(false).optional(),
 });
 
 const targetSchema = z.object({
@@ -64,6 +72,7 @@ const targetSchema = z.object({
   plugins: z.record(z.string(), emittedPluginSchema),
   manifest: z.record(z.string(), z.unknown()).optional(),
   ignoredDiffPaths: z.array(z.string()).optional(),
+  updateCheck: updateCheckSchema.optional(),
   // Files emitted verbatim at the output repo root (relative to outDir), keyed
   // by output path → source path (relative to the config root). Managed like
   // any other emitted file, so a repo-root README/LICENSE is authored once in
@@ -71,19 +80,33 @@ const targetSchema = z.object({
   rootFiles: z.record(safeRelativePath, safeRelativePath).optional(),
 });
 
-const configSchema = z.object({
-  name: z.string().min(1),
-  version: z.string().min(1),
-  source: sourceSchema.optional(),
-  metadata: metadataSchema.optional(),
-  targets: z.object({
-    claude: targetSchema.optional(),
-    copilot: targetSchema.optional(),
-    cursor: targetSchema.optional(),
-    antigravity: targetSchema.optional(),
-    codex: targetSchema.optional(),
-  }),
-});
+const configSchema = z
+  .object({
+    name: z.string().min(1),
+    version: z.string().min(1),
+    source: sourceSchema.optional(),
+    metadata: metadataSchema.optional(),
+    targets: z.object({
+      claude: targetSchema.optional(),
+      copilot: targetSchema.optional(),
+      cursor: targetSchema.optional(),
+      antigravity: targetSchema.optional(),
+      codex: targetSchema.optional(),
+    }),
+  })
+  .superRefine((config, ctx) => {
+    // updateCheck emits a session-start hook; only claude and cursor run hooks.
+    for (const target of ["copilot", "antigravity", "codex"] as const) {
+      if (config.targets[target]?.updateCheck) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["targets", target, "updateCheck"],
+          message:
+            "updateCheck is only supported for the claude and cursor targets",
+        });
+      }
+    }
+  });
 
 const sourcePluginManifestSchema = metadataSchema.extend({
   name: z.string().optional(),
@@ -97,6 +120,7 @@ export type Author = z.infer<typeof authorSchema>;
 export type Metadata = z.infer<typeof metadataSchema>;
 export type SourceConfig = z.infer<typeof sourceSchema>;
 export type EmittedPluginConfig = z.infer<typeof emittedPluginSchema>;
+export type UpdateCheckConfig = z.infer<typeof updateCheckSchema>;
 export type TargetConfig = z.infer<typeof targetSchema>;
 export type PluginpackConfig = z.infer<typeof configSchema>;
 export type SourcePluginManifest = z.infer<typeof sourcePluginManifestSchema>;

@@ -158,6 +158,7 @@ export async function validateCursor(
       issues,
     );
     await validateFrontmatter(pluginDir, pluginName, "cursor", issues);
+    await validateHooks(pluginDir, pluginName, issues);
   }
 }
 
@@ -537,12 +538,65 @@ async function validateHooks(
     `${pluginName} hooks/hooks.json`,
     issues,
   );
-  if (hooks && (!hooks.hooks || typeof hooks.hooks !== "object")) {
+  if (!hooks) {
+    return;
+  }
+  if (
+    !hooks.hooks ||
+    typeof hooks.hooks !== "object" ||
+    Array.isArray(hooks.hooks)
+  ) {
     error(
       issues,
       `${pluginName}: hooks/hooks.json must have a "hooks" object.`,
     );
+    return;
   }
+  for (const [event, entries] of Object.entries(
+    hooks.hooks as Record<string, unknown>,
+  )) {
+    if (!Array.isArray(entries)) {
+      error(
+        issues,
+        `${pluginName}: hooks/hooks.json "hooks.${event}" must be an array.`,
+      );
+    }
+  }
+  for (const command of collectCommandStrings(hooks.hooks)) {
+    if (!command) {
+      error(
+        issues,
+        `${pluginName}: hooks/hooks.json has an empty "command" string.`,
+      );
+      continue;
+    }
+    // A command referencing the generated update-check script must ship it.
+    if (
+      command.includes("pluginpack-update-check.sh") &&
+      !(await exists(
+        path.join(pluginDir, "scripts", "pluginpack-update-check.sh"),
+      ))
+    ) {
+      error(
+        issues,
+        `${pluginName}: hooks/hooks.json references scripts/pluginpack-update-check.sh but the script is missing.`,
+      );
+    }
+  }
+}
+
+// All string values under a "command" key, at any depth (Claude nests command
+// entries under matcher groups; Cursor keeps them at the event level).
+function collectCommandStrings(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(collectCommandStrings);
+  }
+  if (value && typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    const own = typeof object.command === "string" ? [object.command] : [];
+    return [...own, ...Object.values(object).flatMap(collectCommandStrings)];
+  }
+  return [];
 }
 
 async function readJson(

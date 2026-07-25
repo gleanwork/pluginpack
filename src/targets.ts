@@ -3,6 +3,8 @@ import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "./render.js";
 import { isSafeRelativePath, json, toPosix } from "./fs.js";
 import { resolveTargetComponents } from "./components.js";
+import { applyUpdateCheck } from "./update-check.js";
+import type { UpdateCheckFormat } from "./update-check.js";
 import type {
   Artifact,
   EmittedPluginConfig,
@@ -81,6 +83,13 @@ type EmitPluginsOptions = {
   // Build this plugin's marketplace entry; omit when the target has no marketplace.
   buildEntry?: (ctx: EmitPluginContext) => Record<string, unknown> | undefined;
   mcp?: "file" | "antigravity";
+  // Inject the generated update-check hook (claude/cursor only); resolved from
+  // targetConfig.updateCheck by the emitter so repository errors surface there.
+  updateCheck?: {
+    format: UpdateCheckFormat;
+    repository: string;
+    version: (pluginConfig: EmittedPluginConfig) => string;
+  };
 };
 
 async function emitPlugins(
@@ -101,6 +110,16 @@ async function emitPlugins(
       pluginConfig.from,
       resolveTargetComponents(target, pluginConfig),
     );
+    // Inject before componentDirs is derived so hooks/ and scripts/ register
+    // as components (e.g. the cursor manifest's `hooks` pointer).
+    if (options.updateCheck && pluginConfig.updateCheck !== false) {
+      applyUpdateCheck(pluginFiles, target, {
+        format: options.updateCheck.format,
+        pluginName,
+        version: options.updateCheck.version(pluginConfig),
+        repository: options.updateCheck.repository,
+      });
+    }
     const componentDirs = new Set(
       [...pluginFiles.keys()].map((file) => file.split("/")[0]),
     );
@@ -156,6 +175,33 @@ async function emitPlugins(
   return entries;
 }
 
+// Resolve a target's updateCheck config into the emitPlugins option, failing
+// fast when no repository URL can be determined.
+function updateCheckOption(
+  project: ResolvedProject,
+  target: TargetName,
+  targetConfig: TargetConfig,
+  format: UpdateCheckFormat,
+  version: string,
+): EmitPluginsOptions["updateCheck"] {
+  if (!targetConfig.updateCheck) {
+    return undefined;
+  }
+  const repository =
+    targetConfig.updateCheck.repository ?? project.config.metadata?.repository;
+  if (!repository) {
+    throw new Error(
+      `Target "${target}" updateCheck requires a repository ` +
+        `(set targets.${target}.updateCheck.repository or metadata.repository).`,
+    );
+  }
+  return {
+    format,
+    repository,
+    version: (pluginConfig) => pluginConfig.version ?? version,
+  };
+}
+
 export async function emitCursor(
   project: ResolvedProject,
   target: TargetName,
@@ -172,15 +218,28 @@ export async function emitCursor(
     pluginManifest: {
       path: (pluginPath) =>
         path.join(pluginPath, marketplaceDir, "plugin.json"),
-      build: (metadata, pluginName, pluginConfig, componentDirs, mcpServers) =>
-        cursorPluginManifest(
+      build: (
+        metadata,
+        pluginName,
+        pluginConfig,
+        componentDirs,
+        mcpServers,
+      ) => {
+        const manifest = cursorPluginManifest(
           metadata,
           pluginConfig.version ?? version,
           pluginName,
           pluginConfig,
           componentDirs,
           mcpServers,
-        ),
+        );
+        // updateCheck injects hooks/ regardless of the components filter, and
+        // Cursor only runs hooks the manifest points at.
+        if (targetConfig.updateCheck && pluginConfig.updateCheck !== false) {
+          manifest.hooks ??= "./hooks/";
+        }
+        return manifest;
+      },
     },
     buildEntry: ({ pluginName, pluginPath, pluginConfig, manifest }) => ({
       name: pluginName,
@@ -190,6 +249,13 @@ export async function emitCursor(
         (manifest?.description as string | undefined),
     }),
     mcp: "file",
+    updateCheck: updateCheckOption(
+      project,
+      target,
+      targetConfig,
+      "cursor",
+      version,
+    ),
   });
 
   const marketplace = stripUndefined(
@@ -249,6 +315,13 @@ export async function emitClaude(
         (manifest?.description as string | undefined),
     }),
     mcp: "file",
+    updateCheck: updateCheckOption(
+      project,
+      target,
+      targetConfig,
+      "claude",
+      version,
+    ),
   });
 
   const marketplace = stripUndefined(
