@@ -91,15 +91,18 @@ const CONFIG = `export default {
     owner: { name: "Glean" },
     author: { name: "Glean" },
     license: "MIT",
+    repository: "https://github.com/gleanwork/plugins",
     keywords: ["glean", "enterprise-search"]
   },
   targets: {
     cursor: {
       outDir: "out-cursor",
+      updateCheck: {},
       plugins: { glean: { from: ["glean"], path: "glean", components: ["skills"] } }
     },
     claude: {
       outDir: "out-claude",
+      updateCheck: {},
       plugins: { glean: { from: ["glean"] } }
     },
     copilot: {
@@ -184,6 +187,17 @@ describe("emitted output conforms to external target schemas", () => {
 
     expect(schemaErrors(cursorPluginSchema, plugin)).toEqual([]);
     expect(plugin.mcpServers).toBe("./.mcp.json");
+    // updateCheck: the schema-validated manifest points at the generated hooks
+    // dir, and the emitted hooks.json registers the sessionStart command.
+    expect(plugin.hooks).toBe("./hooks/");
+    const hooks = readJson(
+      project.baseDir,
+      "out-cursor/glean/hooks/hooks.json",
+    );
+    expect(
+      (hooks.hooks as { sessionStart: { command: string }[] }).sessionStart[0]
+        .command,
+    ).toContain("pluginpack-update-check.sh");
     // Cursor tolerates a top-level marketplace `version` at runtime: the published
     // schema is stricter than reality (gleanwork/cursor-plugins ships `version` and
     // is live in Cursor's marketplace). Any OTHER unexpected key still fails here.
@@ -220,6 +234,20 @@ describe("emitted output conforms to external target schemas", () => {
     expect(plugin).toMatchObject({ name: "glean", version: "2.1.1" });
     expect(typeof plugin.description).toBe("string");
     expect(plugin.author).toMatchObject({ name: "Glean" });
+
+    // updateCheck: Claude discovers hooks/hooks.json by convention.
+    const hooks = readJson(
+      project.baseDir,
+      "out-claude/plugins/glean/hooks/hooks.json",
+    );
+    const sessionStart = (
+      hooks.hooks as {
+        SessionStart: { hooks: { command: string }[] }[];
+      }
+    ).SessionStart;
+    expect(sessionStart[0].hooks[0].command).toContain(
+      "${CLAUDE_PLUGIN_ROOT}/scripts/pluginpack-update-check.sh",
+    );
   });
 
   it.skipIf(!hasClaude)(
