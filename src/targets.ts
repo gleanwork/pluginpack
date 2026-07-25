@@ -3,7 +3,7 @@ import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "./render.js";
 import { isSafeRelativePath, json, toPosix } from "./fs.js";
 import { resolveTargetComponents } from "./components.js";
-import { applyUpdateCheck } from "./update-check.js";
+import { applyUpdateCheck, pluginAllowsUpdateCheck } from "./update-check.js";
 import type { UpdateCheckFormat } from "./update-check.js";
 import type {
   Artifact,
@@ -112,7 +112,7 @@ async function emitPlugins(
     );
     // Inject before componentDirs is derived so hooks/ and scripts/ register
     // as components (e.g. the cursor manifest's `hooks` pointer).
-    if (options.updateCheck && pluginConfig.updateCheck !== false) {
+    if (options.updateCheck && pluginAllowsUpdateCheck(pluginConfig)) {
       applyUpdateCheck(pluginFiles, target, {
         format: options.updateCheck.format,
         pluginName,
@@ -233,9 +233,10 @@ export async function emitCursor(
           componentDirs,
           mcpServers,
         );
-        // updateCheck injects hooks/ regardless of the components filter, and
-        // Cursor only runs hooks the manifest points at.
-        if (targetConfig.updateCheck && pluginConfig.updateCheck !== false) {
+        // updateCheck injects hooks/ regardless of the components filter (see
+        // README "Update Check"), and Cursor only runs hooks the manifest
+        // points at, so force the pointer even if `components` excludes hooks.
+        if (targetConfig.updateCheck && pluginAllowsUpdateCheck(pluginConfig)) {
           manifest.hooks ??= "./hooks/";
         }
         return manifest;

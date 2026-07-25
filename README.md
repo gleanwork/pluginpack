@@ -315,6 +315,8 @@ The check follows update-notifier discipline:
 
 Disable for a single plugin with `updateCheck: false` on that plugin. Configuring `updateCheck` on `copilot`, `antigravity`, or `codex` is a config error — those hosts don't run plugin hooks.
 
+Like MCP config, the generated hook is wired in regardless of a plugin's `components` selection: on `cursor`, the manifest's `hooks` field is set even if `components` doesn't include `"hooks"`, since the check itself is a separate opt-in from which source-authored component dirs get emitted.
+
 ## Target Overrides
 
 Skill files are not always perfectly portable. When one app needs different frontmatter or content, add a target override next to the base file:

@@ -146,15 +146,21 @@ describe("generated update-check script", () => {
     format: "claude" | "cursor",
     version = "1.0.0",
   ): Promise<string> {
-    const scriptPath = path.join(scriptDir, "pluginpack-update-check.sh");
+    return writePluginScript("demo", scriptDir, format, version);
+  }
+
+  async function writePluginScript(
+    pluginName: string,
+    dir: string,
+    format: "claude" | "cursor",
+    version = "1.0.0",
+    repository = "https://example.com/repo.git",
+  ): Promise<string> {
+    await mkdir(dir, { recursive: true });
+    const scriptPath = path.join(dir, "pluginpack-update-check.sh");
     await writeFile(
       scriptPath,
-      renderUpdateCheckScript({
-        format,
-        pluginName: "demo",
-        version,
-        repository: "https://example.com/repo.git",
-      }),
+      renderUpdateCheckScript({ format, pluginName, version, repository }),
     );
     return scriptPath;
   }
@@ -247,6 +253,29 @@ describe("generated update-check script", () => {
     const script = await writeScript("claude");
     expect(await runScript(script)).toContain("systemMessage");
     expect(await runScript(script)).toContain("systemMessage");
+    expect(await gitCalls()).toBe(1);
+  });
+
+  it("shares the throttle cache across sibling plugins from the same repo", async () => {
+    // Two different plugins, same repository — the cache key is derived from
+    // the repo URL, so the second plugin's first run should ride the first
+    // plugin's cache instead of fetching again.
+    const scriptA = await writePluginScript(
+      "demo-a",
+      path.join(tmp, "plugin-a"),
+      "claude",
+    );
+    const scriptB = await writePluginScript(
+      "demo-b",
+      path.join(tmp, "plugin-b"),
+      "claude",
+    );
+    const stdoutA = await runScript(scriptA);
+    expect(stdoutA).toContain("Plugin demo-a");
+    expect(await gitCalls()).toBe(1);
+
+    const stdoutB = await runScript(scriptB);
+    expect(stdoutB).toContain("Plugin demo-b");
     expect(await gitCalls()).toBe(1);
   });
 

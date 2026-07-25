@@ -8,6 +8,7 @@ import {
   toPosix,
   walkFiles,
 } from "./fs.js";
+import { UPDATE_CHECK_SCRIPT_PATH } from "./update-check.js";
 import type { TargetName, ValidationIssue } from "./types.js";
 
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
@@ -572,10 +573,8 @@ async function validateHooks(
     }
     // A command referencing the generated update-check script must ship it.
     if (
-      command.includes("pluginpack-update-check.sh") &&
-      !(await exists(
-        path.join(pluginDir, "scripts", "pluginpack-update-check.sh"),
-      ))
+      command.includes(UPDATE_CHECK_SCRIPT_PATH) &&
+      !(await exists(path.join(pluginDir, UPDATE_CHECK_SCRIPT_PATH)))
     ) {
       error(
         issues,
