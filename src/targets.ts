@@ -15,9 +15,12 @@ import type {
   TargetName,
 } from "./types.js";
 
-// Emit per-target repo-root files (e.g. a README authored once in the source
-// repo) into the artifact so they are managed, pruned, and synced like every
-// other generated file — rather than hand-maintained in each output repo.
+/**
+ * Emits per-target repo-root files (e.g. a README authored once in the
+ * source repo) into the artifact so they are managed, pruned, and synced
+ * like every other generated file — rather than hand-maintained in each
+ * output repo.
+ */
 export async function withRootFiles(
   project: ResolvedProject,
   targetConfig: TargetConfig,
@@ -92,6 +95,7 @@ type EmitPluginsOptions = {
   };
 };
 
+/** Shared per-plugin emit loop every legacy `emitXxx` function delegates to. */
 async function emitPlugins(
   project: ResolvedProject,
   target: TargetName,
@@ -175,8 +179,10 @@ async function emitPlugins(
   return entries;
 }
 
-// Resolve a target's updateCheck config into the emitPlugins option, failing
-// fast when no repository URL can be determined.
+/**
+ * Resolves a target's `updateCheck` config into the `emitPlugins` option,
+ * failing fast when no repository URL can be determined.
+ */
 function updateCheckOption(
   project: ResolvedProject,
   target: TargetName,
@@ -202,6 +208,7 @@ function updateCheckOption(
   };
 }
 
+/** Emits the Cursor target's plugins and marketplace manifest. */
 export async function emitCursor(
   project: ResolvedProject,
   target: TargetName,
@@ -283,6 +290,7 @@ export async function emitCursor(
   return artifact(target, outDir, files);
 }
 
+/** Emits the Claude target's plugins and marketplace manifest. */
 export async function emitClaude(
   project: ResolvedProject,
   target: TargetName,
@@ -347,6 +355,11 @@ export async function emitClaude(
   return artifact(target, outDir, files);
 }
 
+/**
+ * @deprecated Legacy emitter, superseded by `src/targets/antigravity.ts` via
+ * the registry in `src/targets/registry.ts`. Kept only until every target
+ * has migrated (see `src/adapters.ts`).
+ */
 export async function emitAntigravity(
   project: ResolvedProject,
   target: TargetName,
@@ -375,6 +388,11 @@ export async function emitAntigravity(
   return artifact(target, outDir, files);
 }
 
+/**
+ * @deprecated Legacy emitter, superseded by `src/targets/copilot.ts` via the
+ * registry in `src/targets/registry.ts`. Kept only until every target has
+ * migrated (see `src/adapters.ts`).
+ */
 export async function emitCopilot(
   project: ResolvedProject,
   target: TargetName,
@@ -447,6 +465,7 @@ export async function emitCopilot(
   return artifact(target, outDir, files);
 }
 
+/** Emits the Codex target's plugins and marketplace manifest. */
 export async function emitCodex(
   project: ResolvedProject,
   target: TargetName,

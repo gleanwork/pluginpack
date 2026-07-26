@@ -1,9 +1,12 @@
 import { isComponentPath } from "./components.js";
 import type { FileValue, ResolvedProject, TargetName } from "./types.js";
 
-// Merge the files of one or more source plugins into a single emitted-plugin
-// file map. File acquisition is delegated to project.source; the merge +
-// duplicate-path guard is pluginpack logic that holds regardless of source.
+/**
+ * Merges the files of one or more source plugins into a single
+ * emitted-plugin file map. File acquisition is delegated to
+ * `project.source`; the merge and duplicate-path guard are pluginpack logic
+ * that hold regardless of source.
+ */
 export async function collectPluginFiles(
   project: ResolvedProject,
   target: TargetName,
@@ -28,8 +31,7 @@ export async function collectPluginFiles(
   return files;
 }
 
-// Merge the MCP servers of one or more source plugins; a server name present in
-// two merged plugins is an error.
+/** Merges the MCP servers of one or more source plugins; a name collision across plugins is an error. */
 export async function resolveMcpServers(
   project: ResolvedProject,
   sourceIds: string[],

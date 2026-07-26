@@ -16,10 +16,12 @@ type ManagedManifest = {
   files: string[];
 };
 
+/** Output-relative path of a target's managed-file manifest. */
 export function managedManifestPath(target: TargetName): string {
   return toPosix(path.join(".pluginpack", `${target}.json`));
 }
 
+/** Writes the list of files a build produced, for later prune/clean/diff to compare against. */
 export async function writeManagedManifest(artifact: Artifact): Promise<void> {
   const manifest: ManagedManifest = {
     version: 1,
@@ -34,6 +36,7 @@ export async function writeManagedManifest(artifact: Artifact): Promise<void> {
   await fs.writeFile(destination, json(manifest));
 }
 
+/** Reads a target's managed-file manifest, or `null` if none exists yet. */
 export async function readManagedManifest(
   outDir: string,
   target: TargetName,
@@ -65,6 +68,7 @@ export async function readManagedManifest(
   return parsed as ManagedManifest;
 }
 
+/** Deletes files the previous build managed but the current one no longer produces. */
 export async function pruneManagedFiles(
   artifact: Artifact,
   options: { dryRun?: boolean; guard?: DeleteGuard } = {},
@@ -95,6 +99,7 @@ export async function pruneManagedFiles(
   };
 }
 
+/** Deletes every file the previous build managed for a target, including its manifest. */
 export async function cleanManagedFiles(
   outDir: string,
   target: TargetName,
@@ -123,6 +128,7 @@ export async function cleanManagedFiles(
   return { target, outDir, entries };
 }
 
+/** Builds the guard that stops prune/clean from deleting paths inside the config's source tree. */
 export function buildDeleteGuard(
   rootDir: string,
   config: PluginpackConfig,
@@ -176,6 +182,7 @@ function isProtectedDeletion(
   );
 }
 
+/** Normalizes a managed path to a safe, relative, forward-slash form, throwing if it escapes the output dir. */
 export function normalizeManagedPath(value: string): string {
   const normalized = path.posix.normalize(value.replace(/\\/g, "/"));
   if (

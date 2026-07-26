@@ -8,6 +8,7 @@ import {
 } from "./managed.js";
 import type { CleanupResult, TargetName } from "./types.js";
 
+/** Deletes managed files no longer produced by the current build, without rewriting current output. */
 export async function prune(
   options: {
     cwd?: string;
@@ -39,6 +40,7 @@ export async function prune(
   return results;
 }
 
+/** Deletes every managed file for the given target(s), tearing the generated output down entirely. */
 export async function clean(
   options: {
     cwd?: string;

@@ -15,10 +15,12 @@ import type {
   SourcePluginManifest,
 } from "./types.js";
 
+/** Identity helper giving config authors type-checking and editor completion. */
 export function defineConfig(config: PluginpackConfig): PluginpackConfig {
   return config;
 }
 
+/** Loads the project config and discovers its source plugins, ready for `build()`. */
 export async function loadConfig(
   cwd = process.cwd(),
   configPath?: string,
@@ -36,6 +38,7 @@ export async function loadConfig(
   };
 }
 
+/** Loads and validates the config file itself, without discovering source plugins. */
 export async function loadProjectConfig(
   cwd = process.cwd(),
   configPath?: string,

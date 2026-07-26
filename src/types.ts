@@ -27,6 +27,7 @@ export type TargetName =
   | "antigravity"
   | "codex";
 
+/** A discovered source plugin, before it's emitted into any target. */
 export type SourcePlugin = {
   id: string;
   dir: string;
@@ -35,9 +36,12 @@ export type SourcePlugin = {
   includeStaticFiles?: boolean;
 };
 
-// The one surface pluginpack uses to acquire source. A filesystem provider
-// backs it today; an API-backed provider (Glean Skills API) can implement the
-// same two methods without touching the emit/validate/diff pipeline.
+/**
+ * The one surface pluginpack uses to acquire source. A filesystem provider
+ * backs it today; an API-backed provider (e.g. a remote skills API) can
+ * implement the same two methods without touching the emit/validate/diff
+ * pipeline.
+ */
 export interface SourceProvider {
   readPluginFiles(
     pluginId: string,
@@ -48,6 +52,7 @@ export interface SourceProvider {
   ): Promise<Record<string, unknown> | undefined>;
 }
 
+/** A loaded, fully-resolved pluginpack project, ready to build or validate. */
 export type ResolvedProject = {
   rootDir: string;
   configPath: string;
@@ -57,6 +62,7 @@ export type ResolvedProject = {
   source: SourceProvider;
 };
 
+/** A loaded pluginpack config, before source plugin discovery. */
 export type ResolvedProjectConfig = {
   rootDir: string;
   configPath: string;
@@ -65,6 +71,7 @@ export type ResolvedProjectConfig = {
 
 export type FileValue = string | Buffer;
 
+/** One target's build output: its files, and which of them are managed by pluginpack. */
 export type Artifact = {
   target: TargetName;
   outDir: string;
@@ -112,6 +119,7 @@ export type CleanupResult = {
   entries: CleanupEntry[];
 };
 
+/** Paths prune/clean will refuse to delete unless `force` is set. */
 export type DeleteGuard = {
   protectedRoots: string[];
   configPath?: string;

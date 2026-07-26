@@ -8,11 +8,13 @@ import { diffTarget } from "./diff.js";
 import { targetNames, validateOutput } from "./adapters.js";
 import type { TargetName } from "./types.js";
 
+/** CLI entry point. */
 async function main(): Promise<void> {
   const program = createProgram();
   await program.parseAsync(process.argv);
 }
 
+/** Builds the `pluginpack` commander program: init, build, validate, diff, prune, clean, docs. */
 function createProgram(): Command {
   const program = new Command();
   const pkg = readPackageJson();
@@ -227,6 +229,7 @@ function createProgram(): Command {
   return program;
 }
 
+/** Prints `prune`/`clean` results, one line per affected file. */
 function printCleanupResults(
   results: Awaited<ReturnType<typeof prune>>,
   verb: string,
@@ -241,6 +244,7 @@ function printCleanupResults(
   }
 }
 
+/** Writes a starter `pluginpack.config.ts` and example source plugin. */
 async function init(): Promise<void> {
   const configPath = path.resolve("pluginpack.config.ts");
   if (await exists(configPath)) {
@@ -267,6 +271,7 @@ async function init(): Promise<void> {
   console.log("Created pluginpack.config.ts and plugins/example.");
 }
 
+/** Commander option parser validating `--target` against the known target names. */
 function parseTarget(value: string): TargetName {
   if (!(targetNames as string[]).includes(value)) {
     throw new Error(`Expected one of: ${targetNames.join(", ")}.`);
@@ -274,6 +279,7 @@ function parseTarget(value: string): TargetName {
   return value as TargetName;
 }
 
+/** Splices generated content between README.md's `pluginpack-cli` marker comments. */
 function replaceGeneratedSection(readme: string, content: string): string {
   const start = "<!-- pluginpack-cli:start -->";
   const end = "<!-- pluginpack-cli:end -->";
@@ -285,6 +291,7 @@ function replaceGeneratedSection(readme: string, content: string): string {
   return `${readme.slice(0, startIndex + start.length)}\n\n${content}\n${readme.slice(endIndex)}`;
 }
 
+/** Reads the package's own version and description, for `--version`/`--help`. */
 function readPackageJson(): { version: string; description: string } {
   const packageJson = JSON.parse(
     readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -298,6 +305,7 @@ function readPackageJson(): { version: string; description: string } {
   return { version: packageJson.version, description: packageJson.description };
 }
 
+/** Renders the README's "CLI Reference" section from the live commander program. */
 function renderCliReference(program: Command): string {
   const lines = ["## CLI Reference", ""];
   for (const command of program.commands) {
@@ -344,6 +352,7 @@ function renderCliReference(program: Command): string {
   return lines.join("\n").trimEnd();
 }
 
+/** A command's usage line, e.g. `pluginpack build [--target <t>]`. */
 function commandUsage(command: Command): string {
   const usage = command.usage();
   return usage
@@ -351,6 +360,11 @@ function commandUsage(command: Command): string {
     : `pluginpack ${command.name()}`;
 }
 
+/**
+ * Example invocations shown in the generated CLI reference, keyed by
+ * command name. Hand-maintained, not derived from the command definitions —
+ * a new command needs a case added here or its docs section omits examples.
+ */
 function commandExamples(commandName: string): string[] {
   switch (commandName) {
     case "init":
@@ -376,6 +390,7 @@ function commandExamples(commandName: string): string[] {
   }
 }
 
+/** Exit-code documentation shown in the generated CLI reference, keyed by command name (hand-maintained, see `commandExamples`). */
 function commandExitCodes(commandName: string): string[] {
   switch (commandName) {
     case "init":
@@ -415,6 +430,7 @@ function commandExitCodes(commandName: string): string[] {
   }
 }
 
+/** Whether the file at `filePath` exists. */
 async function exists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
@@ -424,6 +440,7 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
+/** Content of the `pluginpack.config.ts` written by `init`. */
 function starterConfig(): string {
   return `import { defineConfig } from "@gleanwork/pluginpack";
 
@@ -465,6 +482,7 @@ export default defineConfig({
 `;
 }
 
+/** Content of the example `SKILL.md` written by `init`. */
 function starterSkill(): string {
   return `---
 name: example
