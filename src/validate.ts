@@ -241,7 +241,12 @@ export async function validateClaude(
   }
 }
 
-/** Validates a built Codex target's output directory. */
+/**
+ * @deprecated Legacy validator, superseded by `src/targets/codex.ts`'s
+ * `PluginTargetDefinition.validateOutput` via the registry in
+ * `src/targets/registry.ts`. Kept only until every target has migrated (see
+ * `src/adapters.ts`).
+ */
 export async function validateCodex(
   root: string,
   issues: ValidationIssue[],

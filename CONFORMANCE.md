@@ -14,7 +14,7 @@ Each app's source of truth is something other than a stable schema URL:
 | `cursor`      | Glean-authored schemas in `gleanwork/cursor-plugins/schemas/`                                                                                        | **No upstream.** The schema `$id` (`https://cursor.com/schemas/cursor-plugin/...`) 500s; no Cursor-published schema found.                                                                                                         |
 | `antigravity` | Antigravity CLI plugin docs (`plugin.json`, optional `mcp_config.json`)                                                                              | **No.** Defined by product docs and observed CLI layout, not a published schema.                                                                                                                                                   |
 | `copilot`     | [`github/copilot-plugins`](https://github.com/github/copilot-plugins) — a Claude-marketplace-derived format                                          | **Structural.** Copilot shares the Claude marketplace base but extends entries (`skills[]`, `mcpServers` as a path), which `claude plugin validate` rejects — so conformance is asserted structurally against the official format. |
-| `codex`       | [OpenAI Codex CLI plugin docs](https://developers.openai.com/codex/plugins/build) (`.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json`) | **No published schema.** Defined by product docs; conformance is asserted structurally against the documented format (retrieved 2026-06-17).                                                                                       |
+| `codex`       | [OpenAI Codex CLI plugin docs](https://developers.openai.com/codex/plugins/build) (`.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json`) | **No published schema.** Defined by product docs; conformance is asserted structurally against the documented format (retrieved 2026-07-26).                                                                                       |
 
 ## Oracles the harness uses
 
@@ -48,14 +48,24 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   `tests/core.test.ts` (required `plugin.json` fields present; optional
   `mcp_config.json` written when MCP servers are present). Antigravity CLI does
   not expose a published schema to validate against.
-- **codex** — asserted structurally in `tests/conformance.test.ts` against the
-  [documented Codex plugin format](https://developers.openai.com/codex/plugins/build):
-  a repo-scoped `.agents/plugins/marketplace.json` (`{ name, interface, plugins }`)
-  plus a per-plugin `.codex-plugin/plugin.json` (`{ name, version, description,
-skills }`) and optional `.mcp.json`. No published JSON Schema exists; the test
-  pins the documented shape and confirms a per-plugin `entry` passthrough lands in
-  the marketplace entry. Codex shares no marketplace path with the other targets,
-  so it needs no separate output root.
+- **codex** — asserted structurally in `tests/conformance.test.ts` and
+  `tests/core.test.ts` against the
+  [documented Codex plugin format](https://developers.openai.com/codex/plugins/build)
+  (re-verified 2026-07-26 via direct fetch, twice, for consistency): a
+  repo-scoped `.agents/plugins/marketplace.json` (`{ name, interface, plugins }`,
+  no `owner` field) plus a per-plugin `.codex-plugin/plugin.json` where only
+  `name` is required — `version`/`description`/`skills`/`hooks`/`mcpServers` are
+  optional pointers to bundled components. Every marketplace entry must carry
+  `policy.installation`, `policy.authentication`, and `category`; pluginpack has
+  no way to infer these, so the base entry stays guess-free and `validateOutput`
+  errors clearly if an author never supplies them via the per-plugin `entry`
+  passthrough. An entry's `source` is a bare string only for local plugins (the
+  only shape pluginpack itself ever emits); a `url`/`git-subdir`/`npm` source
+  added via `entry` is a structured object with an inner `source` discriminator
+  (e.g. `{ source: "git-subdir", url, path, ref }`), validated by shape rather
+  than requiring a local directory to exist. No published JSON Schema exists.
+  Codex shares no marketplace path with the other targets, so it needs no
+  separate output root.
 
 ## Update-check hook facts
 

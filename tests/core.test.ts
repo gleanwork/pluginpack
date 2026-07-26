@@ -502,6 +502,186 @@ export default defineConfig({
     ).toBe("3.0.0");
   });
 
+  it('only requires "name" in a codex plugin.json (developers.openai.com/codex/plugins/build: ".codex-plugin/plugin.json is the required entry point. The other manifest fields are optional.")', async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "codex-plugins",
+  version: "1.0.0",
+  targets: {
+    codex: {
+      outDir: "dist/codex",
+      plugins: {
+        demo: {
+          from: ["demo"],
+          entry: {
+            policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
+            category: "Developer Tools"
+          }
+        }
+      }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "codex" });
+
+    const result = await validateOutput("codex", path.join(root, "dist/codex"));
+    expect(result.ok).toBe(true);
+  });
+
+  it('catches a codex marketplace entry missing policy/category at validate time (developers.openai.com/codex/plugins/build: "Always include policy.installation, policy.authentication, and category on each plugin entry.")', async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "codex-plugins",
+  version: "1.0.0",
+  targets: {
+    codex: {
+      outDir: "dist/codex",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "codex" });
+
+    const result = await validateOutput("codex", path.join(root, "dist/codex"));
+    expect(result.ok).toBe(false);
+    expect(
+      result.issues.some((issue) =>
+        issue.message.includes('"policy.installation"'),
+      ),
+    ).toBe(true);
+    expect(
+      result.issues.some((issue) =>
+        issue.message.includes('"policy.authentication"'),
+      ),
+    ).toBe(true);
+    expect(
+      result.issues.some((issue) => issue.message.includes('"category"')),
+    ).toBe(true);
+  });
+
+  it("accepts a structured, non-local codex marketplace source without requiring a local directory", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "codex-plugins",
+  version: "1.0.0",
+  targets: {
+    codex: {
+      outDir: "dist/codex",
+      plugins: { demo: { from: ["demo"] } },
+      manifest: {
+        plugins: [
+          {
+            name: "remote-helper",
+            source: {
+              source: "git-subdir",
+              url: "https://github.com/example/codex-plugins.git",
+              path: "./plugins/remote-helper"
+            },
+            policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
+            category: "Developer Tools"
+          }
+        ]
+      }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "codex" });
+
+    const result = await validateOutput("codex", path.join(root, "dist/codex"));
+    expect(result.ok).toBe(true);
+  });
+
+  it("points a codex plugin.json's hooks field at the bundled hooks file when hooks/ is present", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "codex-plugins",
+  version: "1.0.0",
+  targets: {
+    codex: {
+      outDir: "dist/codex",
+      plugins: {
+        demo: {
+          from: ["demo"],
+          entry: {
+            policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
+            category: "Developer Tools"
+          }
+        }
+      }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+          hooks: {
+            "hooks.json": `${JSON.stringify(
+              {
+                hooks: {
+                  SessionStart: [
+                    { hooks: [{ type: "command", command: "echo hi" }] },
+                  ],
+                },
+              },
+              null,
+              2,
+            )}\n`,
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "codex" });
+
+    const manifest = JSON.parse(
+      await readFile(
+        path.join(root, "dist/codex/plugins/demo/.codex-plugin/plugin.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(manifest.hooks).toBe("./hooks/hooks.json");
+
+    const result = await validateOutput("codex", path.join(root, "dist/codex"));
+    expect(result.ok).toBe(true);
+  });
+
   it("uses target-specific file overrides", async () => {
     const project = await fixture();
     const root = project.baseDir;
