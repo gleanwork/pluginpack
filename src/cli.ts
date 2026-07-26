@@ -5,7 +5,9 @@ import { build } from "./build.js";
 import { clean, prune } from "./cleanup.js";
 import { loadConfig } from "./config.js";
 import { diffTarget } from "./diff.js";
+import { buildInstallSnippet } from "./install-snippet.js";
 import { targetNames, validateOutput } from "./adapters.js";
+import { targets as targetRegistry } from "./targets/registry.js";
 import type { TargetName } from "./types.js";
 
 /** CLI entry point. */
@@ -199,6 +201,71 @@ function createProgram(): Command {
     );
 
   program
+    .command("install-info")
+    .description(
+      "Print the real install command or URL for a target's built marketplace.",
+    )
+    .usage(`[--target ${targetList}] [--json]`)
+    .addOption(
+      new Option(
+        "--target <target>",
+        "Print only one configured target's install info.",
+      ).choices([...targetNames]),
+    )
+    .option("--json", "Print machine-readable JSON instead of text.")
+    .action(async (options: { target?: TargetName; json?: boolean }) => {
+      const project = await loadConfig();
+      const targets = options.target
+        ? [options.target]
+        : targetNames.filter((target) => project.config.targets[target]);
+      const entries = targets.flatMap((target) => {
+        const targetConfig = project.config.targets[target];
+        if (!targetConfig) {
+          throw new Error(`Target "${target}" is not configured.`);
+        }
+        const repository =
+          targetConfig.repository ?? project.config.metadata?.repository;
+        if (!repository) {
+          throw new Error(
+            `Target "${target}" has no repository configured ` +
+              `(set targets.${target}.repository or metadata.repository).`,
+          );
+        }
+        return Object.entries(targetConfig.plugins).map(
+          ([pluginName, pluginConfig]) => ({
+            target,
+            plugin: pluginName,
+            snippet: buildInstallSnippet(target, {
+              repository,
+              marketplaceName: project.config.name,
+              pluginName,
+              pluginPath: targetRegistry[target].resolvePluginPath(
+                pluginName,
+                pluginConfig,
+                targetConfig,
+              ),
+            }),
+          }),
+        );
+      });
+      if (options.json) {
+        console.log(JSON.stringify(entries, null, 2));
+        return;
+      }
+      for (const entry of entries) {
+        console.log(`${entry.target} / ${entry.plugin}`);
+        if (entry.snippet.userConfigurable) {
+          console.log(`  ${entry.snippet.snippet.replaceAll("\n", "\n  ")}`);
+          if (entry.snippet.note) {
+            console.log(`  note: ${entry.snippet.note}`);
+          }
+        } else {
+          console.log(`  unsupported: ${entry.snippet.reason}`);
+        }
+      }
+    });
+
+  program
     .command("docs")
     .description(
       "Generate the README CLI reference section from command metadata.",
@@ -383,6 +450,12 @@ function commandExamples(commandName: string): string[] {
       return ["pluginpack prune", "pluginpack prune --target claude --dry-run"];
     case "clean":
       return ["pluginpack clean", "pluginpack clean --target cursor --dry-run"];
+    case "install-info":
+      return [
+        "pluginpack install-info",
+        "pluginpack install-info --target claude",
+        "pluginpack install-info --json",
+      ];
     case "docs":
       return ["pluginpack docs", "pluginpack docs --check"];
     default:
@@ -419,6 +492,11 @@ function commandExitCodes(commandName: string): string[] {
       return [
         "0 when managed files are removed or listed",
         "1 when config, manifest loading, or cleanup fails",
+      ];
+    case "install-info":
+      return [
+        "0 when install info is printed",
+        "1 when config loading fails or a target has no repository configured",
       ];
     case "docs":
       return [

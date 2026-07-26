@@ -96,6 +96,33 @@ target-agnostic: each event's entries must be an array, no `command` string
 may be empty, and any command referencing the generated update-check script
 (`scripts/pluginpack-update-check.sh`) must ship that script.
 
+## Install-snippet facts
+
+`pluginpack install-info` (and the `buildInstallSnippet` library function)
+prints the real command or URL a user needs to add a pluginpack-built
+marketplace. Each target's snippet and citation live on its own
+`PluginTargetDefinition.installSnippet` in `src/targets/<name>.ts`, verified
+directly against product docs:
+
+| Target        | Snippet                                                                                                                  | Source                                                                                                | Verified   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
+| `claude`      | `/plugin marketplace add <repo>` then `/plugin install <name>@<marketplace>` (slash-only)                                | <https://code.claude.com/docs/en/plugins-reference#cli-commands-reference>                            | 2026-07-25 |
+| `codex`       | `codex plugin marketplace add <repo>`                                                                                    | <https://learn.chatgpt.com/codex/developer-commands>                                                  | 2026-07-25 |
+| `copilot`     | `copilot plugin marketplace add <repo>` then `copilot plugin install <name>@<marketplace>`                               | <https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing> | 2026-07-25 |
+| `antigravity` | `git clone <repo> plugin-source && cd plugin-source && agy plugin install <pluginPath>`                                  | <https://antigravity.google/docs/cli/plugins>                                                         | 2026-07-25 |
+| `cursor`      | No CLI equivalent exists. Prints the repo URL, pasted into Dashboard → Plugins → Team Marketplaces → "Import from Repo." | <https://cursor.com/docs/plugins>                                                                     | 2026-07-25 |
+
+`claude`'s two-step sequence is not symmetric with `codex`/`copilot`'s shell
+commands: `/plugin marketplace add` is slash-only inside an active Claude Code
+session, with no shell equivalent — but once a marketplace is already added,
+`claude plugin install <name>@<marketplace>` does work as a standalone shell
+command, surfaced as a secondary `note`.
+
+Every target resolves to `userConfigurable: true` today;
+`getUnsupportedInstallTargets()` returns `[]`. The `false` branch of the
+`InstallSnippet` union exists for forward-compatibility, not because any
+target needs it now.
+
 ## Refreshing vendored schemas
 
 The Cursor schemas are pinned copies. To update them, re-fetch from the source

@@ -75,6 +75,10 @@ const targetSchema = z.object({
   marketplaceDir: safeRelativePath.optional(),
   pluginRoot: safeRelativePath.optional(),
   version: z.string().optional(),
+  // The repo this target's output lives in, for install-snippet generation
+  // (falls back to metadata.repository) — the same "which repo" question
+  // updateCheck.repository answers, asked by a different feature.
+  repository: z.string().min(1).optional(),
   plugins: z.record(z.string(), emittedPluginSchema),
   manifest: z.record(z.string(), z.unknown()).optional(),
   ignoredDiffPaths: z.array(z.string()).optional(),
