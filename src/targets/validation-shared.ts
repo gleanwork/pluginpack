@@ -113,6 +113,29 @@ export function validateMarketplaceBasics(
   }
 }
 
+// Parameterized by the target's own hooksPath() rather than a hardcoded
+// "hooks/hooks.json" — a target that relocates hooks (Antigravity, to a
+// root-level hooks.json) validates its own actual location, not everyone
+// else's convention.
+export async function validateHooksShape(
+  pluginDir: string,
+  pluginName: string,
+  hooksRelativePath: string,
+  issues: ValidationIssue[],
+): Promise<void> {
+  const hooksFile = path.join(pluginDir, hooksRelativePath);
+  if (!(await exists(hooksFile))) {
+    return;
+  }
+  const hooks = await readJson(hooksFile, `${pluginName} hooks`, issues);
+  if (hooks && (!hooks.hooks || typeof hooks.hooks !== "object")) {
+    error(
+      issues,
+      `${pluginName}: ${hooksRelativePath} must have a "hooks" object.`,
+    );
+  }
+}
+
 export function validateReferencedManifestPaths(
   pluginDir: string,
   pluginName: string,

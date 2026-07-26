@@ -183,6 +183,161 @@ export default defineConfig({
     ).toBe(true);
   });
 
+  it('never writes a "version" field into antigravity plugin.json (antigravity.google/docs/cli/plugins schema: additionalProperties: false, only name+description)', async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "antigravity-version-plugins",
+  version: "3.0.0",
+  metadata: { description: "AG", author: { name: "X" }, license: "MIT" },
+  targets: {
+    antigravity: {
+      outDir: "dist/antigravity",
+      plugins: { demo: { from: ["demo"], version: "9.9.9" } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "antigravity" });
+
+    const manifest = JSON.parse(
+      await readFile(
+        path.join(root, "dist/antigravity/demo/plugin.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(Object.keys(manifest).sort()).toEqual(["description", "name"]);
+    expect(manifest).not.toHaveProperty("version");
+
+    await expect(
+      validateOutput("antigravity", path.join(root, "dist/antigravity")),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("rejects an antigravity plugin.json with a disallowed field at validate time", async () => {
+    const project = await fixture();
+    const root = project.baseDir;
+    await build({ cwd: root, target: "antigravity" });
+
+    const manifestPath = path.join(root, "dist/antigravity/demo/plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    manifest.version = "1.0.0";
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+    const result = await validateOutput(
+      "antigravity",
+      path.join(root, "dist/antigravity"),
+    );
+    expect(result.ok).toBe(false);
+    expect(
+      result.issues.some((issue) => issue.message.includes("does not allow")),
+    ).toBe(true);
+  });
+
+  it('relocates antigravity hooks to a root-level hooks.json, not hooks/hooks.json (antigravity.google/docs/ide/plugins: "Hooks — Configured via hooks.json at the plugin root")', async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "antigravity-hooks-plugins",
+  version: "1.0.0",
+  metadata: { description: "AG", author: { name: "X" }, license: "MIT" },
+  targets: {
+    antigravity: {
+      outDir: "dist/antigravity",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+          hooks: {
+            "hooks.json": `${JSON.stringify(
+              {
+                hooks: {
+                  SessionStart: [
+                    { hooks: [{ type: "command", command: "echo hi" }] },
+                  ],
+                },
+              },
+              null,
+              2,
+            )}\n`,
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "antigravity" });
+
+    // Root-level file exists, with the source content preserved.
+    const rootHooks = JSON.parse(
+      await readFile(
+        path.join(root, "dist/antigravity/demo/hooks.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(rootHooks).toMatchObject({
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: "echo hi" }] }],
+      },
+    });
+    // No nested hooks/ directory was also written.
+    await expectMissing(
+      path.join(root, "dist/antigravity/demo/hooks/hooks.json"),
+    );
+
+    await expect(
+      validateOutput("antigravity", path.join(root, "dist/antigravity")),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("does not require description on an antigravity plugin (schema only requires name)", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "antigravity-no-description",
+  version: "1.0.0",
+  metadata: { author: { name: "X" }, license: "MIT" },
+  targets: {
+    antigravity: {
+      outDir: "dist/antigravity",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "antigravity" });
+
+    await expect(
+      validateOutput("antigravity", path.join(root, "dist/antigravity")),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("uses target-specific file overrides", async () => {
     const project = await fixture();
     const root = project.baseDir;

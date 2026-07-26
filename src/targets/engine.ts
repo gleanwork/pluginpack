@@ -52,8 +52,22 @@ export async function emitFromDefinition(
     const componentDirs = new Set(
       [...pluginFiles.keys()].map((file) => file.split("/")[0]),
     );
+
+    // Hooks are relocated to wherever this target's hooksPath() says they
+    // belong, rather than copied verbatim from the source's conventional
+    // hooks/hooks.json — this is what actually fixes a target whose real
+    // convention differs (Antigravity: a root-level hooks.json, not a
+    // directory). For a target whose hooksPath already is "hooks/hooks.json"
+    // this is a same-path no-op.
+    const sourceHooksFile = pluginFiles.get("hooks/hooks.json");
+    if (sourceHooksFile !== undefined) {
+      pluginFiles.delete("hooks/hooks.json");
+    }
     for (const [relativePath, value] of pluginFiles) {
       files.set(toPosix(path.join(pluginPath, relativePath)), value);
+    }
+    if (sourceHooksFile !== undefined) {
+      files.set(toPosix(definition.hooksPath(pluginPath)), sourceHooksFile);
     }
 
     const mcpServers = await resolveMcpServers(project, pluginConfig.from);

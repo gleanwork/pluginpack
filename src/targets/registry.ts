@@ -1,3 +1,4 @@
+import { antigravity } from "./antigravity.js";
 import { copilot } from "./copilot.js";
 import type { TargetName } from "../types.js";
 import type { PluginTargetDefinition } from "./types.js";
@@ -9,4 +10,5 @@ import type { PluginTargetDefinition } from "./types.js";
 // `Record<TargetName, PluginTargetDefinition>` and `adapters.ts` is deleted.
 export const targets: Partial<Record<TargetName, PluginTargetDefinition>> = {
   copilot,
+  antigravity,
 };
