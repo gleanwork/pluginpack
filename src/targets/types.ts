@@ -93,7 +93,10 @@ export type PluginTargetDefinition = {
 
   // Every target writes one now (Copilot didn't; that was the biggest Plan 1 fix).
   buildPluginManifest: (ctx: ManifestBuildContext) => Record<string, unknown>;
-  manifestPath: (pluginPath: string) => string;
+  // One or more output-relative paths (Copilot mirrors it at both the plugin
+  // root and .github/plugin/, matching real published plugins rather than
+  // the docs' single-location illustrative tree — see CONFORMANCE.md).
+  manifestPaths: (pluginPath: string) => string[];
 
   // Omit (return undefined) for a target with no marketplace-entry concept —
   // none currently omit it, but the shape allows for one that might.

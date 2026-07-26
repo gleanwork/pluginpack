@@ -105,14 +105,19 @@ export default defineConfig({
 
     await build({ cwd: root, target: "copilot" });
 
-    const manifestPath = path.join(
-      root,
-      "dist/copilot/plugins/demo/plugin.json",
+    // Mirrored at both the plugin root (the docs' illustrative location) and
+    // .github/plugin/ (where real published plugins actually put it —
+    // github/copilot-advanced-security-plugin, microsoft/skills-for-fabric).
+    const rootManifest = await readFile(
+      path.join(root, "dist/copilot/plugins/demo/plugin.json"),
+      "utf8",
     );
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<
-      string,
-      unknown
-    >;
+    const githubManifest = await readFile(
+      path.join(root, "dist/copilot/plugins/demo/.github/plugin/plugin.json"),
+      "utf8",
+    );
+    expect(rootManifest).toBe(githubManifest);
+    const manifest = JSON.parse(rootManifest) as Record<string, unknown>;
     expect(manifest).toMatchObject({
       name: "demo",
       version: "2.0.0",
@@ -166,7 +171,28 @@ export default defineConfig({
     ).toBe(true);
   });
 
-  it("catches a missing copilot plugin.json at validate time", async () => {
+  it("catches a missing copilot plugin.json (.github/plugin copy) at validate time", async () => {
+    const project = await fixture();
+    const root = project.baseDir;
+    await build({ cwd: root, target: "copilot" });
+
+    // .github/plugin/plugin.json is the authoritative copy (real published
+    // plugins use it); removing it should be treated as the manifest missing.
+    await rm(
+      path.join(root, "dist/copilot/plugins/demo/.github/plugin/plugin.json"),
+    );
+
+    const result = await validateOutput(
+      "copilot",
+      path.join(root, "dist/copilot"),
+    );
+    expect(result.ok).toBe(false);
+    expect(
+      result.issues.some((issue) => issue.message.includes("plugin manifest")),
+    ).toBe(true);
+  });
+
+  it("catches a missing root-level copilot plugin.json mirror at validate time", async () => {
     const project = await fixture();
     const root = project.baseDir;
     await build({ cwd: root, target: "copilot" });
@@ -179,7 +205,9 @@ export default defineConfig({
     );
     expect(result.ok).toBe(false);
     expect(
-      result.issues.some((issue) => issue.message.includes("plugin manifest")),
+      result.issues.some((issue) =>
+        issue.message.includes("must also be mirrored at the plugin root"),
+      ),
     ).toBe(true);
   });
 

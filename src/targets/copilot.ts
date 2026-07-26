@@ -65,7 +65,15 @@ export const copilot: PluginTargetDefinition = {
     }
     return stripUndefined(manifest);
   },
-  manifestPath: (pluginPath) => path.join(pluginPath, "plugin.json"),
+  // The docs' illustrative directory trees all show plugin.json at the plugin
+  // root, but real published plugins (github/copilot-advanced-security-plugin,
+  // microsoft/skills-for-fabric) put it at .github/plugin/plugin.json instead —
+  // matching how the marketplace manifest is also dual-written below. Ship
+  // both rather than bet on one location.
+  manifestPaths: (pluginPath) => [
+    path.join(pluginPath, "plugin.json"),
+    path.join(pluginPath, ".github", "plugin", "plugin.json"),
+  ],
 
   buildMarketplaceEntry: ({
     pluginName,
@@ -177,11 +185,21 @@ export const copilot: PluginTargetDefinition = {
         continue;
       }
       const pluginDir = path.join(root, entry.source);
+      // .github/plugin/plugin.json is the location real published plugins
+      // use; validate that copy as authoritative and only flag the root
+      // mirror if it's missing or diverges.
       const manifest = await readJson(
-        path.join(pluginDir, "plugin.json"),
+        path.join(pluginDir, ".github", "plugin", "plugin.json"),
         `${pluginName} plugin manifest`,
         issues,
       );
+      const rootManifestPath = path.join(pluginDir, "plugin.json");
+      if (!(await exists(rootManifestPath))) {
+        error(
+          issues,
+          `${pluginName}: plugin.json must also be mirrored at the plugin root.`,
+        );
+      }
       if (manifest) {
         copilot.validateManifest(manifest, pluginName, issues);
         await validateReferencedManifestPaths(
@@ -218,6 +236,16 @@ export const copilot: PluginTargetDefinition = {
       documentationUrl:
         "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference",
       verifiedAt: "2026-07-25",
+    },
+    {
+      // The docs' example trees all show plugin.json at the plugin root; real
+      // published plugins put it at .github/plugin/plugin.json instead. Found
+      // by diffing against two real repos rather than trusting the docs alone.
+      claim:
+        "real published plugins locate plugin.json at .github/plugin/plugin.json, not the plugin root",
+      documentationUrl:
+        "https://github.com/github/copilot-advanced-security-plugin/blob/main/.github/plugin/plugin.json",
+      verifiedAt: "2026-07-26",
     },
     {
       claim: "agent files must be named NAME.agent.md",

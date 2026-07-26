@@ -85,10 +85,12 @@ export async function emitFromDefinition(
       componentDirs,
       mcpServers,
     });
-    files.set(
-      toPosix(definition.manifestPath(pluginPath)),
-      json(stripUndefined(deepMerge(manifest, pluginConfig.manifest ?? {}))),
+    const manifestContent = json(
+      stripUndefined(deepMerge(manifest, pluginConfig.manifest ?? {})),
     );
+    for (const manifestPath of definition.manifestPaths(pluginPath)) {
+      files.set(toPosix(manifestPath), manifestContent);
+    }
 
     const entry = definition.buildMarketplaceEntry({
       pluginName,

@@ -43,7 +43,7 @@ export const antigravity: PluginTargetDefinition = {
       name: pluginName,
       description: pluginConfig.description ?? metadata?.description,
     }),
-  manifestPath: (pluginPath) => path.join(pluginPath, "plugin.json"),
+  manifestPaths: (pluginPath) => [path.join(pluginPath, "plugin.json")],
 
   // No marketplace/registry concept exists for Antigravity.
   buildMarketplaceEntry: () => undefined,

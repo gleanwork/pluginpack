@@ -315,6 +315,15 @@ describe("emitted output conforms to external target schemas", () => {
       skills: "skills/",
       mcpServers: ".mcp.json",
     });
+
+    // Real published plugins (github/copilot-advanced-security-plugin,
+    // microsoft/skills-for-fabric) put plugin.json here, not at the plugin
+    // root the docs' example trees show — mirror both.
+    const githubPluginManifest = readJson(
+      project.baseDir,
+      "out-copilot/plugins/glean/.github/plugin/plugin.json",
+    );
+    expect(githubPluginManifest).toEqual(pluginManifest);
   });
 
   it("codex emits the documented Codex plugin marketplace layout", async () => {
