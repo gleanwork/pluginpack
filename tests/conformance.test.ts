@@ -301,6 +301,20 @@ describe("emitted output conforms to external target schemas", () => {
       skills: ["./skills/example"],
       mcpServers: ".mcp.json",
     });
+
+    // Per docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference:
+    // "All plugins consist of a plugin directory containing, at minimum, a
+    // manifest file named plugin.json."
+    const pluginManifest = readJson(
+      project.baseDir,
+      "out-copilot/plugins/glean/plugin.json",
+    );
+    expect(pluginManifest).toMatchObject({
+      name: "glean",
+      version: "2.1.1",
+      skills: "skills/",
+      mcpServers: ".mcp.json",
+    });
   });
 
   it("codex emits the documented Codex plugin marketplace layout", async () => {

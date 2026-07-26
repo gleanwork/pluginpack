@@ -88,6 +88,7 @@ export type PluginTargetDefinition = {
   resolvePluginPath: (
     pluginName: string,
     pluginConfig: EmittedPluginConfig,
+    targetConfig: TargetConfig,
   ) => string;
 
   // Every target writes one now (Copilot didn't; that was the biggest Plan 1 fix).

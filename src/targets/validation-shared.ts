@@ -35,10 +35,7 @@ export function validateBareStringSourceEntry(
     );
     return null;
   }
-  if (
-    typeof entry.source !== "string" ||
-    !isSafeRelativePath(entry.source)
-  ) {
+  if (typeof entry.source !== "string" || !isSafeRelativePath(entry.source)) {
     error(issues, `plugins[${index}].source must be a safe relative path.`);
     return null;
   }

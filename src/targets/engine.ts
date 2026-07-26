@@ -38,7 +38,11 @@ export async function emitFromDefinition(
   for (const [pluginName, pluginConfig] of Object.entries(
     targetConfig.plugins,
   )) {
-    const pluginPath = definition.resolvePluginPath(pluginName, pluginConfig);
+    const pluginPath = definition.resolvePluginPath(
+      pluginName,
+      pluginConfig,
+      targetConfig,
+    );
     const pluginFiles = await collectPluginFiles(
       project,
       target,

@@ -14,7 +14,10 @@ import {
   validateCopilot,
   validateCursor,
 } from "./validate.js";
-import { emitFromDefinition, validateFromDefinition } from "./targets/engine.js";
+import {
+  emitFromDefinition,
+  validateFromDefinition,
+} from "./targets/engine.js";
 import { targets as registry } from "./targets/registry.js";
 import type {
   Artifact,

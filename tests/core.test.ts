@@ -65,6 +65,124 @@ describe("pluginpack core", () => {
     ).resolves.toMatchObject({ ok: true });
   });
 
+  it('writes a required per-plugin plugin.json for copilot (docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference: "All plugins consist of a plugin directory containing, at minimum, a manifest file named plugin.json")', async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "copilot-manifest-plugins",
+  version: "2.0.0",
+  metadata: { description: "Copilot", author: { name: "X" }, license: "MIT" },
+  targets: {
+    copilot: {
+      outDir: "dist/copilot",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+          agents: { "helper.agent.md": agent("helper", "Helps with tasks.") },
+          hooks: {
+            "hooks.json": `${JSON.stringify(
+              {
+                hooks: {
+                  SessionStart: [
+                    { hooks: [{ type: "command", command: "echo hi" }] },
+                  ],
+                },
+              },
+              null,
+              2,
+            )}\n`,
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "copilot" });
+
+    const manifestPath = path.join(
+      root,
+      "dist/copilot/plugins/demo/plugin.json",
+    );
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    expect(manifest).toMatchObject({
+      name: "demo",
+      version: "2.0.0",
+      agents: "agents/",
+      skills: "skills/",
+      hooks: "hooks/hooks.json",
+    });
+
+    await expect(
+      validateOutput("copilot", path.join(root, "dist/copilot")),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it('flags copilot agent files not named NAME.agent.md (docs.github.com/.../plugins-creating: "Add an agent by creating a NAME.agent.md file")', async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "copilot-agent-naming",
+  version: "1.0.0",
+  metadata: { description: "Copilot", author: { name: "X" }, license: "MIT" },
+  targets: {
+    copilot: {
+      outDir: "dist/copilot",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+          // Wrong extension: not NAME.agent.md.
+          agents: { "helper.md": agent("helper", "Helps with tasks.") },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "copilot" });
+
+    const result = await validateOutput(
+      "copilot",
+      path.join(root, "dist/copilot"),
+    );
+    expect(result.ok).toBe(false);
+    expect(
+      result.issues.some((issue) =>
+        issue.message.includes("must be named NAME.agent.md"),
+      ),
+    ).toBe(true);
+  });
+
+  it("catches a missing copilot plugin.json at validate time", async () => {
+    const project = await fixture();
+    const root = project.baseDir;
+    await build({ cwd: root, target: "copilot" });
+
+    await rm(path.join(root, "dist/copilot/plugins/demo/plugin.json"));
+
+    const result = await validateOutput(
+      "copilot",
+      path.join(root, "dist/copilot"),
+    );
+    expect(result.ok).toBe(false);
+    expect(
+      result.issues.some((issue) => issue.message.includes("plugin manifest")),
+    ).toBe(true);
+  });
+
   it("uses target-specific file overrides", async () => {
     const project = await fixture();
     const root = project.baseDir;
@@ -1307,6 +1425,16 @@ description: ${description}
 }
 
 function command(name: string, description: string): string {
+  return `---
+name: ${name}
+description: ${description}
+---
+
+# ${name}
+`;
+}
+
+function agent(name: string, description: string): string {
   return `---
 name: ${name}
 description: ${description}

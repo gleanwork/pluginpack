@@ -1,3 +1,4 @@
+import { copilot } from "./copilot.js";
 import type { TargetName } from "../types.js";
 import type { PluginTargetDefinition } from "./types.js";
 
@@ -6,4 +7,6 @@ import type { PluginTargetDefinition } from "./types.js";
 // CLAUDE.md's target-registry note and the migration plan in this repo's
 // history). Once every TargetName has an entry, this becomes
 // `Record<TargetName, PluginTargetDefinition>` and `adapters.ts` is deleted.
-export const targets: Partial<Record<TargetName, PluginTargetDefinition>> = {};
+export const targets: Partial<Record<TargetName, PluginTargetDefinition>> = {
+  copilot,
+};
