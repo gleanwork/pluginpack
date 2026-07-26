@@ -457,6 +457,51 @@ export default defineConfig({
     ).resolves.toMatchObject({ ok: true });
   });
 
+  it("applies per-target and per-plugin version overrides for cursor", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "cursor-ver-plugins",
+  version: "1.0.0",
+  metadata: { description: "V", author: { name: "V" }, license: "MIT" },
+  targets: {
+    cursor: {
+      outDir: "dist/cursor",
+      version: "2.0.0",
+      plugins: {
+        a: { from: ["a"] },
+        b: { from: ["b"], version: "3.0.0" }
+      }
+    }
+  }
+});
+`,
+      plugins: {
+        a: { skills: { sa: { "SKILL.md": skill("sa", "SA.") } } },
+        b: { skills: { sb: { "SKILL.md": skill("sb", "SB.") } } },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "cursor" });
+
+    const read = async (p: string) =>
+      JSON.parse(await readFile(path.join(root, p), "utf8")) as Record<
+        string,
+        unknown
+      >;
+    expect(
+      (await read("dist/cursor/.cursor-plugin/marketplace.json")).version,
+    ).toBe("2.0.0");
+    expect(
+      (await read("dist/cursor/a/.cursor-plugin/plugin.json")).version,
+    ).toBe("2.0.0");
+    expect(
+      (await read("dist/cursor/b/.cursor-plugin/plugin.json")).version,
+    ).toBe("3.0.0");
+  });
+
   it("uses target-specific file overrides", async () => {
     const project = await fixture();
     const root = project.baseDir;

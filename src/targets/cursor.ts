@@ -52,7 +52,7 @@ export const cursor: PluginTargetDefinition = {
         pluginConfig.displayName ??
         metadata?.displayName ??
         titleCase(pluginName),
-      version,
+      version: pluginConfig.version ?? version,
       description: pluginConfig.description ?? metadata?.description,
       author: metadata?.author,
       homepage: metadata?.homepage,
