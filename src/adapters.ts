@@ -14,6 +14,8 @@ import {
   validateCopilot,
   validateCursor,
 } from "./validate.js";
+import { emitFromDefinition, validateFromDefinition } from "./targets/engine.js";
+import { targets as registry } from "./targets/registry.js";
 import type {
   Artifact,
   ResolvedProject,
@@ -40,17 +42,45 @@ export type TargetAdapter = {
   validate: TargetValidator;
 };
 
-// The one place a target is wired. `Record<TargetName, …>` is exhaustive at
-// compile time — a new TargetName won't build until it has an entry here — so
-// emit dispatch, validate dispatch, the CLI `--target` choices, and the set
-// build() iterates all derive from this single source instead of parallel maps.
-export const adapters: Record<TargetName, TargetAdapter> = {
+// Legacy per-target functions, used only for targets not yet migrated to
+// src/targets/registry.ts. Delete this map (and ../targets.ts/../validate.ts's
+// per-target functions) once every TargetName has a registry entry.
+const legacyAdapters: Record<TargetName, TargetAdapter> = {
   cursor: { emit: emitCursor, validate: validateCursor },
   claude: { emit: emitClaude, validate: validateClaude },
   antigravity: { emit: emitAntigravity, validate: validateAntigravity },
   copilot: { emit: emitCopilot, validate: validateCopilot },
   codex: { emit: emitCodex, validate: validateCodex },
 };
+
+// The one place a target is wired. `Record<TargetName, …>` is exhaustive at
+// compile time — a new TargetName won't build until it has an entry here — so
+// emit dispatch, validate dispatch, the CLI `--target` choices, and the set
+// build() iterates all derive from this single source instead of parallel maps.
+//
+// During migration, a target resolves to the new registry (src/targets/*.ts)
+// if it has an entry there, otherwise falls back to the legacy function —
+// this map's shape stays the same either way, so callers never notice.
+export const adapters: Record<TargetName, TargetAdapter> = Object.fromEntries(
+  (Object.keys(legacyAdapters) as TargetName[]).map((target) => {
+    const definition = registry[target];
+    const adapter: TargetAdapter = definition
+      ? {
+          emit: (project, targetName, targetConfig, outDir) =>
+            emitFromDefinition(
+              project,
+              targetName,
+              targetConfig,
+              outDir,
+              definition,
+            ),
+          validate: (root, issues) =>
+            validateFromDefinition(root, issues, definition),
+        }
+      : legacyAdapters[target];
+    return [target, adapter];
+  }),
+) as Record<TargetName, TargetAdapter>;
 
 export const targetNames = Object.keys(adapters) as TargetName[];
 
