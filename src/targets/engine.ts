@@ -2,6 +2,8 @@ import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "../render.js";
 import { json, toPosix } from "../fs.js";
 import { deepMerge, stripUndefined } from "./shared.js";
+import { applyUpdateCheck, pluginAllowsUpdateCheck } from "../update-check.js";
+import type { UpdateCheckFormat } from "../update-check.js";
 import type {
   Artifact,
   EmittedPluginConfig,
@@ -27,6 +29,42 @@ function resolveComponents(
 }
 
 /**
+ * Resolves a target's `updateCheck` config into the options `applyUpdateCheck`
+ * needs, failing fast when no repository URL can be determined. Only
+ * claude/cursor ever have `updateCheck` set (enforced at config-schema
+ * validation), so `target` narrows safely once this returns non-undefined.
+ */
+function resolveUpdateCheck(
+  project: ResolvedProject,
+  target: TargetName,
+  targetConfig: TargetConfig,
+  version: string,
+):
+  | {
+      format: UpdateCheckFormat;
+      repository: string;
+      version: (pluginConfig: EmittedPluginConfig) => string;
+    }
+  | undefined {
+  if (!targetConfig.updateCheck) {
+    return undefined;
+  }
+  const repository =
+    targetConfig.updateCheck.repository ?? project.config.metadata?.repository;
+  if (!repository) {
+    throw new Error(
+      `Target "${target}" updateCheck requires a repository ` +
+        `(set targets.${target}.updateCheck.repository or metadata.repository).`,
+    );
+  }
+  return {
+    format: target as UpdateCheckFormat,
+    repository,
+    version: (pluginConfig) => pluginConfig.version ?? version,
+  };
+}
+
+/**
  * Emits one target's output using its `PluginTargetDefinition` — the shared
  * engine every migrated target runs through, in place of a bespoke
  * `emitXxx` function per target.
@@ -41,6 +79,12 @@ export async function emitFromDefinition(
   const version = targetConfig.version ?? project.config.version;
   const files = new Map<string, FileValue>();
   const entries: Record<string, unknown>[] = [];
+  const updateCheck = resolveUpdateCheck(
+    project,
+    target,
+    targetConfig,
+    version,
+  );
 
   for (const [pluginName, pluginConfig] of Object.entries(
     targetConfig.plugins,
@@ -56,6 +100,17 @@ export async function emitFromDefinition(
       pluginConfig.from,
       resolveComponents(definition, pluginConfig),
     );
+    // Applied before componentDirs is derived, so an injected hooks/ dir
+    // registers as a present component (e.g. for a manifest pointer) even if
+    // this plugin's own `components` override excludes hooks.
+    if (updateCheck && pluginAllowsUpdateCheck(pluginConfig)) {
+      applyUpdateCheck(pluginFiles, target, {
+        format: updateCheck.format,
+        pluginName,
+        version: updateCheck.version(pluginConfig),
+        repository: updateCheck.repository,
+      });
+    }
     const componentDirs = new Set(
       [...pluginFiles.keys()].map((file) => file.split("/")[0]),
     );
@@ -94,7 +149,10 @@ export async function emitFromDefinition(
     const manifestContent = json(
       stripUndefined(deepMerge(manifest, pluginConfig.manifest ?? {})),
     );
-    for (const manifestPath of definition.manifestPaths(pluginPath)) {
+    for (const manifestPath of definition.manifestPaths(
+      pluginPath,
+      targetConfig,
+    )) {
       files.set(toPosix(manifestPath), manifestContent);
     }
 
@@ -127,7 +185,7 @@ export async function emitFromDefinition(
     ),
   );
   const marketplaceContent = json(marketplace);
-  for (const marketplacePath of definition.marketplacePaths()) {
+  for (const marketplacePath of definition.marketplacePaths(targetConfig)) {
     files.set(toPosix(marketplacePath), marketplaceContent);
   }
 

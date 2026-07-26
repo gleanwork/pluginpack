@@ -1,5 +1,6 @@
 import { antigravity } from "./antigravity.js";
 import { copilot } from "./copilot.js";
+import { cursor } from "./cursor.js";
 import type { TargetName } from "../types.js";
 import type { PluginTargetDefinition } from "./types.js";
 
@@ -13,4 +14,5 @@ import type { PluginTargetDefinition } from "./types.js";
 export const targets: Partial<Record<TargetName, PluginTargetDefinition>> = {
   copilot,
   antigravity,
+  cursor,
 };
