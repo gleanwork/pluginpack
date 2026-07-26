@@ -290,7 +290,11 @@ export async function emitCursor(
   return artifact(target, outDir, files);
 }
 
-/** Emits the Claude target's plugins and marketplace manifest. */
+/**
+ * @deprecated Legacy emitter, superseded by `src/targets/claude.ts` via the
+ * registry in `src/targets/registry.ts`. Kept only until every target has
+ * migrated (see `src/adapters.ts`).
+ */
 export async function emitClaude(
   project: ResolvedProject,
   target: TargetName,
