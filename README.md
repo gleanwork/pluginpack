@@ -317,6 +317,17 @@ Disable for a single plugin with `updateCheck: false` on that plugin. Configurin
 
 Like MCP config, the generated hook is wired in regardless of a plugin's `components` selection: on `cursor`, the manifest's `hooks` field is set even if `components` doesn't include `"hooks"`, since the check itself is a separate opt-in from which source-authored component dirs get emitted.
 
+## Install Snippet
+
+Once a target's output is pushed to a repo, `pluginpack install-info` prints the real, doc-verified command or URL a user needs to add that marketplace — one per configured target:
+
+```bash
+pluginpack install-info
+pluginpack install-info --target claude
+```
+
+The repo comes from `targets.<name>.repository`, defaulting to `metadata.repository` (an error if neither is set) — the same fallback `updateCheck.repository` uses. Every target today resolves to a real command except `cursor`, which has no CLI equivalent: it prints the repo URL and a note to paste it into Cursor's Dashboard under Team Marketplaces. See `CONFORMANCE.md`'s "Install-snippet facts" section for the doc citation behind each target's snippet.
+
 ## Target Overrides
 
 Skill files are not always perfectly portable. When one app needs different frontmatter or content, add a target override next to the base file:
@@ -395,17 +406,18 @@ To publish a repo-root file (for example a README authored once in the source re
 
 **`targets.<name>`** — `<name>` is one of `cursor`, `claude`, `antigravity`, `copilot`, `codex`.
 
-| Field              | Type                   | Required | Meaning                                                                                    |
-| ------------------ | ---------------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `outDir`           | string                 | yes      | Output directory for this target, relative to the config root.                             |
-| `plugins`          | record                 | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).   |
-| `marketplaceDir`   | string (safe relative) | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).              |
-| `pluginRoot`       | string (safe relative) | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                            |
-| `version`          | string                 | no       | Override the version for this target (defaults to top-level `version`).                    |
-| `manifest`         | object                 | no       | Deep-merged into the generated marketplace manifest.                                       |
-| `ignoredDiffPaths` | string[]               | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).            |
-| `rootFiles`        | record (safe relative) | no       | Map of output path → source path emitted verbatim at the output root.                      |
-| `updateCheck`      | `{ repository? }`      | no       | Generate a session-start update-check hook (`claude`/`cursor` only; see **Update Check**). |
+| Field              | Type                   | Required | Meaning                                                                                     |
+| ------------------ | ---------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `outDir`           | string                 | yes      | Output directory for this target, relative to the config root.                              |
+| `plugins`          | record                 | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).    |
+| `marketplaceDir`   | string (safe relative) | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).               |
+| `pluginRoot`       | string (safe relative) | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                             |
+| `version`          | string                 | no       | Override the version for this target (defaults to top-level `version`).                     |
+| `manifest`         | object                 | no       | Deep-merged into the generated marketplace manifest.                                        |
+| `ignoredDiffPaths` | string[]               | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).             |
+| `rootFiles`        | record (safe relative) | no       | Map of output path → source path emitted verbatim at the output root.                       |
+| `updateCheck`      | `{ repository? }`      | no       | Generate a session-start update-check hook (`claude`/`cursor` only; see **Update Check**).  |
+| `repository`       | string                 | no       | Repo this target's output lives in, for `install-info` (defaults to `metadata.repository`). |
 
 **`targets.<name>.plugins.<name>`**
 
@@ -434,18 +446,24 @@ import {
   validateOutput,
   prune,
   clean,
+  buildInstallSnippet,
+  getSupportedInstallTargets,
+  getUnsupportedInstallTargets,
 } from "@gleanwork/pluginpack";
 ```
 
-| Function                        | Returns                     | Purpose                                                          |
-| ------------------------------- | --------------------------- | ---------------------------------------------------------------- |
-| `defineConfig(config)`          | `PluginpackConfig`          | Identity helper that types `pluginpack.config.ts`.               |
-| `loadConfig(cwd?, configPath?)` | `Promise<ResolvedProject>`  | Resolve config and discover source plugins.                      |
-| `build(options?)`               | `Promise<Artifact[]>`       | Emit configured targets; writes to disk unless `options.dryRun`. |
-| `diffTarget(options)`           | `Promise<DiffResult>`       | Build into a temp dir and compare against an existing repo.      |
-| `validateOutput(target, dir)`   | `Promise<ValidationResult>` | Validate an existing target output directory.                    |
-| `prune(options?)`               | `Promise<CleanupResult[]>`  | Remove stale managed files no longer emitted by the config.      |
-| `clean(options?)`               | `Promise<CleanupResult[]>`  | Remove all managed files for configured targets.                 |
+| Function                              | Returns                     | Purpose                                                           |
+| ------------------------------------- | --------------------------- | ----------------------------------------------------------------- |
+| `defineConfig(config)`                | `PluginpackConfig`          | Identity helper that types `pluginpack.config.ts`.                |
+| `loadConfig(cwd?, configPath?)`       | `Promise<ResolvedProject>`  | Resolve config and discover source plugins.                       |
+| `build(options?)`                     | `Promise<Artifact[]>`       | Emit configured targets; writes to disk unless `options.dryRun`.  |
+| `diffTarget(options)`                 | `Promise<DiffResult>`       | Build into a temp dir and compare against an existing repo.       |
+| `validateOutput(target, dir)`         | `Promise<ValidationResult>` | Validate an existing target output directory.                     |
+| `prune(options?)`                     | `Promise<CleanupResult[]>`  | Remove stale managed files no longer emitted by the config.       |
+| `clean(options?)`                     | `Promise<CleanupResult[]>`  | Remove all managed files for configured targets.                  |
+| `buildInstallSnippet(target, params)` | `InstallSnippet`            | The install command/URL for one target (see **Install Snippet**). |
+| `getSupportedInstallTargets()`        | `TargetName[]`              | Targets with a real install snippet today.                        |
+| `getUnsupportedInstallTargets()`      | `TargetName[]`              | Targets with none (empty today, kept for forward-compatibility).  |
 
 Option objects:
 
@@ -592,6 +610,30 @@ Exit codes:
 
 - 0 when managed files are removed or listed
 - 1 when config, manifest loading, or cleanup fails
+
+### `install-info`
+
+Print the real install command or URL for a target's built marketplace.
+
+```bash
+pluginpack install-info [--target copilot|antigravity|cursor|claude|codex] [--json]
+```
+
+Options:
+
+- `--target <target>`: Print only one configured target's install info.
+- `--json`: Print machine-readable JSON instead of text.
+
+Examples:
+
+- `pluginpack install-info`
+- `pluginpack install-info --target claude`
+- `pluginpack install-info --json`
+
+Exit codes:
+
+- 0 when install info is printed
+- 1 when config loading fails or a target has no repository configured
 
 ### `docs`
 

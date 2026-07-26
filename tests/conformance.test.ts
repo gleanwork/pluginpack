@@ -361,4 +361,61 @@ describe("emitted output conforms to external target schemas", () => {
       mcpServers: "./.mcp.json",
     });
   });
+
+  it("install-info prints every configured target's snippet by default", async () => {
+    const result = await runBin("install-info");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+    expect(result.stdout).toContain(
+      "/plugin marketplace add https://github.com/gleanwork/plugins",
+    );
+    expect(result.stdout).toContain(
+      "codex plugin marketplace add https://github.com/gleanwork/plugins",
+    );
+    expect(result.stdout).toContain(
+      "copilot plugin marketplace add https://github.com/gleanwork/plugins",
+    );
+    expect(result.stdout).toContain("cursor / glean");
+  });
+
+  it("install-info --target restricts output to one target", async () => {
+    const result = await runBin("install-info", "--target", "claude");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+    expect(result.stdout).toContain("claude / glean");
+    expect(result.stdout).not.toContain("codex / glean");
+  });
+
+  it("install-info --json prints a parseable, per-target-per-plugin array", async () => {
+    const result = await runBin("install-info", "--target", "codex", "--json");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+    const entries = JSON.parse(String(result.stdout)) as Array<{
+      target: string;
+      plugin: string;
+      snippet: { userConfigurable: boolean };
+    }>;
+    expect(entries).toEqual([
+      {
+        target: "codex",
+        plugin: "glean",
+        snippet: {
+          userConfigurable: true,
+          kind: "command",
+          snippet:
+            "codex plugin marketplace add https://github.com/gleanwork/plugins",
+          note: "Installs the marketplace; individual plugins are then installed from Codex's plugin picker.",
+        },
+      },
+    ]);
+  });
+
+  it("install-info fails clearly when a target has no repository configured", async () => {
+    await project.write({
+      "pluginpack.config.ts": CONFIG.replace(
+        '    repository: "https://github.com/gleanwork/plugins",\n',
+        "",
+      ),
+    });
+    const result = await runBin("install-info", "--target", "cursor");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("has no repository configured");
+  });
 });
