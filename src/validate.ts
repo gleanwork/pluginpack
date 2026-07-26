@@ -176,7 +176,12 @@ export async function validateCursor(
   }
 }
 
-/** Validates a built Claude target's output directory. */
+/**
+ * @deprecated Legacy validator, superseded by `src/targets/claude.ts`'s
+ * `PluginTargetDefinition.validateOutput` via the registry in
+ * `src/targets/registry.ts`. Kept only until every target has migrated (see
+ * `src/adapters.ts`).
+ */
 export async function validateClaude(
   root: string,
   issues: ValidationIssue[],
