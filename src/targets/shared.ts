@@ -1,3 +1,4 @@
+/** Deletes keys whose value is `undefined`, mutating and returning `value`. */
 export function stripUndefined<T extends Record<string, unknown>>(value: T): T {
   for (const key of Object.keys(value)) {
     if (value[key] === undefined) {
@@ -11,11 +12,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// Deep-merge an override onto a generated manifest. Nested objects merge so a
-// sibling key isn't lost; arrays and scalars from the override replace (not
-// concatenate, so keywords/tags don't double up). This is the general escape
-// hatch — any field, at any depth, can be overridden via a target/plugin
-// `manifest`.
+/**
+ * Deep-merges an override onto a generated manifest. Nested objects merge so
+ * a sibling key isn't lost; arrays and scalars from the override replace
+ * (not concatenate, so keywords/tags don't double up). This is the general
+ * escape hatch that lets any field, at any depth, be overridden via a
+ * target/plugin `manifest`.
+ */
 export function deepMerge(
   base: Record<string, unknown>,
   override: Record<string, unknown>,
@@ -31,6 +34,7 @@ export function deepMerge(
   return result;
 }
 
+/** Converts a kebab/snake/dot-cased string to Title Case. */
 export function titleCase(value: string): string {
   return value
     .split(/[-_.]/)

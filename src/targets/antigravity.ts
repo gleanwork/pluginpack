@@ -11,14 +11,14 @@ import {
 } from "./validation-shared.js";
 import type { PluginTargetDefinition } from "./types.js";
 
-// Confirmed against the actual JSON Schema on antigravity.google/docs/cli/plugins:
-// { "properties": { "name": {...}, "description": {...} }, "required": ["name"],
-//   "additionalProperties": false } — no other field, including "version", is
-// permitted at all. A strict validator rejects the whole manifest for an extra
-// key, it doesn't just ignore it.
 const antigravityNamePattern = /^[a-zA-Z0-9-_]+$/;
+
+// plugin.json's schema is { name (required), description (optional) },
+// additionalProperties: false — a strict validator rejects the whole
+// manifest for an extra key, not just the key itself. See citations below.
 const ALLOWED_MANIFEST_KEYS = new Set(["name", "description"]);
 
+/** Antigravity plugin target — see `citations` for source facts. */
 export const antigravity: PluginTargetDefinition = {
   name: "antigravity",
 
@@ -34,10 +34,9 @@ export const antigravity: PluginTargetDefinition = {
   resolvePluginPath: (pluginName, pluginConfig) =>
     pluginConfig.path ?? pluginName,
 
-  // Only name (required) and description (optional) — no version. Antigravity
-  // has no marketplace to track a version in either; this is a real
-  // capability gap for this target, not something to work around by
-  // relocating the field elsewhere.
+  // No version field: Antigravity's schema doesn't allow one, and there's no
+  // marketplace to track a version in either — a real capability gap for
+  // this target, not something to work around by relocating the field.
   buildPluginManifest: ({ metadata, pluginName, pluginConfig }) =>
     stripUndefined({
       name: pluginName,
@@ -51,9 +50,7 @@ export const antigravity: PluginTargetDefinition = {
   marketplacePaths: () => [],
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, "mcp_config.json"),
-  // Root-level hooks.json, not a hooks/ directory — the Plan 1 fix. Confirmed
-  // on both antigravity.google/docs/ide/plugins and .../docs/cli/plugins:
-  // "Hooks — Configured via hooks.json at the plugin root."
+  // Root-level hooks.json, not a hooks/ directory (see citations).
   hooksPath: (pluginPath) => path.join(pluginPath, "hooks.json"),
 
   validateManifest: (manifest, pluginName, issues) => {

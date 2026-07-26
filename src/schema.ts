@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { isSafeRelativePath } from "./fs.js";
 
-// Paths that get written to / read from disk relative to a root — reject
-// absolute paths and ".." escapes so a config can't write or read outside.
+/**
+ * A path written to or read from disk relative to a root — rejects absolute
+ * paths and `..` escapes so a config can't write or read outside it.
+ */
 const safeRelativePath = z
   .string()
   .refine(
@@ -42,13 +44,16 @@ const sourceSchema = z.object({
   rootPlugin: rootPluginSchema.optional(),
 });
 
-// Opt-in generated session-start hook that nudges the user when the installed
-// plugin is older than the latest git tag of `repository` (defaults to
-// `metadata.repository`). Only claude and cursor support hooks.
+/**
+ * Opt-in generated session-start hook that nudges the user when the
+ * installed plugin is older than the latest git tag of `repository`
+ * (defaults to `metadata.repository`). Only claude and cursor support hooks.
+ */
 const updateCheckSchema = z.object({
   repository: z.string().min(1).optional(),
 });
 
+/** A source plugin (or plugins) mapped to one emitted plugin for a target. */
 const emittedPluginSchema = z.object({
   from: z.array(z.string().min(1)).min(1),
   path: safeRelativePath.optional(),
@@ -64,6 +69,7 @@ const emittedPluginSchema = z.object({
   updateCheck: z.literal(false).optional(),
 });
 
+/** One target's output configuration: where it's written, and which plugins it emits. */
 const targetSchema = z.object({
   outDir: z.string().min(1),
   marketplaceDir: safeRelativePath.optional(),
@@ -80,6 +86,7 @@ const targetSchema = z.object({
   rootFiles: z.record(safeRelativePath, safeRelativePath).optional(),
 });
 
+/** The root `pluginpack.config.ts` schema. */
 const configSchema = z
   .object({
     name: z.string().min(1),
@@ -108,6 +115,7 @@ const configSchema = z
     }
   });
 
+/** A source plugin's own `plugin.pluginpack.json`, if it has one. */
 const sourcePluginManifestSchema = metadataSchema.extend({
   name: z.string().optional(),
   description: z.string().optional(),

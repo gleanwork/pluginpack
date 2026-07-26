@@ -40,6 +40,7 @@ type TargetValidator = (
   issues: ValidationIssue[],
 ) => Promise<void>;
 
+/** The emit and validate functions for one target. */
 export type TargetAdapter = {
   emit: TargetEmitter;
   validate: TargetValidator;
@@ -56,14 +57,18 @@ const legacyAdapters: Record<TargetName, TargetAdapter> = {
   codex: { emit: emitCodex, validate: validateCodex },
 };
 
-// The one place a target is wired. `Record<TargetName, …>` is exhaustive at
-// compile time — a new TargetName won't build until it has an entry here — so
-// emit dispatch, validate dispatch, the CLI `--target` choices, and the set
-// build() iterates all derive from this single source instead of parallel maps.
-//
-// During migration, a target resolves to the new registry (src/targets/*.ts)
-// if it has an entry there, otherwise falls back to the legacy function —
-// this map's shape stays the same either way, so callers never notice.
+/**
+ * The one place a target is wired. `Record<TargetName, …>` is exhaustive at
+ * compile time — a new `TargetName` won't build until it has an entry here —
+ * so emit dispatch, validate dispatch, the CLI `--target` choices, and the
+ * set `build()` iterates all derive from this single source instead of
+ * parallel maps.
+ *
+ * During migration, a target resolves to the new registry
+ * (`src/targets/*.ts`) if it has an entry there, otherwise falls back to the
+ * legacy function — this map's shape stays the same either way, so callers
+ * never notice.
+ */
 export const adapters: Record<TargetName, TargetAdapter> = Object.fromEntries(
   (Object.keys(legacyAdapters) as TargetName[]).map((target) => {
     const definition = registry[target];
@@ -85,8 +90,10 @@ export const adapters: Record<TargetName, TargetAdapter> = Object.fromEntries(
   }),
 ) as Record<TargetName, TargetAdapter>;
 
+/** Every target name with an adapter — the exhaustive list `build()` and the CLI derive from. */
 export const targetNames = Object.keys(adapters) as TargetName[];
 
+/** Emits one target's output and applies its `rootFiles`, resolving `outDir` from config if omitted. */
 export async function emitTarget(
   project: ResolvedProject,
   target: TargetName,
@@ -109,6 +116,7 @@ export async function emitTarget(
   return withRootFiles(project, targetConfig, result);
 }
 
+/** Validates an already-built target's output directory. */
 export async function validateOutput(
   target: TargetName,
   dir: string,

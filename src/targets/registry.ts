@@ -3,11 +3,13 @@ import { copilot } from "./copilot.js";
 import type { TargetName } from "../types.js";
 import type { PluginTargetDefinition } from "./types.js";
 
-// Filled in one target at a time as each migrates off the legacy
-// emitXxx/validateXxx functions in ../targets.ts and ../validate.ts (see
-// CLAUDE.md's target-registry note and the migration plan in this repo's
-// history). Once every TargetName has an entry, this becomes
-// `Record<TargetName, PluginTargetDefinition>` and `adapters.ts` is deleted.
+/**
+ * Migrated targets, filled in one at a time as each moves off the legacy
+ * per-target functions in `../targets.ts` and `../validate.ts` — see
+ * `../adapters.ts`, which falls back to those for any target not yet
+ * present here. Becomes `Record<TargetName, PluginTargetDefinition>` once
+ * every target has an entry, at which point `adapters.ts` can be deleted.
+ */
 export const targets: Partial<Record<TargetName, PluginTargetDefinition>> = {
   copilot,
   antigravity,

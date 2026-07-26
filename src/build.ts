@@ -9,6 +9,7 @@ import {
 import { emitTarget, targetNames } from "./adapters.js";
 import type { Artifact, BuildOptions, TargetName } from "./types.js";
 
+/** Builds every configured (or explicitly selected) target and writes its output, unless `dryRun` is set. */
 export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
   const project = await loadConfig(options.cwd, options.configPath);
   const targets = options.target

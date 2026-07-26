@@ -14,6 +14,12 @@ import type { TargetName, ValidationIssue } from "./types.js";
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 const marketplaceNamePattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
+/**
+ * @deprecated Legacy validator, superseded by `src/targets/antigravity.ts`'s
+ * `PluginTargetDefinition.validateOutput` via the registry in
+ * `src/targets/registry.ts`. Kept only until every target has migrated (see
+ * `src/adapters.ts`).
+ */
 export async function validateAntigravity(
   root: string,
   issues: ValidationIssue[],
@@ -71,6 +77,12 @@ export async function validateAntigravity(
   }
 }
 
+/**
+ * @deprecated Legacy validator, superseded by `src/targets/copilot.ts`'s
+ * `PluginTargetDefinition.validateOutput` via the registry in
+ * `src/targets/registry.ts`. Kept only until every target has migrated (see
+ * `src/adapters.ts`).
+ */
 export async function validateCopilot(
   root: string,
   issues: ValidationIssue[],
@@ -112,6 +124,7 @@ export async function validateCopilot(
   }
 }
 
+/** Validates a built Cursor target's output directory. */
 export async function validateCursor(
   root: string,
   issues: ValidationIssue[],
@@ -163,6 +176,7 @@ export async function validateCursor(
   }
 }
 
+/** Validates a built Claude target's output directory. */
 export async function validateClaude(
   root: string,
   issues: ValidationIssue[],
@@ -222,6 +236,7 @@ export async function validateClaude(
   }
 }
 
+/** Validates a built Codex target's output directory. */
 export async function validateCodex(
   root: string,
   issues: ValidationIssue[],

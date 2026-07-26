@@ -7,6 +7,7 @@ import { exists } from "./fs.js";
 import { normalizeManagedPath, readManagedManifest } from "./managed.js";
 import type { DiffEntry, DiffResult, TargetName } from "./types.js";
 
+/** Builds a target into a temp dir and diffs its managed files against an existing output repo. */
 export async function diffTarget(options: {
   cwd?: string;
   configPath?: string;

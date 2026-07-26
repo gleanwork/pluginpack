@@ -1,7 +1,9 @@
 import { json } from "./fs.js";
 import type { EmittedPluginConfig, FileValue } from "./types.js";
 
+/** Output-relative path of the generated update-check script within a plugin. */
 export const UPDATE_CHECK_SCRIPT_PATH = "scripts/pluginpack-update-check.sh";
+/** Output-relative path of a plugin's hooks registration file. */
 export const HOOKS_FILE_PATH = "hooks/hooks.json";
 
 // The marker every generated command contains; merge is idempotent on it, so a
@@ -17,10 +19,13 @@ export type UpdateCheckOptions = {
   repository: string;
 };
 
-// The per-plugin opt-out gate, shared by both call sites that decide whether
-// this plugin gets the generated hook (file injection in emitPlugins, and the
-// manifest's `hooks` pointer in emitCursor) — callers still check their own
-// target-level `updateCheck` presence first (for type-narrowing convenience).
+/**
+ * The per-plugin opt-out gate, shared by both call sites that decide whether
+ * this plugin gets the generated hook (file injection in `emitPlugins`, and
+ * the manifest's `hooks` pointer in `emitCursor`) — callers still check
+ * their own target-level `updateCheck` presence first, for type-narrowing
+ * convenience.
+ */
 export function pluginAllowsUpdateCheck(
   pluginConfig: Pick<EmittedPluginConfig, "updateCheck">,
 ): boolean {
@@ -78,6 +83,7 @@ function nudgeFormat(format: UpdateCheckFormat, pluginName: string): string {
   return shellQuote(`${literal}\\n`);
 }
 
+/** Renders the POSIX-sh update-check script embedded into a plugin, for the given format. */
 export function renderUpdateCheckScript(options: UpdateCheckOptions): string {
   const { format, pluginName, version, repository } = options;
   const nudgeArgs = FORMATS[format].nudgeArgs;
@@ -166,6 +172,7 @@ function parseHooksFile(
   return { root, events };
 }
 
+/** Merges the update-check hook into an existing (or new) Claude `hooks/hooks.json`. */
 export function mergeClaudeHooks(existing: string | undefined): string {
   if (existing?.includes(SCRIPT_MARKER)) {
     return existing;
@@ -184,6 +191,7 @@ export function mergeClaudeHooks(existing: string | undefined): string {
   return json(root);
 }
 
+/** Merges the update-check hook into an existing (or new) Cursor `hooks/hooks.json`. */
 export function mergeCursorHooks(existing: string | undefined): string {
   if (existing?.includes(SCRIPT_MARKER)) {
     return existing;
@@ -200,9 +208,11 @@ export function mergeCursorHooks(existing: string | undefined): string {
   return json(root);
 }
 
-// Inject the generated script and hook registration into a plugin's collected
-// files (paths relative to the plugin root), merging with a source-authored
-// hooks/hooks.json when present.
+/**
+ * Injects the generated script and hook registration into a plugin's
+ * collected files (paths relative to the plugin root), merging with a
+ * source-authored `hooks/hooks.json` when present.
+ */
 export function applyUpdateCheck(
   pluginFiles: Map<string, FileValue>,
   target: string,

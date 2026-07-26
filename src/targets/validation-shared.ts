@@ -12,11 +12,12 @@ import type { TargetName, ValidationIssue } from "../types.js";
 
 export const marketplaceNamePattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
-// The shared shape most targets' marketplace entries share (a bare-string
-// `source`). Codex's `source` is a structured object instead (see Plan 1 /
-// CONFORMANCE.md), so it implements its own validateMarketplaceEntry rather
-// than calling this — this is exactly the shape assumption that used to be
-// baked into one function for every target regardless of fit.
+/**
+ * Validates a marketplace entry whose `source` is a bare string — the shape
+ * most targets share. A target whose entry shape differs (e.g. a structured
+ * `source` object) implements its own `validateMarketplaceEntry` instead of
+ * calling this.
+ */
 export function validateBareStringSourceEntry(
   entry: Record<string, unknown>,
   index: number,
@@ -52,10 +53,12 @@ export function validateBareStringSourceEntry(
 
 export const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 
+/** Pushes an error-level issue onto `issues`. */
 export function error(issues: ValidationIssue[], message: string): void {
   issues.push({ level: "error", message });
 }
 
+/** Reads and parses a JSON file, pushing an issue and returning `null` on failure. */
 export async function readJson(
   filePath: string,
   context: string,
@@ -87,6 +90,7 @@ export function pathExistsSync(filePath: string): boolean {
   }
 }
 
+/** Validates the fields common to every target's marketplace manifest. */
 export function validateMarketplaceBasics(
   marketplace: Record<string, unknown>,
   issues: ValidationIssue[],
@@ -113,10 +117,11 @@ export function validateMarketplaceBasics(
   }
 }
 
-// Parameterized by the target's own hooksPath() rather than a hardcoded
-// "hooks/hooks.json" — a target that relocates hooks (Antigravity, to a
-// root-level hooks.json) validates its own actual location, not everyone
-// else's convention.
+/**
+ * Validates a hooks file's shape at `hooksRelativePath` — parameterized by
+ * path rather than a hardcoded location, since a target may relocate hooks
+ * to somewhere other than `hooks/hooks.json` (e.g. a root-level file).
+ */
 export async function validateHooksShape(
   pluginDir: string,
   pluginName: string,
@@ -136,6 +141,7 @@ export async function validateHooksShape(
   }
 }
 
+/** Validates that manifest fields referencing paths point at files that exist. */
 export function validateReferencedManifestPaths(
   pluginDir: string,
   pluginName: string,
@@ -183,6 +189,7 @@ function extractPathValues(value: unknown): string[] {
   return [];
 }
 
+/** Validates skill/agent/command/rule frontmatter conventions for a plugin's files. */
 export async function validateFrontmatter(
   pluginDir: string,
   pluginName: string,

@@ -8,6 +8,7 @@ import type {
   ValidationIssue,
 } from "../types.js";
 
+/** Inputs available when building a single plugin's own manifest file. */
 export type ManifestBuildContext = {
   metadata: Metadata | undefined;
   version: string;
@@ -17,6 +18,7 @@ export type ManifestBuildContext = {
   mcpServers: Record<string, unknown> | undefined;
 };
 
+/** Inputs available when building a plugin's marketplace entry. */
 export type MarketplaceEntryContext = {
   pluginName: string;
   pluginPath: string;
@@ -28,6 +30,7 @@ export type MarketplaceEntryContext = {
   manifest: Record<string, unknown> | undefined;
 };
 
+/** Inputs available when building a target's top-level marketplace manifest. */
 export type MarketplaceManifestContext = {
   project: ResolvedProject;
   targetConfig: TargetConfig;
@@ -53,9 +56,11 @@ export type InstallSnippet =
     }
   | { userConfigurable: false; reason: string };
 
-// A fact about a target traces to one of these — the discipline this whole
-// registry exists to enforce (see CONFORMANCE.md). `claim` is a short
-// human-readable description of what the citation backs, not the fact itself.
+/**
+ * A dated pointer to the documentation (or other source) a fact about a
+ * target is based on. `claim` describes what the citation backs, not the
+ * fact itself.
+ */
 export type Citation = {
   claim: string;
   documentationUrl: string;
@@ -73,16 +78,16 @@ export type InstallSnippetDefinition = {
   citation: Citation;
 };
 
-// Everything that varies by target, in one place. A new target means one new
-// file implementing this interface and one new entry in the registry — not a
-// new branch scattered across components.ts/targets.ts/validate.ts, which is
-// exactly how the bugs this registry fixes went unnoticed (see CONFORMANCE.md
-// "Per-target spec verification").
+/**
+ * Everything that varies by target, in one place. A new target means one new
+ * file implementing this interface and one new registry entry, rather than a
+ * new branch added independently to component defaults, manifest building,
+ * and validation.
+ */
 export type PluginTargetDefinition = {
   name: TargetName;
 
-  // The component dirs copied into an emitted plugin when a plugin config
-  // doesn't supply its own `components` override.
+  /** Component directories copied into a plugin when it has no `components` override. */
   defaultComponents: readonly string[];
 
   resolvePluginPath: (
@@ -91,26 +96,21 @@ export type PluginTargetDefinition = {
     targetConfig: TargetConfig,
   ) => string;
 
-  // Every target writes one now (Copilot didn't; that was the biggest Plan 1 fix).
   buildPluginManifest: (ctx: ManifestBuildContext) => Record<string, unknown>;
-  // One or more output-relative paths (Copilot mirrors it at both the plugin
-  // root and .github/plugin/, matching real published plugins rather than
-  // the docs' single-location illustrative tree — see CONFORMANCE.md).
+  /** Output-relative paths the plugin manifest is written to (may be more than one). */
   manifestPaths: (pluginPath: string) => string[];
 
-  // Omit (return undefined) for a target with no marketplace-entry concept —
-  // none currently omit it, but the shape allows for one that might.
+  /** Return `undefined` for a target with no marketplace-entry concept. */
   buildMarketplaceEntry: (
     ctx: MarketplaceEntryContext,
   ) => Record<string, unknown> | undefined;
   buildMarketplaceManifest: (
     ctx: MarketplaceManifestContext,
   ) => Record<string, unknown>;
-  // One or more output-relative paths the marketplace manifest is written to
-  // (Copilot mirrors it at two paths).
+  /** Output-relative paths the marketplace manifest is written to (may be more than one). */
   marketplacePaths: () => string[];
 
-  // undefined for a target with no bundled-MCP-config file convention.
+  /** Return `undefined` for a target with no bundled-MCP-config file convention. */
   mcpConfigPath: (pluginPath: string) => string | undefined;
   hooksPath: (pluginPath: string) => string;
 
@@ -119,10 +119,11 @@ export type PluginTargetDefinition = {
     pluginName: string,
     issues: ValidationIssue[],
   ) => void;
-  // Returns the entry's plugin name if it's well-formed enough to keep
-  // validating, or null (having already pushed an issue) if not — mirrors the
-  // existing validatePluginEntry contract so per-target output validation can
-  // keep sharing its calling convention.
+  /**
+   * Validates one marketplace entry. Returns the entry's plugin name if it's
+   * well-formed enough to keep validating, or `null` (having already pushed
+   * an issue) otherwise.
+   */
   validateMarketplaceEntry: (
     entry: Record<string, unknown>,
     index: number,
@@ -133,7 +134,6 @@ export type PluginTargetDefinition = {
 
   installSnippet: InstallSnippetDefinition;
 
-  // Facts about this target not already carried by a more specific citation
-  // above (e.g. the overall component model, naming pattern).
+  /** Facts about this target not already carried by a more specific citation above. */
   citations: Citation[];
 };

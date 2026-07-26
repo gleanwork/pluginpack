@@ -9,10 +9,12 @@ import type {
   TargetName,
 } from "./types.js";
 
-// Filesystem-backed source: reads a discovered plugin's component and static
-// files (with target overrides) and its MCP servers from disk. The discovered
-// plugins map is passed in; an API-backed provider would implement the same
-// SourceProvider interface against the Skills API instead.
+/**
+ * Filesystem-backed `SourceProvider`: reads a discovered plugin's component
+ * and static files (with target overrides) and its MCP servers from disk.
+ * An API-backed provider would implement the same interface against a
+ * remote source instead.
+ */
 export function createFilesystemSourceProvider(
   plugins: Map<string, SourcePlugin>,
 ): SourceProvider {

@@ -13,10 +13,12 @@ import type {
 } from "../types.js";
 import type { PluginTargetDefinition } from "./types.js";
 
-// The one place a plugin's file set gets filtered to its resolved component
-// set — decoupled from the legacy global `targetDefaultComponents` table
-// (components.ts) so a migrated target's default component list is owned
-// entirely by its own PluginTargetDefinition.
+/**
+ * Resolves a plugin's component set from its own `components` override, or
+ * the target definition's default — decoupled from the legacy global
+ * `targetDefaultComponents` table (`../components.ts`) so a migrated
+ * target's defaults are owned entirely by its own `PluginTargetDefinition`.
+ */
 function resolveComponents(
   definition: PluginTargetDefinition,
   pluginConfig: { components?: string[] },
@@ -24,6 +26,11 @@ function resolveComponents(
   return new Set(pluginConfig.components ?? definition.defaultComponents);
 }
 
+/**
+ * Emits one target's output using its `PluginTargetDefinition` — the shared
+ * engine every migrated target runs through, in place of a bespoke
+ * `emitXxx` function per target.
+ */
 export async function emitFromDefinition(
   project: ResolvedProject,
   target: TargetName,
@@ -53,12 +60,11 @@ export async function emitFromDefinition(
       [...pluginFiles.keys()].map((file) => file.split("/")[0]),
     );
 
-    // Hooks are relocated to wherever this target's hooksPath() says they
-    // belong, rather than copied verbatim from the source's conventional
-    // hooks/hooks.json — this is what actually fixes a target whose real
-    // convention differs (Antigravity: a root-level hooks.json, not a
-    // directory). For a target whose hooksPath already is "hooks/hooks.json"
-    // this is a same-path no-op.
+    // Hooks are relocated to definition.hooksPath() rather than copied
+    // verbatim from the source's conventional hooks/hooks.json, so a target
+    // whose real hooks convention differs (e.g. a root-level file, not a
+    // directory) gets it right by construction. A same-path target is a
+    // same-path no-op.
     const sourceHooksFile = pluginFiles.get("hooks/hooks.json");
     if (sourceHooksFile !== undefined) {
       pluginFiles.delete("hooks/hooks.json");
@@ -103,8 +109,8 @@ export async function emitFromDefinition(
       manifest,
     });
     if (entry) {
-      // Deep-merge the config's per-plugin entry passthrough so a target can
-      // carry author-supplied fields it can't derive (e.g. Codex policy/category).
+      // Deep-merge the config's per-plugin entry passthrough, so a target
+      // can carry author-supplied fields it can't derive on its own.
       entries.push(stripUndefined(deepMerge(entry, pluginConfig.entry ?? {})));
     }
   }
@@ -128,6 +134,7 @@ export async function emitFromDefinition(
   return artifact(target, outDir, files);
 }
 
+/** Validates one target's output using its `PluginTargetDefinition`. */
 export async function validateFromDefinition(
   root: string,
   issues: ValidationIssue[],

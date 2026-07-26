@@ -14,10 +14,10 @@ import type { PluginTargetDefinition } from "./types.js";
 
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 
-// docs.github.com's plugin.json field reference calls this out explicitly:
-// "Kebab-case plugin name (letters, numbers, hyphens only). Max 64 chars."
+/** Kebab-case, letters/numbers/hyphens only, per the Copilot plugin.json field reference. */
 const copilotNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** GitHub Copilot agent-plugin target — see `citations` for source facts. */
 export const copilot: PluginTargetDefinition = {
   name: "copilot",
 
@@ -27,10 +27,6 @@ export const copilot: PluginTargetDefinition = {
     pluginConfig.path ??
     toPosix(path.join(targetConfig.pluginRoot ?? "plugins", pluginName)),
 
-  // Plan 1's biggest fix: Copilot requires a per-plugin plugin.json — pluginpack
-  // previously wrote none at all ("Copilot has no per-plugin manifest" was true
-  // of an earlier, thinner version of the format; it isn't true of the current
-  // one). See citations below.
   buildPluginManifest: ({
     metadata,
     version,
@@ -65,11 +61,9 @@ export const copilot: PluginTargetDefinition = {
     }
     return stripUndefined(manifest);
   },
-  // The docs' illustrative directory trees all show plugin.json at the plugin
-  // root, but real published plugins (github/copilot-advanced-security-plugin,
-  // microsoft/skills-for-fabric) put it at .github/plugin/plugin.json instead —
-  // matching how the marketplace manifest is also dual-written below. Ship
-  // both rather than bet on one location.
+  // Mirrored at both the plugin root and .github/plugin/, since published
+  // plugins use the latter (see citations) — shipping only one risks the
+  // manifest not being found at all.
   manifestPaths: (pluginPath) => [
     path.join(pluginPath, "plugin.json"),
     path.join(pluginPath, ".github", "plugin", "plugin.json"),
@@ -114,8 +108,7 @@ export const copilot: PluginTargetDefinition = {
       owner: project.config.metadata?.owner ?? project.config.metadata?.author,
       plugins,
     }),
-  // Copilot reads the marketplace from both the repo-root .claude-plugin/ and
-  // .github/plugin/ (see github/copilot-plugins) — mirror it at both.
+  // Copilot reads the marketplace from both locations; mirror it at both.
   marketplacePaths: () => [
     path.join(".claude-plugin", "marketplace.json"),
     path.join(".github", "plugin", "marketplace.json"),
@@ -185,16 +178,14 @@ export const copilot: PluginTargetDefinition = {
         continue;
       }
       const pluginDir = path.join(root, entry.source);
-      // .github/plugin/plugin.json is the location real published plugins
-      // use; validate that copy as authoritative and only flag the root
-      // mirror if it's missing or diverges.
+      // .github/plugin/ is the authoritative copy; the root copy is only
+      // checked for presence, not re-parsed.
       const manifest = await readJson(
         path.join(pluginDir, ".github", "plugin", "plugin.json"),
         `${pluginName} plugin manifest`,
         issues,
       );
-      const rootManifestPath = path.join(pluginDir, "plugin.json");
-      if (!(await exists(rootManifestPath))) {
+      if (!(await exists(path.join(pluginDir, "plugin.json")))) {
         error(
           issues,
           `${pluginName}: plugin.json must also be mirrored at the plugin root.`,
@@ -238,9 +229,6 @@ export const copilot: PluginTargetDefinition = {
       verifiedAt: "2026-07-25",
     },
     {
-      // The docs' example trees all show plugin.json at the plugin root; real
-      // published plugins put it at .github/plugin/plugin.json instead. Found
-      // by diffing against two real repos rather than trusting the docs alone.
       claim:
         "real published plugins locate plugin.json at .github/plugin/plugin.json, not the plugin root",
       documentationUrl:
