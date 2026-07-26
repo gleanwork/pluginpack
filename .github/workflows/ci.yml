@@ -26,5 +26,8 @@ jobs:
       - name: Check
         run: npm run check
 
+      - name: Audit production dependencies
+        run: npm run audit
+
       - name: Verify package contents
         run: npm pack --dry-run
