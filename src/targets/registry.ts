@@ -7,13 +7,12 @@ import type { TargetName } from "../types.js";
 import type { PluginTargetDefinition } from "./types.js";
 
 /**
- * Migrated targets, filled in one at a time as each moves off the legacy
- * per-target functions in `../targets.ts` and `../validate.ts` — see
- * `../adapters.ts`, which falls back to those for any target not yet
- * present here. Becomes `Record<TargetName, PluginTargetDefinition>` once
- * every target has an entry, at which point `adapters.ts` can be deleted.
+ * Every target, in one place — `Record<TargetName, …>` is exhaustive at
+ * compile time, so a new `TargetName` won't build until it has an entry
+ * here. `../adapters.ts` builds its emit/validate dispatch, the CLI
+ * `--target` choices, and the set `build()` iterates all from this.
  */
-export const targets: Partial<Record<TargetName, PluginTargetDefinition>> = {
+export const targets: Record<TargetName, PluginTargetDefinition> = {
   copilot,
   antigravity,
   cursor,

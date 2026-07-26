@@ -1,6 +1,7 @@
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "../render.js";
-import { json, toPosix } from "../fs.js";
+import { isSafeRelativePath, json, toPosix } from "../fs.js";
 import { deepMerge, stripUndefined } from "./shared.js";
 import { applyUpdateCheck, pluginAllowsUpdateCheck } from "../update-check.js";
 import type { UpdateCheckFormat } from "../update-check.js";
@@ -17,9 +18,8 @@ import type { PluginTargetDefinition } from "./types.js";
 
 /**
  * Resolves a plugin's component set from its own `components` override, or
- * the target definition's default — decoupled from the legacy global
- * `targetDefaultComponents` table (`../components.ts`) so a migrated
- * target's defaults are owned entirely by its own `PluginTargetDefinition`.
+ * the target definition's default — each target owns its own defaults via
+ * `PluginTargetDefinition.defaultComponents` rather than a shared table.
  */
 function resolveComponents(
   definition: PluginTargetDefinition,
@@ -227,4 +227,45 @@ function artifact(
     files: new Map([...files.entries()].sort(([a], [b]) => a.localeCompare(b))),
     managedPaths,
   };
+}
+
+/**
+ * Emits per-target repo-root files (e.g. a README authored once in the
+ * source repo) into the artifact so they are managed, pruned, and synced
+ * like every other generated file — rather than hand-maintained in each
+ * output repo.
+ */
+export async function withRootFiles(
+  project: ResolvedProject,
+  targetConfig: TargetConfig,
+  result: Artifact,
+): Promise<Artifact> {
+  const rootFiles = targetConfig.rootFiles;
+  if (!rootFiles || Object.keys(rootFiles).length === 0) {
+    return result;
+  }
+  const files = new Map(result.files);
+  for (const [dest, source] of Object.entries(rootFiles)) {
+    const destPath = toPosix(dest);
+    if (!isSafeRelativePath(destPath)) {
+      throw new Error(
+        `Target "${result.target}" rootFiles destination "${dest}" must be a safe relative path.`,
+      );
+    }
+    if (files.has(destPath)) {
+      throw new Error(
+        `Target "${result.target}" rootFiles destination "${dest}" collides with a generated file.`,
+      );
+    }
+    let contents: Buffer;
+    try {
+      contents = await fs.readFile(path.resolve(project.rootDir, source));
+    } catch {
+      throw new Error(
+        `Target "${result.target}" rootFiles source "${source}" could not be read.`,
+      );
+    }
+    files.set(destPath, contents);
+  }
+  return artifact(result.target, result.outDir, files);
 }
