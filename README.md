@@ -481,7 +481,7 @@ Exit codes:
 Compile configured source plugins into target-native plugin payloads.
 
 ```bash
-pluginpack build [--target cursor|claude|antigravity|copilot|codex] [--out-dir <path>] [--dry-run]
+pluginpack build [--target copilot|antigravity|cursor|claude|codex] [--out-dir <path>] [--dry-run]
 ```
 
 Options:
@@ -506,7 +506,7 @@ Exit codes:
 Validate an existing target output directory for native manifest, path, and frontmatter requirements.
 
 ```bash
-pluginpack validate --target cursor|claude|antigravity|copilot|codex [--dir <path>]
+pluginpack validate --target copilot|antigravity|cursor|claude|codex [--dir <path>]
 ```
 
 Options:
@@ -528,7 +528,7 @@ Exit codes:
 Build into a temporary directory and compare generated managed files with an existing target repo.
 
 ```bash
-pluginpack diff --target cursor|claude|antigravity|copilot|codex --against <path>
+pluginpack diff --target copilot|antigravity|cursor|claude|codex --against <path>
 ```
 
 Options:
@@ -550,7 +550,7 @@ Exit codes:
 Remove stale managed files that are no longer emitted by the current config.
 
 ```bash
-pluginpack prune [--target cursor|claude|antigravity|copilot|codex] [--dry-run]
+pluginpack prune [--target copilot|antigravity|cursor|claude|codex] [--dry-run]
 ```
 
 Options:
@@ -574,7 +574,7 @@ Exit codes:
 Remove all managed files for configured target outputs.
 
 ```bash
-pluginpack clean [--target cursor|claude|antigravity|copilot|codex] [--dry-run]
+pluginpack clean [--target copilot|antigravity|cursor|claude|codex] [--dry-run]
 ```
 
 Options:

@@ -8,6 +8,7 @@ import {
   toPosix,
   walkFiles,
 } from "../fs.js";
+import { UPDATE_CHECK_SCRIPT_PATH } from "../update-check.js";
 import type { TargetName, ValidationIssue } from "../types.js";
 
 export const marketplaceNamePattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
@@ -120,7 +121,10 @@ export function validateMarketplaceBasics(
 /**
  * Validates a hooks file's shape at `hooksRelativePath` — parameterized by
  * path rather than a hardcoded location, since a target may relocate hooks
- * to somewhere other than `hooks/hooks.json` (e.g. a root-level file).
+ * to somewhere other than `hooks/hooks.json` (e.g. a root-level file). Also
+ * checks that any command referencing the generated update-check script
+ * (`UPDATE_CHECK_SCRIPT_PATH`) actually ships it, since that hook is
+ * injected separately from the plugin's own authored hooks.
  */
 export async function validateHooksShape(
   pluginDir: string,
@@ -133,12 +137,65 @@ export async function validateHooksShape(
     return;
   }
   const hooks = await readJson(hooksFile, `${pluginName} hooks`, issues);
-  if (hooks && (!hooks.hooks || typeof hooks.hooks !== "object")) {
+  if (!hooks) {
+    return;
+  }
+  if (
+    !hooks.hooks ||
+    typeof hooks.hooks !== "object" ||
+    Array.isArray(hooks.hooks)
+  ) {
     error(
       issues,
       `${pluginName}: ${hooksRelativePath} must have a "hooks" object.`,
     );
+    return;
   }
+  for (const [event, entries] of Object.entries(
+    hooks.hooks as Record<string, unknown>,
+  )) {
+    if (!Array.isArray(entries)) {
+      error(
+        issues,
+        `${pluginName}: ${hooksRelativePath} "hooks.${event}" must be an array.`,
+      );
+    }
+  }
+  for (const command of extractCommandStrings(hooks.hooks)) {
+    if (!command) {
+      error(
+        issues,
+        `${pluginName}: ${hooksRelativePath} has an empty "command" string.`,
+      );
+      continue;
+    }
+    if (
+      command.includes(UPDATE_CHECK_SCRIPT_PATH) &&
+      !(await exists(path.join(pluginDir, UPDATE_CHECK_SCRIPT_PATH)))
+    ) {
+      error(
+        issues,
+        `${pluginName}: ${hooksRelativePath} references ${UPDATE_CHECK_SCRIPT_PATH} but the script is missing.`,
+      );
+    }
+  }
+}
+
+/**
+ * All string values under a "command" key, at any depth (Claude nests
+ * command entries under matcher groups; Cursor keeps them at the event
+ * level).
+ */
+function extractCommandStrings(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(extractCommandStrings);
+  }
+  if (value && typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    const own = typeof object.command === "string" ? [object.command] : [];
+    return [...own, ...Object.values(object).flatMap(extractCommandStrings)];
+  }
+  return [];
 }
 
 /** Validates that manifest fields referencing paths point at files that exist. */

@@ -90,6 +90,12 @@ cursor manifest's `hooks` key validates against the vendored plugin schema, and
 `claude plugin validate --strict` exercises the claude hooks file when the CLI
 is present).
 
+Every target's `validateOutput` shares one `validateHooksShape`
+(`src/targets/validation-shared.ts`) for the parts of a hooks file that are
+target-agnostic: each event's entries must be an array, no `command` string
+may be empty, and any command referencing the generated update-check script
+(`scripts/pluginpack-update-check.sh`) must ship that script.
+
 ## Refreshing vendored schemas
 
 The Cursor schemas are pinned copies. To update them, re-fetch from the source

@@ -21,10 +21,11 @@ export type UpdateCheckOptions = {
 
 /**
  * The per-plugin opt-out gate, shared by both call sites that decide whether
- * this plugin gets the generated hook (file injection in `emitPlugins`, and
- * the manifest's `hooks` pointer in `emitCursor`) — callers still check
- * their own target-level `updateCheck` presence first, for type-narrowing
- * convenience.
+ * this plugin gets the generated hook (file injection in
+ * `src/targets/engine.ts`'s `emitFromDefinition`, and each target's own
+ * `buildPluginManifest` for the manifest's `hooks` pointer) — callers still
+ * check their own target-level `updateCheck` presence first, for
+ * type-narrowing convenience.
  */
 export function pluginAllowsUpdateCheck(
   pluginConfig: Pick<EmittedPluginConfig, "updateCheck">,
