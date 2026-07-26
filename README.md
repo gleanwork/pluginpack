@@ -293,6 +293,30 @@ Each target wires that MCP config into its native shape:
 | `copilot`     | ships `.mcp.json`, referenced from the marketplace entry |
 | `antigravity` | writes `mcp_config.json` beside `plugin.json`            |
 
+## Update Check (claude, cursor)
+
+Hosts don't reliably tell users a plugin is outdated (Claude Code's auto-update is off by default for third-party marketplaces; Cursor has no nudge at all). Opt in per target with `updateCheck` and pluginpack generates a session-start hook into each emitted plugin:
+
+```ts
+targets: {
+  claude: { outDir: "...", updateCheck: {}, plugins: { ... } },
+  cursor: { outDir: "...", updateCheck: {}, plugins: { ... } },
+}
+```
+
+Each emitted plugin gains `scripts/pluginpack-update-check.sh` plus a `hooks/hooks.json` registration (merged into a source-authored `hooks/hooks.json` when one exists). At session start the script compares the version stamped at build time against the latest stable semver git tag of the plugin repo and, when behind, nudges: on `claude` via a user-visible `systemMessage` (with the `/plugin update` command to run); on `cursor` via agent context (Cursor's `sessionStart` hook has no user-visible output).
+
+The check follows update-notifier discipline:
+
+- The repo URL comes from `updateCheck.repository`, defaulting to `metadata.repository` (an error if neither is set).
+- At most one `git ls-remote` per repo per 24h, cached under `${XDG_CACHE_HOME:-~/.cache}/pluginpack/` and shared across plugins from the same repo.
+- Fail-open: offline, missing `git`, odd tags, or any other problem exits silently.
+- Skipped entirely when `CI` is set or `PLUGINPACK_NO_UPDATE_CHECK=1`.
+
+Disable for a single plugin with `updateCheck: false` on that plugin. Configuring `updateCheck` on `copilot`, `antigravity`, or `codex` is a config error — those hosts don't run plugin hooks.
+
+Like MCP config, the generated hook is wired in regardless of a plugin's `components` selection: on `cursor`, the manifest's `hooks` field is set even if `components` doesn't include `"hooks"`, since the check itself is a separate opt-in from which source-authored component dirs get emitted.
+
 ## Target Overrides
 
 Skill files are not always perfectly portable. When one app needs different frontmatter or content, add a target override next to the base file:
@@ -371,16 +395,17 @@ To publish a repo-root file (for example a README authored once in the source re
 
 **`targets.<name>`** — `<name>` is one of `cursor`, `claude`, `antigravity`, `copilot`, `codex`.
 
-| Field              | Type                   | Required | Meaning                                                                                  |
-| ------------------ | ---------------------- | -------- | ---------------------------------------------------------------------------------------- |
-| `outDir`           | string                 | yes      | Output directory for this target, relative to the config root.                           |
-| `plugins`          | record                 | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**). |
-| `marketplaceDir`   | string (safe relative) | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).            |
-| `pluginRoot`       | string (safe relative) | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                          |
-| `version`          | string                 | no       | Override the version for this target (defaults to top-level `version`).                  |
-| `manifest`         | object                 | no       | Deep-merged into the generated marketplace manifest.                                     |
-| `ignoredDiffPaths` | string[]               | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).          |
-| `rootFiles`        | record (safe relative) | no       | Map of output path → source path emitted verbatim at the output root.                    |
+| Field              | Type                   | Required | Meaning                                                                                    |
+| ------------------ | ---------------------- | -------- | ------------------------------------------------------------------------------------------ |
+| `outDir`           | string                 | yes      | Output directory for this target, relative to the config root.                             |
+| `plugins`          | record                 | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).   |
+| `marketplaceDir`   | string (safe relative) | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).              |
+| `pluginRoot`       | string (safe relative) | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                            |
+| `version`          | string                 | no       | Override the version for this target (defaults to top-level `version`).                    |
+| `manifest`         | object                 | no       | Deep-merged into the generated marketplace manifest.                                       |
+| `ignoredDiffPaths` | string[]               | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).            |
+| `rootFiles`        | record (safe relative) | no       | Map of output path → source path emitted verbatim at the output root.                      |
+| `updateCheck`      | `{ repository? }`      | no       | Generate a session-start update-check hook (`claude`/`cursor` only; see **Update Check**). |
 
 **`targets.<name>.plugins.<name>`**
 
@@ -394,6 +419,7 @@ To publish a repo-root file (for example a README authored once in the source re
 | `manifest`    | object                 | no       | Deep-merged into the generated plugin manifest.                                                                                                                                                  |
 | `entry`       | object                 | no       | Deep-merged into the generated marketplace entry (the object in the marketplace `plugins` array). Use for target-specific entry fields pluginpack can't derive — e.g. Codex `policy`/`category`. |
 | `components`  | string[]               | no       | Exact component set, overriding the target's smart default.                                                                                                                                      |
+| `updateCheck` | `false`                | no       | Opt this plugin out of the target's update-check hook.                                                                                                                                           |
 
 ## Programmatic API
 

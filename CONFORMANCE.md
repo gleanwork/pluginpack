@@ -57,6 +57,29 @@ skills }`) and optional `.mcp.json`. No published JSON Schema exists; the test
   the marketplace entry. Codex shares no marketplace path with the other targets,
   so it needs no separate output root.
 
+## Update-check hook facts
+
+The generated update-check hook (`updateCheck` config, claude/cursor targets)
+relies on two upstream hook behaviors that have no referenceable schema. Both
+were verified against product docs on 2026-07-22:
+
+- **Claude Code** — a `SessionStart` hook may print JSON whose top-level
+  `systemMessage` field is shown directly to the user (separate from model
+  context), and plugin hooks are auto-discovered from `hooks/hooks.json` with
+  `${CLAUDE_PLUGIN_ROOT}` substituted in commands.
+  Source: <https://code.claude.com/docs/en/hooks>.
+- **Cursor** — the `sessionStart` hook supports only `additional_context`
+  (injected into the agent's context); there is no user-visible message field,
+  so the cursor nudge asks the agent to relay it. Plugin hooks live in a
+  `hooks.json` (`{ "version": 1, "hooks": { "sessionStart": [...] } }`)
+  referenced from the plugin manifest, with commands relative to the plugin
+  root. Source: <https://cursor.com/docs/agent/hooks>.
+
+The emitted `hooks/hooks.json` shapes are covered by the conformance suite (the
+cursor manifest's `hooks` key validates against the vendored plugin schema, and
+`claude plugin validate --strict` exercises the claude hooks file when the CLI
+is present).
+
 ## Refreshing vendored schemas
 
 The Cursor schemas are pinned copies. To update them, re-fetch from the source

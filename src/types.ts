@@ -6,6 +6,7 @@ import type {
   TargetConfig,
   PluginpackConfig,
   SourcePluginManifest,
+  UpdateCheckConfig,
 } from "./schema.js";
 
 export type {
@@ -16,6 +17,7 @@ export type {
   TargetConfig,
   PluginpackConfig,
   SourcePluginManifest,
+  UpdateCheckConfig,
 };
 
 export type TargetName =

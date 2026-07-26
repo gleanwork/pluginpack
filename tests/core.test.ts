@@ -721,6 +721,288 @@ export default defineConfig({
     );
   });
 
+  it("generates the update-check hook for claude and cursor", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "uc-plugins",
+  version: "1.0.0",
+  metadata: {
+    description: "UC",
+    author: { name: "X" },
+    license: "MIT",
+    repository: "https://github.com/example/uc-plugins"
+  },
+  targets: {
+    cursor: {
+      outDir: "dist/cursor",
+      updateCheck: {},
+      plugins: {
+        demo: { from: ["demo"] },
+        optout: { from: ["demo"], updateCheck: false }
+      }
+    },
+    claude: {
+      outDir: "dist/claude",
+      updateCheck: { repository: "https://github.com/example/claude-repo" },
+      plugins: { demo: { from: ["demo"], version: "3.0.0" } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md": skill("demo", "Demo skill."),
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root });
+
+    // cursor: script + hooks.json + manifest pointer, repo from metadata.
+    const cursorScript = await readFile(
+      path.join(root, "dist/cursor/demo/scripts/pluginpack-update-check.sh"),
+      "utf8",
+    );
+    expect(cursorScript).toContain("INSTALLED='1.0.0'");
+    expect(cursorScript).toContain(
+      "REPO_URL='https://github.com/example/uc-plugins'",
+    );
+    expect(cursorScript).toContain("additional_context");
+    const cursorHooks = JSON.parse(
+      await readFile(
+        path.join(root, "dist/cursor/demo/hooks/hooks.json"),
+        "utf8",
+      ),
+    ) as {
+      version: number;
+      hooks: { sessionStart: { command: string; timeout: number }[] };
+    };
+    expect(cursorHooks.version).toBe(1);
+    expect(cursorHooks.hooks.sessionStart).toEqual([
+      { command: "sh ./scripts/pluginpack-update-check.sh", timeout: 15 },
+    ]);
+    const cursorManifest = JSON.parse(
+      await readFile(
+        path.join(root, "dist/cursor/demo/.cursor-plugin/plugin.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(cursorManifest.hooks).toBe("./hooks/");
+
+    // per-plugin opt-out gets no injected files.
+    await expectMissing(
+      path.join(root, "dist/cursor/optout/scripts/pluginpack-update-check.sh"),
+    );
+    await expectMissing(path.join(root, "dist/cursor/optout/hooks/hooks.json"));
+
+    // claude: per-plugin version and per-target repository win; user-visible
+    // systemMessage nudge; command routes through CLAUDE_PLUGIN_ROOT.
+    const claudeScript = await readFile(
+      path.join(
+        root,
+        "dist/claude/plugins/demo/scripts/pluginpack-update-check.sh",
+      ),
+      "utf8",
+    );
+    expect(claudeScript).toContain("INSTALLED='3.0.0'");
+    expect(claudeScript).toContain(
+      "REPO_URL='https://github.com/example/claude-repo'",
+    );
+    expect(claudeScript).toContain("systemMessage");
+    const claudeHooks = JSON.parse(
+      await readFile(
+        path.join(root, "dist/claude/plugins/demo/hooks/hooks.json"),
+        "utf8",
+      ),
+    ) as {
+      hooks: {
+        SessionStart: {
+          matcher: string;
+          hooks: { type: string; command: string; timeout: number }[];
+        }[];
+      };
+    };
+    expect(claudeHooks.hooks.SessionStart).toEqual([
+      {
+        matcher: "startup|resume",
+        hooks: [
+          {
+            type: "command",
+            command:
+              'sh "${CLAUDE_PLUGIN_ROOT}/scripts/pluginpack-update-check.sh"',
+            timeout: 15,
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      validateOutput("cursor", path.join(root, "dist/cursor")),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      validateOutput("claude", path.join(root, "dist/claude")),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("merges the update-check hook into a source-authored hooks.json", async () => {
+    const existingHooks = {
+      description: "Source hooks",
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: "Bash",
+            hooks: [{ type: "command", command: "echo post" }],
+          },
+        ],
+        SessionStart: [{ hooks: [{ type: "command", command: "echo start" }] }],
+      },
+    };
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "uc-merge",
+  version: "1.0.0",
+  metadata: {
+    description: "UC",
+    author: { name: "X" },
+    license: "MIT",
+    repository: "https://github.com/example/uc-merge"
+  },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      updateCheck: {},
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          hooks: {
+            "hooks.json": `${JSON.stringify(existingHooks, null, 2)}\n`,
+          },
+          skills: {
+            demo: {
+              "SKILL.md": skill("demo", "Demo skill."),
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const merged = JSON.parse(
+      await readFile(
+        path.join(root, "dist/claude/plugins/demo/hooks/hooks.json"),
+        "utf8",
+      ),
+    ) as {
+      description: string;
+      hooks: {
+        PostToolUse: unknown[];
+        SessionStart: { hooks: { command: string }[] }[];
+      };
+    };
+    expect(merged.description).toBe("Source hooks");
+    expect(merged.hooks.PostToolUse).toEqual(existingHooks.hooks.PostToolUse);
+    expect(merged.hooks.SessionStart).toHaveLength(2);
+    expect(merged.hooks.SessionStart[0]).toEqual(
+      existingHooks.hooks.SessionStart[0],
+    );
+    expect(merged.hooks.SessionStart[1].hooks[0].command).toContain(
+      "pluginpack-update-check.sh",
+    );
+  });
+
+  it("rejects update-check conflicts and unsupported configurations", async () => {
+    const configFor = (
+      targets: string,
+    ) => `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "uc-bad",
+  version: "1.0.0",
+  metadata: { description: "UC", author: { name: "X" }, license: "MIT" },
+  targets: { ${targets} }
+});
+`;
+    const demoPlugin = {
+      skills: {
+        demo: {
+          "SKILL.md": skill("demo", "Demo skill."),
+        },
+      },
+    };
+
+    // updateCheck on a target without hook support fails at config load.
+    let project = await fixtureProject({
+      "pluginpack.config.ts": configFor(
+        `copilot: { outDir: "dist/copilot", updateCheck: {}, plugins: { demo: { from: ["demo"] } } }`,
+      ),
+      plugins: { demo: demoPlugin },
+    });
+    await expect(build({ cwd: project.baseDir })).rejects.toThrow(
+      /only supported for the claude and cursor targets/,
+    );
+
+    // No repository anywhere → build fails fast.
+    await project.dispose();
+    project = await fixtureProject({
+      "pluginpack.config.ts": configFor(
+        `claude: { outDir: "dist/claude", updateCheck: {}, plugins: { demo: { from: ["demo"] } } }`,
+      ),
+      plugins: { demo: demoPlugin },
+    });
+    await expect(build({ cwd: project.baseDir })).rejects.toThrow(
+      /updateCheck requires a repository/,
+    );
+
+    // A source plugin shipping the reserved script path collides.
+    await project.dispose();
+    project = await fixtureProject({
+      "pluginpack.config.ts": configFor(
+        `claude: { outDir: "dist/claude", updateCheck: { repository: "https://github.com/example/r" }, plugins: { demo: { from: ["demo"] } } }`,
+      ),
+      plugins: {
+        demo: {
+          ...demoPlugin,
+          scripts: { "pluginpack-update-check.sh": "#!/bin/sh\n" },
+        },
+      },
+    });
+    await expect(build({ cwd: project.baseDir })).rejects.toThrow(
+      /collides with the generated update-check script/,
+    );
+
+    // Invalid source hooks.json fails loud at build time.
+    await project.dispose();
+    project = await fixtureProject({
+      "pluginpack.config.ts": configFor(
+        `claude: { outDir: "dist/claude", updateCheck: { repository: "https://github.com/example/r" }, plugins: { demo: { from: ["demo"] } } }`,
+      ),
+      plugins: {
+        demo: {
+          ...demoPlugin,
+          hooks: { "hooks.json": "{ not json" },
+        },
+      },
+    });
+    await expect(build({ cwd: project.baseDir })).rejects.toThrow(
+      /invalid "hooks\/hooks\.json" \(not valid JSON\)/,
+    );
+  });
+
   it("detects cross-target output path collisions", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
