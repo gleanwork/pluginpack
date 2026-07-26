@@ -366,6 +366,97 @@ export default defineConfig({
     ).resolves.toMatchObject({ ok: true });
   });
 
+  it("keeps displayName/category/tags in cursor's plugin.json (valid per the vendored plugin.schema.json, not marketplace-entry-only fields)", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "cursor-manifest-fields",
+  version: "1.0.0",
+  metadata: {
+    description: "Cursor",
+    author: { name: "X" },
+    license: "MIT",
+    category: "Developer Tools",
+    tags: ["demo", "example"]
+  },
+  targets: {
+    cursor: {
+      outDir: "dist/cursor",
+      plugins: { demo: { from: ["demo"], displayName: "Demo Plugin" } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "cursor" });
+
+    const manifest = JSON.parse(
+      await readFile(
+        path.join(root, "dist/cursor/demo/.cursor-plugin/plugin.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(manifest).toMatchObject({
+      displayName: "Demo Plugin",
+      category: "Developer Tools",
+      tags: ["demo", "example"],
+    });
+
+    await expect(
+      validateOutput("cursor", path.join(root, "dist/cursor")),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("points cursor's manifest at commands/ when a plugin explicitly opts into that component", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "cursor-commands-plugins",
+  version: "1.0.0",
+  metadata: { description: "Cursor", author: { name: "X" }, license: "MIT" },
+  targets: {
+    cursor: {
+      outDir: "dist/cursor",
+      plugins: {
+        demo: { from: ["demo"], components: ["skills", "commands"] }
+      }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+          commands: { "review.md": command("review", "Review command.") },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "cursor" });
+
+    const manifest = JSON.parse(
+      await readFile(
+        path.join(root, "dist/cursor/demo/.cursor-plugin/plugin.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(manifest.commands).toBe("./commands/");
+
+    await expect(
+      validateOutput("cursor", path.join(root, "dist/cursor")),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("uses target-specific file overrides", async () => {
     const project = await fixture();
     const root = project.baseDir;

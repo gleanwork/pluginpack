@@ -98,7 +98,7 @@ export type PluginTargetDefinition = {
 
   buildPluginManifest: (ctx: ManifestBuildContext) => Record<string, unknown>;
   /** Output-relative paths the plugin manifest is written to (may be more than one). */
-  manifestPaths: (pluginPath: string) => string[];
+  manifestPaths: (pluginPath: string, targetConfig: TargetConfig) => string[];
 
   /** Return `undefined` for a target with no marketplace-entry concept. */
   buildMarketplaceEntry: (
@@ -108,7 +108,7 @@ export type PluginTargetDefinition = {
     ctx: MarketplaceManifestContext,
   ) => Record<string, unknown>;
   /** Output-relative paths the marketplace manifest is written to (may be more than one). */
-  marketplacePaths: () => string[];
+  marketplacePaths: (targetConfig: TargetConfig) => string[];
 
   /** Return `undefined` for a target with no bundled-MCP-config file convention. */
   mcpConfigPath: (pluginPath: string) => string | undefined;
