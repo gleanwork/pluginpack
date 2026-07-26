@@ -1468,6 +1468,59 @@ export default defineConfig({
     ).resolves.toMatchObject({ ok: true });
   });
 
+  it("catches a hooks.json command that references the generated update-check script once that script is removed", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "uc-missing-script",
+  version: "1.0.0",
+  metadata: {
+    description: "UC",
+    author: { name: "UC" },
+    license: "MIT",
+    repository: "https://github.com/example/uc-plugins"
+  },
+  targets: {
+    cursor: {
+      outDir: "dist/cursor",
+      updateCheck: {},
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "cursor" });
+    await expect(
+      validateOutput("cursor", path.join(root, "dist/cursor")),
+    ).resolves.toMatchObject({ ok: true });
+
+    await rm(
+      path.join(root, "dist/cursor/demo/scripts/pluginpack-update-check.sh"),
+    );
+
+    const result = await validateOutput(
+      "cursor",
+      path.join(root, "dist/cursor"),
+    );
+    expect(result.ok).toBe(false);
+    expect(
+      result.issues.some((issue) =>
+        issue.message.includes(
+          "references scripts/pluginpack-update-check.sh but the script is missing",
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it("merges the update-check hook into a source-authored hooks.json", async () => {
     const existingHooks = {
       description: "Source hooks",
