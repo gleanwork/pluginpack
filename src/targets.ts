@@ -469,7 +469,11 @@ export async function emitCopilot(
   return artifact(target, outDir, files);
 }
 
-/** Emits the Codex target's plugins and marketplace manifest. */
+/**
+ * @deprecated Legacy emitter, superseded by `src/targets/codex.ts` via the
+ * registry in `src/targets/registry.ts`. Kept only until every target has
+ * migrated (see `src/adapters.ts`).
+ */
 export async function emitCodex(
   project: ResolvedProject,
   target: TargetName,
