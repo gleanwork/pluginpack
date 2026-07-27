@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { componentDirs, staticFiles } from "./components.js";
-import { exists, toPosix, walkFiles } from "./fs.js";
+import { exists, isSafeRelativePath, toPosix, walkFiles } from "./fs.js";
 import type {
   FileValue,
   SourcePlugin,
@@ -21,8 +21,8 @@ export function createFilesystemSourceProvider(
   return {
     readPluginFiles: (pluginId, target) =>
       readPluginFiles(pluginOrThrow(plugins, pluginId), target),
-    readMcpServers: (pluginId) =>
-      readMcpServers(pluginOrThrow(plugins, pluginId)),
+    readMcpServers: (pluginId, target) =>
+      readMcpServers(pluginOrThrow(plugins, pluginId), target),
   };
 }
 
@@ -72,6 +72,37 @@ async function readPluginFiles(
       files.set(fileName, await fs.readFile(resolved));
     }
   }
+
+  // Arbitrary files the source plugin declares in plugin.pluginpack.json
+  // (e.g. a bundled server, launcher, or a package.json). Emitted verbatim at
+  // the plugin root, with target overrides on the source path.
+  const declaredFiles = plugin.manifest.files;
+  if (declaredFiles) {
+    for (const [dest, source] of Object.entries(declaredFiles)) {
+      const destPath = toPosix(dest);
+      if (!isSafeRelativePath(destPath)) {
+        throw new Error(
+          `Source plugin "${plugin.id}" files destination "${dest}" must be a safe relative path.`,
+        );
+      }
+      if (files.has(destPath)) {
+        throw new Error(
+          `Source plugin "${plugin.id}" files destination "${dest}" collides with another emitted file.`,
+        );
+      }
+      const resolved = await resolveTargetOverride(
+        plugin.dir,
+        path.resolve(plugin.dir, source),
+        target,
+      );
+      if (!(await exists(resolved))) {
+        throw new Error(
+          `Source plugin "${plugin.id}" files source "${source}" could not be read.`,
+        );
+      }
+      files.set(destPath, await fs.readFile(resolved));
+    }
+  }
   return files;
 }
 
@@ -103,18 +134,26 @@ async function resolveTargetOverride(
 
 // A source plugin declares MCP servers via a .mcp.json file (standard
 // { mcpServers: {...} } shape) or an mcpServers key in plugin.pluginpack.json.
-// The file takes precedence when both are present.
+// The file takes precedence when both are present. The file form supports
+// per-target overrides: targets/<host>/.mcp.json wins for that host. The
+// manifest form has no per-file override; authors who need per-target MCP
+// config should use the .mcp.json file form.
 async function readMcpServers(
   plugin: SourcePlugin,
+  target: TargetName,
 ): Promise<Record<string, unknown> | undefined> {
-  const filePath = path.join(plugin.dir, ".mcp.json");
-  if (await exists(filePath)) {
+  const resolved = await resolveTargetOverride(
+    plugin.dir,
+    path.join(plugin.dir, ".mcp.json"),
+    target,
+  );
+  if (await exists(resolved)) {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(await fs.readFile(filePath, "utf8"));
+      parsed = JSON.parse(await fs.readFile(resolved, "utf8"));
     } catch (error) {
       throw new Error(
-        `Invalid JSON in ${filePath}: ${(error as Error).message}`,
+        `Invalid JSON in ${resolved}: ${(error as Error).message}`,
         { cause: error },
       );
     }

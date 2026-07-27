@@ -124,6 +124,11 @@ const sourcePluginManifestSchema = metadataSchema.extend({
   name: z.string().optional(),
   description: z.string().optional(),
   mcpServers: z.record(z.string(), z.unknown()).optional(),
+  // Arbitrary files emitted verbatim at the emitted plugin's root, in addition
+  // to its component and static files. Map of destination (plugin-root
+  // relative) -> source (source-plugin relative). Supports target overrides:
+  // a targets/<host>/<source> file wins for that host.
+  files: z.record(safeRelativePath, safeRelativePath).optional(),
 });
 
 export { configSchema, sourcePluginManifestSchema };

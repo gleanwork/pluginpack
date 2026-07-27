@@ -35,6 +35,7 @@ export async function collectPluginFiles(
 export async function resolveMcpServers(
   project: ResolvedProject,
   sourceIds: string[],
+  target: TargetName,
 ): Promise<Record<string, unknown> | undefined> {
   const merged: Record<string, unknown> = {};
   let found = false;
@@ -42,7 +43,7 @@ export async function resolveMcpServers(
     if (!project.plugins.has(sourceId)) {
       continue;
     }
-    const servers = await project.source.readMcpServers(sourceId);
+    const servers = await project.source.readMcpServers(sourceId, target);
     if (!servers) {
       continue;
     }
