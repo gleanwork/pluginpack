@@ -240,6 +240,7 @@ export function applyUpdateCheck(
       `Target "${target}" plugin "${options.pluginName}" has an invalid ` +
         `"${HOOKS_FILE_PATH}" (${error instanceof Error ? error.message : String(error)}); ` +
         `cannot merge the generated update-check hook.`,
+      { cause: error },
     );
   }
   pluginFiles.set(HOOKS_FILE_PATH, merged);

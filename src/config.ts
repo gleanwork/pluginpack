@@ -169,7 +169,9 @@ async function readSourceManifest(
     ) as SourcePluginManifest;
   } catch (error) {
     if (error instanceof SyntaxError) {
-      throw new Error(`Invalid JSON in ${filePath}: ${error.message}`);
+      throw new Error(`Invalid JSON in ${filePath}: ${error.message}`, {
+        cause: error,
+      });
     }
     throw error;
   }
