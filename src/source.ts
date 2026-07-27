@@ -115,6 +115,7 @@ async function readMcpServers(
     } catch (error) {
       throw new Error(
         `Invalid JSON in ${filePath}: ${(error as Error).message}`,
+        { cause: error },
       );
     }
     const servers = (parsed as { mcpServers?: unknown }).mcpServers;
