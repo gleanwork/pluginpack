@@ -1338,6 +1338,199 @@ export default defineConfig({
     );
   });
 
+  it("overrides MCP config per target from targets/<host>/.mcp.json", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "mcp-override-plugins",
+  version: "1.0.0",
+  metadata: { description: "MCP override", author: { name: "X" }, license: "MIT" },
+  targets: {
+    cursor: { outDir: "dist/cursor", plugins: { filed: { from: ["filed"], components: ["skills"] } } },
+    claude: { outDir: "dist/claude", plugins: { filed: { from: ["filed"] } } }
+  }
+});
+`,
+      plugins: {
+        filed: {
+          ".mcp.json": `${JSON.stringify(
+            { mcpServers: { glean: { command: "node", args: ["start.mjs"] } } },
+            null,
+            2,
+          )}\n`,
+          targets: {
+            cursor: {
+              ".mcp.json": `${JSON.stringify(
+                {
+                  mcpServers: {
+                    "glean-local": {
+                      command: "node",
+                      args: ["./start.mjs"],
+                      cwd: ".",
+                    },
+                  },
+                },
+                null,
+                2,
+              )}\n`,
+            },
+          },
+          skills: { s1: { "SKILL.md": skill("s1", "S1.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root });
+
+    // cursor picks up the target override (different server name + args)
+    const cursorMcp = JSON.parse(
+      await readFile(path.join(root, "dist/cursor/filed/.mcp.json"), "utf8"),
+    ) as { mcpServers: Record<string, unknown> };
+    expect(cursorMcp.mcpServers).toMatchObject({
+      "glean-local": { command: "node", args: ["./start.mjs"], cwd: "." },
+    });
+    expect(cursorMcp.mcpServers).not.toHaveProperty("glean");
+
+    // claude keeps the base .mcp.json (no override present for claude)
+    const claudeMcp = JSON.parse(
+      await readFile(
+        path.join(root, "dist/claude/plugins/filed/.mcp.json"),
+        "utf8",
+      ),
+    ) as { mcpServers: Record<string, unknown> };
+    expect(claudeMcp.mcpServers).toMatchObject({
+      glean: { command: "node", args: ["start.mjs"] },
+    });
+    expect(claudeMcp.mcpServers).not.toHaveProperty("glean-local");
+  });
+
+  it("emits arbitrary plugin-root files declared in plugin.pluginpack.json", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "files-plugins",
+  version: "1.0.0",
+  metadata: { description: "Files", author: { name: "X" }, license: "MIT" },
+  targets: {
+    cursor: { outDir: "dist/cursor", plugins: { srv: { from: ["srv"], components: ["skills"] } } },
+    claude: { outDir: "dist/claude", plugins: { srv: { from: ["srv"] } } }
+  }
+});
+`,
+      plugins: {
+        srv: {
+          "plugin.pluginpack.json": `${JSON.stringify({
+            additionalFiles: {
+              "dist/index.js": "dist/index.js",
+              "start.mjs": "start.mjs",
+              "package.json": "package.json",
+            },
+          })}\n`,
+          "start.mjs": "import './dist/index.js';\n",
+          "package.json": `{ "name": "srv", "type": "module" }\n`,
+          dist: { "index.js": "console.log('bundle');\n" },
+          targets: {
+            cursor: { "start.mjs": "import './dist/index.js'; // cursor\n" },
+          },
+          skills: { s1: { "SKILL.md": skill("s1", "S1.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root });
+
+    // cursor plugin root carries the declared files verbatim
+    await expect(
+      readFile(path.join(root, "dist/cursor/srv/dist/index.js"), "utf8"),
+    ).resolves.toContain("bundle");
+    await expect(
+      readFile(path.join(root, "dist/cursor/srv/package.json"), "utf8"),
+    ).resolves.toContain('"type": "module"');
+    // target override applies to a declared file's source
+    await expect(
+      readFile(path.join(root, "dist/cursor/srv/start.mjs"), "utf8"),
+    ).resolves.toContain("// cursor");
+
+    // claude keeps the base start.mjs (no override)
+    await expect(
+      readFile(path.join(root, "dist/claude/plugins/srv/start.mjs"), "utf8"),
+    ).resolves.not.toContain("// cursor");
+
+    // declared files are managed (tracked in the managed manifest)
+    const manifest = JSON.parse(
+      await readFile(
+        path.join(root, "dist/cursor/.pluginpack/cursor.json"),
+        "utf8",
+      ),
+    ) as { files: string[] };
+    expect(manifest.files).toContain("srv/dist/index.js");
+    expect(manifest.files).toContain("srv/package.json");
+    expect(manifest.files).toContain("srv/start.mjs");
+  });
+
+  it("rejects a plugin-root files destination that collides with a component file", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "files-collide-plugins",
+  version: "1.0.0",
+  metadata: { description: "Collide", author: { name: "X" }, license: "MIT" },
+  targets: {
+    claude: { outDir: "dist/claude", plugins: { srv: { from: ["srv"] } } }
+  }
+});
+`,
+      plugins: {
+        srv: {
+          "plugin.pluginpack.json": `${JSON.stringify({
+            additionalFiles: { "skills/s1/SKILL.md": "extra.md" },
+          })}\n`,
+          "extra.md": "# extra\n",
+          skills: { s1: { "SKILL.md": skill("s1", "S1.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
+      /additionalFiles destination "skills\/s1\/SKILL.md" collides with another emitted file/,
+    );
+  });
+
+  it("rejects a plugin-root files source that cannot be read", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "files-missing-plugins",
+  version: "1.0.0",
+  metadata: { description: "Missing", author: { name: "X" }, license: "MIT" },
+  targets: {
+    claude: { outDir: "dist/claude", plugins: { srv: { from: ["srv"] } } }
+  }
+});
+`,
+      plugins: {
+        srv: {
+          "plugin.pluginpack.json": `${JSON.stringify({
+            additionalFiles: { "start.mjs": "start.mjs" },
+          })}\n`,
+          skills: { s1: { "SKILL.md": skill("s1", "S1.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
+      /additionalFiles source "start.mjs" could not be read/,
+    );
+  });
+
   it("generates the update-check hook for claude and cursor", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";

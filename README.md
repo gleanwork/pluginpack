@@ -283,6 +283,8 @@ A target can emit a source plugin directly, rename it, or merge multiple source 
 
 A source plugin declares MCP servers with a standard `.mcp.json` file at its root (`{ "mcpServers": { "name": { ... } } }`), or with an `mcpServers` key in `plugin.pluginpack.json`. The file wins if both are present, and merging plugins with the same server name is an error.
 
+The `.mcp.json` file form supports per-target overrides: a `targets/<host>/.mcp.json` file next to the base wins for that host only. This lets one source ship different server definitions per app (for example, a `${CLAUDE_PLUGIN_ROOT}/start.mjs` invocation for Claude and a `cwd: "."` + `./start.mjs` invocation for Codex). The manifest (`mcpServers` in `plugin.pluginpack.json`) form has no per-file override — authors who need per-target MCP config should use the file form.
+
 Each target wires that MCP config into its native shape:
 
 | Target        | How MCP is wired                                         |
@@ -338,7 +340,23 @@ skills/release-notes/targets/cursor/SKILL.md
 skills/release-notes/targets/claude/SKILL.md
 ```
 
-Resolution order is target override first, then the base file.
+Resolution order is target override first, then the base file. The same override mechanism applies to static files (README/CHANGELOG/LICENSE) and to MCP config (`.mcp.json`) and declared plugin-root `additionalFiles`.
+
+## Additional Plugin-Root Files
+
+A source plugin that needs files at its emitted root beyond the component and static files pluginpack supports by default — a bundled MCP server, a launcher script, or a `package.json` to set Node's module type — declares them under `additionalFiles` in `plugin.pluginpack.json`:
+
+```json
+{
+  "additionalFiles": {
+    "dist/index.js": "dist/index.js",
+    "start.mjs": "start.mjs",
+    "package.json": "package.json"
+  }
+}
+```
+
+The map is destination (emitted plugin root relative) -> source (source plugin relative). Files are emitted verbatim at the plugin root, are tracked as managed output, and support target overrides: a `targets/<host>/<source>` file wins for that host. A destination that collides with a component or static file is an error, and `pluginpack` does not build bundles — produce build output before running `pluginpack build` so the declared source paths exist.
 
 ## Other Shapes
 

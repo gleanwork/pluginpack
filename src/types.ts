@@ -45,6 +45,7 @@ export interface SourceProvider {
   ): Promise<Map<string, FileValue>>;
   readMcpServers(
     pluginId: string,
+    target: TargetName,
   ): Promise<Record<string, unknown> | undefined>;
 }
 

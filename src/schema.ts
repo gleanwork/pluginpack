@@ -124,6 +124,7 @@ const sourcePluginManifestSchema = metadataSchema.extend({
   name: z.string().optional(),
   description: z.string().optional(),
   mcpServers: z.record(z.string(), z.unknown()).optional(),
+  additionalFiles: z.record(safeRelativePath, safeRelativePath).optional(),
 });
 
 export { configSchema, sourcePluginManifestSchema };

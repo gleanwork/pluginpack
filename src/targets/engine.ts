@@ -131,7 +131,11 @@ export async function emitFromDefinition(
       files.set(toPosix(definition.hooksPath(pluginPath)), sourceHooksFile);
     }
 
-    const mcpServers = await resolveMcpServers(project, pluginConfig.from);
+    const mcpServers = await resolveMcpServers(
+      project,
+      pluginConfig.from,
+      target,
+    );
     const mcpConfigPath = definition.mcpConfigPath(pluginPath);
     if (mcpServers && mcpConfigPath) {
       files.set(toPosix(mcpConfigPath), json({ mcpServers }));
