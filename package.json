@@ -60,10 +60,10 @@
     "lint:fix": "eslint . --fix",
     "prepublishOnly": "npm run check && npm pack --dry-run",
     "release": "release-it",
+    "pretest": "npm run build",
     "test": "vitest run",
     "test:all": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build && npm run docs",
-    "typecheck": "tsc --noEmit",
-    "pretest": "npm run build"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "commander": "^15.0.0",
@@ -74,6 +74,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@release-it-plugins/lerna-changelog": "^5.0.0",
     "@types/node": "^26.0.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
@@ -96,6 +97,12 @@
     "access": "public",
     "registry": "https://registry.npmjs.org"
   },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "undici": "^7.28.0",
+    "tmp": "^0.2.7",
+    "brace-expansion": "^5.0.8"
+  },
   "release-it": {
     "git": {
       "tagName": "v${version}"
@@ -106,12 +113,12 @@
     },
     "npm": {
       "publish": true
+    },
+    "plugins": {
+      "@release-it-plugins/lerna-changelog": {
+        "infile": "CHANGELOG.md",
+        "launchEditor": true
+      }
     }
-  },
-  "overrides": {
-    "esbuild": "^0.28.1",
-    "undici": "^7.28.0",
-    "tmp": "^0.2.7",
-    "brace-expansion": "^5.0.8"
   }
 }
