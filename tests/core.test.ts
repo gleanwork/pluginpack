@@ -1423,7 +1423,7 @@ export default defineConfig({
       plugins: {
         srv: {
           "plugin.pluginpack.json": `${JSON.stringify({
-            files: {
+            additionalFiles: {
               "dist/index.js": "dist/index.js",
               "start.mjs": "start.mjs",
               "package.json": "package.json",
@@ -1488,7 +1488,7 @@ export default defineConfig({
       plugins: {
         srv: {
           "plugin.pluginpack.json": `${JSON.stringify({
-            files: { "skills/s1/SKILL.md": "extra.md" },
+            additionalFiles: { "skills/s1/SKILL.md": "extra.md" },
           })}\n`,
           "extra.md": "# extra\n",
           skills: { s1: { "SKILL.md": skill("s1", "S1.") } },
@@ -1498,7 +1498,7 @@ export default defineConfig({
     const root = project.baseDir;
 
     await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
-      /files destination "skills\/s1\/SKILL.md" collides with another emitted file/,
+      /additionalFiles destination "skills\/s1\/SKILL.md" collides with another emitted file/,
     );
   });
 
@@ -1518,7 +1518,7 @@ export default defineConfig({
       plugins: {
         srv: {
           "plugin.pluginpack.json": `${JSON.stringify({
-            files: { "start.mjs": "start.mjs" },
+            additionalFiles: { "start.mjs": "start.mjs" },
           })}\n`,
           skills: { s1: { "SKILL.md": skill("s1", "S1.") } },
         },
@@ -1527,7 +1527,7 @@ export default defineConfig({
     const root = project.baseDir;
 
     await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
-      /files source "start.mjs" could not be read/,
+      /additionalFiles source "start.mjs" could not be read/,
     );
   });
 

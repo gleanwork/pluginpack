@@ -76,18 +76,18 @@ async function readPluginFiles(
   // Arbitrary files the source plugin declares in plugin.pluginpack.json
   // (e.g. a bundled server, launcher, or a package.json). Emitted verbatim at
   // the plugin root, with target overrides on the source path.
-  const declaredFiles = plugin.manifest.files;
-  if (declaredFiles) {
-    for (const [dest, source] of Object.entries(declaredFiles)) {
+  const additionalFiles = plugin.manifest.additionalFiles;
+  if (additionalFiles) {
+    for (const [dest, source] of Object.entries(additionalFiles)) {
       const destPath = toPosix(dest);
       if (!isSafeRelativePath(destPath)) {
         throw new Error(
-          `Source plugin "${plugin.id}" files destination "${dest}" must be a safe relative path.`,
+          `Source plugin "${plugin.id}" additionalFiles destination "${dest}" must be a safe relative path.`,
         );
       }
       if (files.has(destPath)) {
         throw new Error(
-          `Source plugin "${plugin.id}" files destination "${dest}" collides with another emitted file.`,
+          `Source plugin "${plugin.id}" additionalFiles destination "${dest}" collides with another emitted file.`,
         );
       }
       const resolved = await resolveTargetOverride(
@@ -97,7 +97,7 @@ async function readPluginFiles(
       );
       if (!(await exists(resolved))) {
         throw new Error(
-          `Source plugin "${plugin.id}" files source "${source}" could not be read.`,
+          `Source plugin "${plugin.id}" additionalFiles source "${source}" could not be read.`,
         );
       }
       files.set(destPath, await fs.readFile(resolved));

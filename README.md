@@ -340,15 +340,15 @@ skills/release-notes/targets/cursor/SKILL.md
 skills/release-notes/targets/claude/SKILL.md
 ```
 
-Resolution order is target override first, then the base file. The same override mechanism applies to static files (README/CHANGELOG/LICENSE) and to MCP config (`.mcp.json`) and declared plugin-root `files`.
+Resolution order is target override first, then the base file. The same override mechanism applies to static files (README/CHANGELOG/LICENSE) and to MCP config (`.mcp.json`) and declared plugin-root `additionalFiles`.
 
-## Plugin-Root Files
+## Additional Plugin-Root Files
 
-A source plugin that needs files at its emitted root beyond component and static files — a bundled MCP server, a launcher script, or a `package.json` to set Node's module type — declares them in `plugin.pluginpack.json`:
+A source plugin that needs files at its emitted root beyond the component and static files pluginpack supports by default — a bundled MCP server, a launcher script, or a `package.json` to set Node's module type — declares them under `additionalFiles` in `plugin.pluginpack.json`:
 
 ```json
 {
-  "files": {
+  "additionalFiles": {
     "dist/index.js": "dist/index.js",
     "start.mjs": "start.mjs",
     "package.json": "package.json"
