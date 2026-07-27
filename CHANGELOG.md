@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.9.0 (2026-07-27)
+
+#### :rocket: Enhancement
+
+- [#11](https://github.com/gleanwork/pluginpack/pull/11) feat: per-target MCP config overrides + plugin-root files ([@eshwar-sundar-glean](https://github.com/eshwar-sundar-glean))
+
+#### Committers: 1
+
+- Eshwar Sundar ([@eshwar-sundar-glean](https://github.com/eshwar-sundar-glean))
+
+
+
 ## v0.8.0 (2026-07-27)
 
 #### :rocket: Enhancement
