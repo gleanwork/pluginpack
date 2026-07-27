@@ -13,6 +13,10 @@ manager or publisher.
   tests run the real built binary (`dist/cli.js`) via `bintastic`.
 - `npm run check` — the full gate (`test:all`): `format:check` → `lint` →
   `typecheck` → `test` → `build` → `docs`. Run this before considering work done.
+- `npm run audit` — `npm audit --omit=dev`, also run in CI. Scoped to production
+  dependencies on purpose: devDependencies (eslint, test fixtures, etc.) never
+  ship in the published package, so a vulnerability there isn't a risk to
+  consumers — don't add fixes/overrides for dev-only findings.
 - `npm run build` — bundle with tsup.
 - After changing CLI commands/options, regenerate the README CLI reference with
   `node dist/cli.js docs` (the gate's `docs --check` fails if it is stale).
