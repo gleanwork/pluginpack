@@ -355,7 +355,7 @@ function replaceGeneratedSection(readme: string, content: string): string {
   if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
     throw new Error("README.md is missing pluginpack CLI marker comments.");
   }
-  return `${readme.slice(0, startIndex + start.length)}\n\n${content}\n${readme.slice(endIndex)}`;
+  return `${readme.slice(0, startIndex + start.length)}\n\n${content}\n\n${readme.slice(endIndex)}`;
 }
 
 /** Reads the package's own version and description, for `--version`/`--help`. */

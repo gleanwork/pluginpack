@@ -656,4 +656,5 @@ Exit codes:
 
 - 0 when docs are current or updated
 - 1 when --check finds stale docs
+
 <!-- pluginpack-cli:end -->
