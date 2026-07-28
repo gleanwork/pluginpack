@@ -41,6 +41,7 @@ const rootPluginSchema = metadataSchema.extend({
 const sourceSchema = z.object({
   plugins: z.string().optional(),
   skills: z.string().optional(),
+  partials: z.string().optional(),
   rootPlugin: rootPluginSchema.optional(),
 });
 

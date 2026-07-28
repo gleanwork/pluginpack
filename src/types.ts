@@ -56,6 +56,7 @@ export type ResolvedProject = {
   config: PluginpackConfig;
   sourceRoot: string;
   plugins: Map<string, SourcePlugin>;
+  partials: Map<string, string>;
   source: SourceProvider;
 };
 

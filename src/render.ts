@@ -1,4 +1,5 @@
 import { isComponentPath } from "./components.js";
+import { resolvePartials } from "./partials.js";
 import type { FileValue, ResolvedProject, TargetName } from "./types.js";
 
 /**
@@ -25,7 +26,8 @@ export async function collectPluginFiles(
       if (!shouldEmitFile(relativePath, components)) {
         continue;
       }
-      setFile(files, relativePath, value, sourceId);
+      const resolved = resolvePartials(relativePath, value, project.partials);
+      setFile(files, relativePath, resolved, sourceId);
     }
   }
   return files;
