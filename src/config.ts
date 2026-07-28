@@ -5,6 +5,7 @@ import { createJiti } from "jiti";
 import { z } from "zod";
 import { componentDirs } from "./components.js";
 import { exists } from "./fs.js";
+import { loadPartials } from "./partials.js";
 import { configSchema, sourcePluginManifestSchema } from "./schema.js";
 import { createFilesystemSourceProvider } from "./source.js";
 import type {
@@ -30,12 +31,33 @@ export async function loadConfig(
   const sourceRoot = path.resolve(rootDir, config.source?.plugins ?? "plugins");
   const plugins = await discoverSourcePlugins(sourceRoot);
   await addRootSkillsPlugin(rootDir, config, plugins);
+  const partials = await loadPartialsIfConfigured(rootDir, config);
   return {
     ...projectConfig,
     sourceRoot,
     plugins,
+    partials,
     source: createFilesystemSourceProvider(plugins),
   };
+}
+
+/**
+ * Loads the project-level `partials/` map if `source.partials` is
+ * configured, shared across every source plugin (unlike components, which
+ * are scoped to one plugin's own directory) — see `src/partials.ts`.
+ */
+async function loadPartialsIfConfigured(
+  rootDir: string,
+  config: PluginpackConfig,
+): Promise<Map<string, string>> {
+  if (!config.source?.partials) {
+    return new Map();
+  }
+  const partialsDir = path.resolve(rootDir, config.source.partials);
+  if (!(await exists(partialsDir))) {
+    throw new Error(`Source partials directory is missing: ${partialsDir}`);
+  }
+  return loadPartials(partialsDir);
 }
 
 /** Loads and validates the config file itself, without discovering source plugins. */

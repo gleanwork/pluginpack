@@ -358,6 +358,31 @@ A source plugin that needs files at its emitted root beyond the component and st
 
 The map is destination (emitted plugin root relative) -> source (source plugin relative). Files are emitted verbatim at the plugin root, are tracked as managed output, and support target overrides: a `targets/<host>/<source>` file wins for that host. A destination that collides with a component or static file is an error, and `pluginpack` does not build bundles — produce build output before running `pluginpack build` so the declared source paths exist.
 
+## Partials
+
+Skills, agents, commands, and rules often need to repeat the same procedural prose — a consistent auth flow ("try OAuth first, fall back to a token") is a good example. Rather than copy-pasting it into every file, author it once under a `partials/` directory and reference it with a `{{> name}}` tag:
+
+```txt
+partials/auth.md
+skills/release-notes/SKILL.md   ->  contains {{> auth}}
+skills/changelog/SKILL.md       ->  contains {{> auth}}
+```
+
+Point `source.partials` at that directory in `pluginpack.config.ts`:
+
+```ts
+export default defineConfig({
+  source: { partials: "partials" },
+  // ...
+});
+```
+
+Partials are project-level (shared across every source plugin, not scoped to one), and may reference other partials — nested composition resolves in one pass, though a circular reference (A includes B includes A) is a build-time error. A `{{> name}}` tag with no matching partial renders as nothing rather than failing the build (see Known limitation below), and a tag alone on its own line — the common case — leaves no blank line behind when it resolves to nothing.
+
+Substitution runs on every `.md`/`.mdc`/`.markdown`/`.txt` file pluginpack emits — skills, agents, commands, rules, `additionalFiles`, and a target's `rootFiles` — via the real [`mustache`](https://github.com/janl/mustache.js) library.
+
+**Known limitation:** because substitution is real Mustache rendering, any _other_ `{{...}}`-looking text in the same file — documentation about Handlebars, Angular, Go templates, Jinja, or Mustache itself, or a curly-brace code sample — is also processed against an empty context and typically disappears. A skill that needs to show literal double-curly-brace syntax has to work around it, e.g. by splitting the braces across adjacent inline-code spans (`{{` + `}}`) rather than writing them as one contiguous run.
+
 ## Other Shapes
 
 There are two reasonable alternatives when the single-repo shape is not enough:
@@ -404,6 +429,7 @@ To publish a repo-root file (for example a README authored once in the source re
 | ------------ | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `plugins`    | string | no       | Directory to discover source plugins from. Defaults to `plugins`.                                                                                                            |
 | `skills`     | string | no       | Repo-level skills directory; creates a root source plugin from sibling component dirs.                                                                                       |
+| `partials`   | string | no       | Directory of reusable `{{> name}}` text fragments, shared across every source plugin (see **Partials**).                                                                     |
 | `rootPlugin` | object | no       | Metadata for that root skills plugin. Accepts all **`metadata`** fields plus `id`, `name`, `description`. `id` is the source-plugin name used in each target's `from` array. |
 
 **`metadata`** (and `source.rootPlugin`)

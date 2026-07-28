@@ -1998,6 +1998,500 @@ export default defineConfig({
     // ...but the sibling keywords survived (shallow spread would have dropped them).
     expect(marketplace.metadata.keywords).toEqual(["a", "b"]);
   });
+
+  it("substitutes a standalone {{> name}} partial into a skill (happy path)", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-plugins",
+  version: "1.0.0",
+  metadata: { description: "Partials", author: { name: "X" }, license: "MIT" },
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      partials: {
+        "auth.md": "Authenticate via OAuth, falling back to a token.\n",
+      },
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md": `---
+name: demo
+description: Demo skill.
+---
+
+# Demo
+
+{{> auth}}
+
+More instructions.
+`,
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const content = await readFile(
+      path.join(root, "dist/claude/plugins/demo/skills/demo/SKILL.md"),
+      "utf8",
+    );
+    expect(content).toContain(
+      "Authenticate via OAuth, falling back to a token.",
+    );
+    expect(content).not.toContain("{{>");
+    expect(content).toBe(`---
+name: demo
+description: Demo skill.
+---
+
+# Demo
+
+Authenticate via OAuth, falling back to a token.
+
+More instructions.
+`);
+  });
+
+  it("renders a missing partial as empty, cleanly (no orphaned blank line)", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-missing-plugins",
+  version: "1.0.0",
+  metadata: { description: "Partials", author: { name: "X" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md": `---
+name: demo
+description: Demo skill.
+---
+
+Before
+{{> nonexistent}}
+After
+
+See: {{> nonexistent}} above.
+`,
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const content = await readFile(
+      path.join(root, "dist/claude/plugins/demo/skills/demo/SKILL.md"),
+      "utf8",
+    );
+    expect(content).toBe(`---
+name: demo
+description: Demo skill.
+---
+
+Before
+After
+
+See:  above.
+`);
+  });
+
+  it("resolves nested partial composition end to end", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-nested-plugins",
+  version: "1.0.0",
+  metadata: { description: "Partials", author: { name: "X" }, license: "MIT" },
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      partials: {
+        "auth.md": "Authenticate first.\n{{> footer}}",
+        "footer.md": "(see docs for details)",
+      },
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md": skill("demo", "Demo skill.") + "\n{{> auth}}\n",
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const content = await readFile(
+      path.join(root, "dist/claude/plugins/demo/skills/demo/SKILL.md"),
+      "utf8",
+    );
+    expect(content).toContain("Authenticate first.");
+    expect(content).toContain("(see docs for details)");
+    expect(content).not.toContain("{{>");
+  });
+
+  it("rejects a circular partial reference at load time", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-cycle-plugins",
+  version: "1.0.0",
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      partials: {
+        "a.md": "{{> b}}",
+        "b.md": "{{> a}}",
+      },
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    // Nothing references "a" or "b" from any skill; the cycle must still be
+    // caught eagerly at load time, not lazily on first use.
+    await expect(loadConfig(root)).rejects.toThrow(
+      /Circular partial reference: (a -> b -> a|b -> a -> b)/,
+    );
+  });
+
+  it("substitutes multiple partial references in one file, including a repeat", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-multi-plugins",
+  version: "1.0.0",
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      partials: {
+        "auth.md": "AUTH",
+        "footer.md": "FOOTER",
+      },
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md":
+                skill("demo", "Demo skill.") +
+                "\n{{> auth}} and again {{> auth}}\n{{> footer}}\n",
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const content = await readFile(
+      path.join(root, "dist/claude/plugins/demo/skills/demo/SKILL.md"),
+      "utf8",
+    );
+    expect(content).toContain("AUTH and again AUTH");
+    expect(content).toContain("FOOTER");
+  });
+
+  it("shares one project-level partials map across independent source plugins", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-cross-plugin",
+  version: "1.0.0",
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: {
+        pluginA: { from: ["a"] },
+        pluginB: { from: ["b"] }
+      }
+    }
+  }
+});
+`,
+      partials: {
+        "auth.md": "Shared auth instructions.",
+      },
+      plugins: {
+        a: {
+          skills: {
+            alpha: {
+              "SKILL.md": skill("alpha", "Alpha skill.") + "\n{{> auth}}\n",
+            },
+          },
+        },
+        b: {
+          skills: {
+            beta: {
+              "SKILL.md": skill("beta", "Beta skill.") + "\n{{> auth}}\n",
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const alpha = await readFile(
+      path.join(root, "dist/claude/plugins/pluginA/skills/alpha/SKILL.md"),
+      "utf8",
+    );
+    const beta = await readFile(
+      path.join(root, "dist/claude/plugins/pluginB/skills/beta/SKILL.md"),
+      "utf8",
+    );
+    expect(alpha).toContain("Shared auth instructions.");
+    expect(beta).toContain("Shared auth instructions.");
+  });
+
+  it("leaves output byte-identical when no source.partials is configured (no-op)", async () => {
+    const project = await fixture();
+    const root = project.baseDir;
+
+    const withoutPartials = await build({ cwd: root });
+    await rm(path.join(root, "dist"), { recursive: true, force: true });
+    const withPartialsFeatureUnused = await build({ cwd: root });
+
+    const serialize = (artifacts: Awaited<ReturnType<typeof build>>) =>
+      artifacts
+        .map((a) => ({
+          target: a.target,
+          files: [...a.files].map(
+            ([p, v]) => [p, Buffer.from(v).toString("base64")] as const,
+          ),
+        }))
+        .sort((x, y) => x.target.localeCompare(y.target));
+    expect(serialize(withPartialsFeatureUnused)).toEqual(
+      serialize(withoutPartials),
+    );
+  });
+
+  it("never corrupts a textual file with no {{ marker, even with non-UTF8 bytes", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-byte-safety",
+  version: "1.0.0",
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"], components: ["rules"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          rules: { "policy.txt": "placeholder" },
+        },
+      },
+    });
+    const root = project.baseDir;
+    const rawBytes = Buffer.from([0xff, 0xfe, 0x00, 0x41, 0x0a]);
+    await writeFile(path.join(root, "plugins/demo/rules/policy.txt"), rawBytes);
+
+    await build({ cwd: root, target: "claude" });
+
+    const written = await readFile(
+      path.join(root, "dist/claude/plugins/demo/rules/policy.txt"),
+    );
+    expect(written.equals(rawBytes)).toBe(true);
+  });
+
+  it("rejects two partial files that normalize to the same name", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-duplicate",
+  version: "1.0.0",
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      partials: {
+        "auth.md": "one",
+        "auth.txt": "two",
+      },
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await expect(loadConfig(root)).rejects.toThrow(
+      /Duplicate partial name "auth"/,
+    );
+  });
+
+  it("errors clearly when source.partials is configured but the directory is missing", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-missing-dir",
+  version: "1.0.0",
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await expect(loadConfig(root)).rejects.toThrow(
+      /Source partials directory is missing/,
+    );
+  });
+
+  it("substitutes a partial reference inside a target's rootFiles-declared file", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-rootfiles",
+  version: "1.0.0",
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } },
+      rootFiles: { "README.md": "ROOT_README.md" }
+    }
+  }
+});
+`,
+      partials: {
+        "auth.md": "Shared auth instructions.",
+      },
+      "ROOT_README.md": "# Root docs\n\n{{> auth}}\n",
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const readme = await readFile(
+      path.join(root, "dist/claude/README.md"),
+      "utf8",
+    );
+    expect(readme).toContain("Shared auth instructions.");
+    expect(readme).not.toContain("{{>");
+  });
+
+  it("renders unrelated {{...}}-looking text as empty (documented Mustache behavior, not a bug)", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-collision-doc",
+  version: "1.0.0",
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md":
+                skill("demo", "Demo skill.") +
+                "\nExample Handlebars tag: {{unrelated}}\n",
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const content = await readFile(
+      path.join(root, "dist/claude/plugins/demo/skills/demo/SKILL.md"),
+      "utf8",
+    );
+    expect(content).toContain("Example Handlebars tag: \n");
+    expect(content).not.toContain("{{unrelated}}");
+  });
 });
 
 async function fixtureProject(files: DirJSON): Promise<Project> {

@@ -41,6 +41,12 @@ diff, prune, and validate all derive from it.
   generated output is never misread as source), and the root-skills plugin.
 - `src/render.ts` — `collectPluginFiles` (component dirs + static files, with
   `targets/<name>/` override resolution) and `resolveMcpServers`.
+- `src/partials.ts` — `loadPartials`/`resolvePartials`: project-level
+  `{{> name}}` text-reuse, wired into `collectPluginFiles` and
+  `withRootFiles`. Thin wrapper around the real `mustache` library (view is
+  always `{}` — no config/env data is ever exposed; this is not a general
+  templating hook), plus one custom check `mustache` doesn't provide
+  (circular partial reference detection at load time).
 - `src/targets/registry.ts` — `targets: Record<TargetName, PluginTargetDefinition>`,
   one file per target (`src/targets/<name>.ts`). Everything that varies by
   target — default components, manifest/marketplace builders, output paths,

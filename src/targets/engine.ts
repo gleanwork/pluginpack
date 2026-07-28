@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "../render.js";
 import { isSafeRelativePath, json, toPosix } from "../fs.js";
+import { resolvePartials } from "../partials.js";
 import { deepMerge, stripUndefined } from "./shared.js";
 import { applyUpdateCheck, pluginAllowsUpdateCheck } from "../update-check.js";
 import type { UpdateCheckFormat } from "../update-check.js";
@@ -269,7 +270,7 @@ export async function withRootFiles(
         `Target "${result.target}" rootFiles source "${source}" could not be read.`,
       );
     }
-    files.set(destPath, contents);
+    files.set(destPath, resolvePartials(destPath, contents, project.partials));
   }
   return artifact(result.target, result.outDir, files);
 }
