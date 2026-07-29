@@ -139,9 +139,12 @@ export function buildDeleteGuard(
   if (config.source?.skills) {
     protectedRoots.push(path.resolve(rootDir, config.source.skills));
   }
-  if (config.source?.plugins) {
-    protectedRoots.push(path.resolve(rootDir, config.source.plugins));
-  }
+  // Mirrors loadConfig's default in src/config.ts so the source-plugin
+  // discovery root is always protected, whether or not it's written out
+  // explicitly in config.
+  protectedRoots.push(
+    path.resolve(rootDir, config.source?.plugins ?? "plugins"),
+  );
   return { protectedRoots, configPath: path.resolve(configPath), force };
 }
 
@@ -189,7 +192,13 @@ export function normalizeManagedPath(value: string): string {
     !value ||
     path.posix.isAbsolute(normalized) ||
     normalized === ".." ||
-    normalized.startsWith("../")
+    normalized.startsWith("../") ||
+    // A Windows drive-letter path (e.g. "C:/Users/x") isn't caught by
+    // path.posix.isAbsolute, but path.resolve on an actual Windows host
+    // would treat it as absolute and escape `root` entirely. Reject it on
+    // every platform so a manifest built on one OS can't misbehave on
+    // another.
+    /^[a-zA-Z]:/.test(normalized)
   ) {
     throw new Error(`Unsafe managed path: ${value}`);
   }
@@ -205,6 +214,30 @@ async function removeManagedPath(
   const destination = path.resolve(root, normalized);
   if (destination !== root && !destination.startsWith(`${root}${path.sep}`)) {
     throw new Error(`Managed path escapes output directory: ${relativePath}`);
+  }
+  // Defense in depth: fs.rm on a symlink unlinks the symlink itself rather
+  // than following it, so this isn't currently exploitable — but refuse
+  // outright if the entry is a symlink pointing outside `root`, rather than
+  // relying on that fs.rm behavior remaining true forever.
+  let stats;
+  try {
+    stats = await fs.lstat(destination);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return;
+    }
+    throw error;
+  }
+  if (stats.isSymbolicLink()) {
+    const target = path.resolve(
+      path.dirname(destination),
+      await fs.readlink(destination),
+    );
+    if (target !== root && !target.startsWith(`${root}${path.sep}`)) {
+      throw new Error(
+        `Refusing to remove a symlink pointing outside the output directory: ${relativePath}`,
+      );
+    }
   }
   await fs.rm(destination, { force: true });
   await removeEmptyParents(path.dirname(destination), root);
