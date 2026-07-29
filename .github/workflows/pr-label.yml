@@ -1,0 +1,22 @@
+name: PR label
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+jobs:
+  labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a lerna-changelog label
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const required = ["breaking", "enhancement", "bug", "documentation", "internal"];
+            const labels = context.payload.pull_request.labels.map((label) => label.name);
+            const matched = labels.filter((label) => required.includes(label));
+            if (matched.length === 0) {
+              core.setFailed(
+                `This PR needs one of the following labels for the changelog: ${required.join(", ")}.`,
+              );
+            }
