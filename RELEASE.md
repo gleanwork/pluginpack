@@ -58,3 +58,35 @@ release process. It will prompt you to to choose the version number after which
 you will have the chance to hand tweak the changelog to be used (for the
 `CHANGELOG.md` and GitHub release), then `release-it` continues on to tagging,
 pushing the tag and commits, etc.
+
+## What counts as a breaking change
+
+pluginpack's public contract isn't just its TypeScript API (`src/index.ts`)
+and CLI flags — it's also the _shape of the files it writes into a consumer's
+repo_ (managed-file layout, manifest field names, default directory
+conventions). A change that alters generated output for an existing config
+with no code-level signature change (e.g. a different default `outDir`
+convention, a renamed manifest field, a different `.pluginpack/<target>.json`
+shape) is breaking for the same reason a database migration is breaking: it
+can affect a consumer's already-generated, already-committed repo on their
+next build, even though nothing in `import { ... } from "@gleanwork/pluginpack"`
+changed. Label PRs with `breaking` under that broader definition, not just for
+API/CLI signature changes.
+
+## PR label enforcement
+
+CI (`.github/workflows/ci.yml`, `labels` job) requires every PR to carry one
+of the five labels above before merge — this catches an unlabeled PR, but it
+cannot judge whether the label chosen is the _correct_ one. Whether a given
+diff is actually breaking under the definition above is still a human call at
+review time.
+
+## Accepted risk: dev-only audit findings
+
+`npm audit` (unscoped) reports vulnerabilities in `@release-it-plugins/lerna-changelog`'s
+dependency chain (`lerna-changelog` → `make-fetch-happen` → `cacache`/`tar`),
+with no upstream fix available. `npm run audit` (what CI runs) is scoped to
+`--omit=dev` and reports clean, per `CLAUDE.md`'s documented rationale:
+devDependencies never ship in the published package. This is a tracked,
+accepted gap, not an oversight — revisit if `lerna-changelog` is ever run
+against untrusted input, or replace it if a maintained alternative appears.

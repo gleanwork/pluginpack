@@ -91,7 +91,18 @@ const targetSchema = z.object({
   rootFiles: z.record(safeRelativePath, safeRelativePath).optional(),
 });
 
-/** The root `pluginpack.config.ts` schema. */
+/**
+ * The root `pluginpack.config.ts` schema.
+ *
+ * Deliberately not `.strict()`: zod's default `z.object()` silently drops
+ * unknown keys rather than erroring, which is the right tradeoff pre-1.0 — it
+ * lets a future minor version add an optional config field without that
+ * being a breaking change for existing configs. The cost is a typo'd key
+ * failing silently instead of loudly; that's an accepted tradeoff, not an
+ * oversight. Adding `.strict()` later would itself be a breaking change for
+ * anyone currently typo-ing successfully, so this needs to be a deliberate
+ * decision made once, not toggled casually.
+ */
 const configSchema = z
   .object({
     name: z.string().min(1),

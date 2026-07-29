@@ -1,6 +1,6 @@
 ---
 name: migrate-to-pluginpack
-description: Use when someone has an existing native plugin repo (a Claude Code marketplace, a Cursor plugin, an Antigravity CLI plugin, or a GitHub Copilot plugin) and wants to manage it from one portable source via pluginpack — generating the source layout and config, then proving the output matches the original with diff.
+description: Use when someone has an existing native plugin repo (a Claude Code marketplace, a Cursor plugin, an Antigravity CLI plugin, a GitHub Copilot plugin, or an OpenAI Codex CLI plugin) and wants to manage it from one portable source via pluginpack — generating the source layout and config, then proving the output matches the original with diff.
 ---
 
 # Migrating an existing plugin repo into pluginpack
@@ -11,7 +11,8 @@ source, verified byte-for-byte against the original.
 ## Steps
 
 1. **Inspect the existing repo.** Note its marketplace manifest
-   (`.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`, …),
+   (`.claude-plugin/marketplace.json`, `.cursor-plugin/marketplace.json`,
+   `.codex-plugin/plugin.json`, …),
    the per-plugin layout, and the skill/agent/command/hook/MCP content.
 
 2. **Create portable source.** Put skills under a repo-level `skills/` directory
