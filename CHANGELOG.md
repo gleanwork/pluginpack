@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.10.0 (2026-07-29)
+
+#### :rocket: Enhancement
+
+- [#21](https://github.com/gleanwork/pluginpack/pull/21) feat: add partials for shared, inlined text fragments across skills ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### Committers: 1
+
+- Steve Calvert ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+
+
 ## v0.9.0 (2026-07-27)
 
 #### :rocket: Enhancement
