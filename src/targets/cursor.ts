@@ -14,6 +14,34 @@ import type { PluginTargetDefinition } from "./types.js";
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 
 /**
+ * Top-level `plugin.json` keys per the vendored Cursor plugin schema
+ * (`tests/fixtures/cursor/plugin.schema.json`, `additionalProperties: false`).
+ * Mirrored here so the shipped `validateOutput` catches a stray/misspelled
+ * key without requiring the dev-only ajv schema check.
+ */
+const KNOWN_MANIFEST_KEYS = new Set([
+  "name",
+  "displayName",
+  "description",
+  "version",
+  "author",
+  "publisher",
+  "homepage",
+  "repository",
+  "license",
+  "logo",
+  "keywords",
+  "category",
+  "tags",
+  "commands",
+  "agents",
+  "skills",
+  "rules",
+  "hooks",
+  "mcpServers",
+]);
+
+/**
  * The manifest fields that point at a component, per the vendored Cursor
  * plugin schema (`tests/fixtures/cursor/plugin.schema.json`) — the single
  * source of truth for which componentDirs get a manifest pointer, replacing
@@ -111,10 +139,21 @@ export const cursor: PluginTargetDefinition = {
   mcpConfigPath: (pluginPath) => path.join(pluginPath, ".mcp.json"),
   hooksPath: (pluginPath) => path.join(pluginPath, "hooks", "hooks.json"),
 
-  validateManifest: () => {
-    // Structural validation is delegated to the vendored JSON Schema in
-    // conformance tests (the stronger oracle); nothing target-specific to
-    // check here beyond what validateOutput already does below.
+  validateManifest: (manifest, pluginName, issues) => {
+    if (
+      typeof manifest.name !== "string" ||
+      !pluginNamePattern.test(manifest.name)
+    ) {
+      error(
+        issues,
+        `${pluginName}: plugin.json must have a kebab-case "name".`,
+      );
+    }
+    for (const key of Object.keys(manifest)) {
+      if (!KNOWN_MANIFEST_KEYS.has(key)) {
+        error(issues, `${pluginName}: plugin.json has unknown field "${key}".`);
+      }
+    }
   },
   validateMarketplaceEntry: (entry, index, root, issues) =>
     validateBareStringSourceEntry(
@@ -172,6 +211,7 @@ export const cursor: PluginTargetDefinition = {
           `${pluginName}: marketplace entry name does not match plugin.json name ("${manifest.name}").`,
         );
       }
+      cursor.validateManifest(manifest, pluginName, issues);
       await validateReferencedManifestPaths(
         pluginDir,
         pluginName,

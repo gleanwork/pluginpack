@@ -44,5 +44,11 @@ export default defineConfig({
         acme: { from: ["core"] },
       },
     },
+    codex: {
+      outDir: "plugins/codex",
+      plugins: {
+        acme: { from: ["core"] },
+      },
+    },
   },
 });

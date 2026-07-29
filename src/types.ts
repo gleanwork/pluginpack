@@ -36,7 +36,10 @@ export type SourcePlugin = {
  * The one surface pluginpack uses to acquire source. A filesystem provider
  * backs it today; an API-backed provider (e.g. a remote skills API) can
  * implement the same two methods without touching the emit/validate/diff
- * pipeline.
+ * pipeline. Deliberately not exported from `src/index.ts`: nothing in
+ * `build()`/`loadConfig()` accepts an override yet, so exporting the type
+ * would commit to public surface no one can actually use. Wire a `source`
+ * override into `BuildOptions` before re-exporting this.
  */
 export interface SourceProvider {
   readPluginFiles(

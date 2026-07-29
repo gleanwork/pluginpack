@@ -21,7 +21,10 @@ manager or publisher.
 - After changing CLI commands/options, regenerate the README CLI reference with
   `node dist/cli.js docs` (the gate's `docs --check` fails if it is stale).
 
-Node >= 24, ESM, `moduleResolution: nodenext`, `strict: true`.
+Node >= 22.12.0 (the `engines` floor in `package.json`, verified in CI against
+that exact version), ESM, `moduleResolution: nodenext`, `strict: true`. Local
+dev tooling (`mise.toml`) pins Node 24, but that's a dev-environment choice,
+not the supported floor.
 
 ## Architecture
 

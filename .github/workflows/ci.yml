@@ -10,7 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [24]
+        # 22.12.0 verifies package.json's stated `engines.node` floor; 24 is
+        # the version this repo is otherwise developed/tested against (see
+        # mise.toml). Keep both — the floor is meaningless if only the newer
+        # version is ever tested.
+        node-version: ["22.12.0", 24]
     steps:
       - uses: actions/checkout@v7
 
@@ -23,6 +27,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Installs the real `claude` CLI so `claude plugin validate --strict`
+      # (the strongest available conformance oracle for the claude target,
+      # per CONFORMANCE.md) actually runs in CI instead of silently skipping.
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
       - name: Check
         run: npm run check
 
@@ -30,4 +40,7 @@ jobs:
         run: npm run audit
 
       - name: Verify package contents
-        run: npm pack --dry-run
+        run: node scripts/verify-pack-contents.mjs
+
+      - name: Verify packed install runs
+        run: node scripts/verify-packed-install.mjs

@@ -418,4 +418,115 @@ describe("emitted output conforms to external target schemas", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("has no repository configured");
   });
+
+  it("init scaffolds a starter config and source plugin in an empty project", async () => {
+    project = await setupProject();
+
+    const result = await runBin("init");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+    expect(result.stdout).toContain(
+      "Created pluginpack.config.ts and plugins/example.",
+    );
+    expect(
+      fs.existsSync(path.join(project.baseDir, "pluginpack.config.ts")),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(project.baseDir, "plugins/example/skills/example/SKILL.md"),
+      ),
+    ).toBe(true);
+  });
+
+  it("init refuses to overwrite an existing pluginpack.config.ts", async () => {
+    const result = await runBin("init");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("pluginpack.config.ts already exists");
+  });
+
+  it("validate passes for a freshly built target and fails for a missing one", async () => {
+    const built = await runBin("build", "--target", "cursor");
+    expect(built.exitCode, String(built.stderr)).toBe(0);
+
+    const pass = await runBin("validate", "--target", "cursor");
+    expect(pass.exitCode, String(pass.stderr)).toBe(0);
+    expect(pass.stdout).toContain("Validation passed.");
+
+    const fail = await runBin(
+      "validate",
+      "--target",
+      "claude",
+      "--dir",
+      "nonexistent-dir",
+    );
+    expect(fail.exitCode).toBe(1);
+  });
+
+  it("diff reports a match immediately after a build", async () => {
+    const built = await runBin("build", "--target", "cursor");
+    expect(built.exitCode, String(built.stderr)).toBe(0);
+
+    const diffed = await runBin(
+      "diff",
+      "--target",
+      "cursor",
+      "--against",
+      "out-cursor",
+    );
+    expect(diffed.exitCode, String(diffed.stderr)).toBe(0);
+    expect(diffed.stdout).toContain("Managed files match.");
+  });
+
+  it("prune and clean remove stale and managed files via the built binary", async () => {
+    const built = await runBin("build", "--target", "cursor");
+    expect(built.exitCode, String(built.stderr)).toBe(0);
+    const skillFile = path.join(
+      project.baseDir,
+      "out-cursor/glean/skills/example/SKILL.md",
+    );
+    expect(fs.existsSync(skillFile)).toBe(true);
+
+    // Removing the source skill makes the previously-generated file stale.
+    fs.rmSync(path.join(project.baseDir, "plugins/glean/skills/example"), {
+      recursive: true,
+      force: true,
+    });
+    const pruned = await runBin("prune", "--target", "cursor");
+    expect(pruned.exitCode, String(pruned.stderr)).toBe(0);
+    expect(pruned.stdout).toContain("Pruned");
+    expect(fs.existsSync(skillFile)).toBe(false);
+
+    const manifestFile = path.join(
+      project.baseDir,
+      "out-cursor/.pluginpack/cursor.json",
+    );
+    expect(fs.existsSync(manifestFile)).toBe(true);
+    const cleaned = await runBin("clean", "--target", "cursor");
+    expect(cleaned.exitCode, String(cleaned.stderr)).toBe(0);
+    expect(cleaned.stdout).toContain("Cleaned");
+    expect(fs.existsSync(manifestFile)).toBe(false);
+  });
+
+  it("docs --check reports current vs. stale README CLI reference", async () => {
+    const readme = [
+      "# pluginpack",
+      "",
+      "<!-- pluginpack-cli:start -->",
+      "<!-- pluginpack-cli:end -->",
+      "",
+    ].join("\n");
+    await project.write({ "README.md": readme });
+
+    const sync = await runBin("docs");
+    expect(sync.exitCode, String(sync.stderr)).toBe(0);
+    expect(sync.stdout).toContain("Updated README.md CLI reference.");
+
+    const check = await runBin("docs", "--check");
+    expect(check.exitCode, String(check.stderr)).toBe(0);
+    expect(check.stdout).toContain("README.md CLI reference is up to date.");
+
+    await project.write({ "README.md": readme });
+    const stale = await runBin("docs", "--check");
+    expect(stale.exitCode).toBe(1);
+    expect(stale.stderr).toContain("README.md CLI reference is out of date");
+  });
 });

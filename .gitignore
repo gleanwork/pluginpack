@@ -4,3 +4,4 @@ examples/glean/dist/
 examples/basic/dist/
 coverage/
 .DS_Store
+EVAL-CHECKLIST.md

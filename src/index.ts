@@ -29,7 +29,6 @@ export type {
   PluginpackConfig,
   ResolvedProject,
   SourcePlugin,
-  SourceProvider,
   TargetConfig,
   TargetName,
   ValidationIssue,
