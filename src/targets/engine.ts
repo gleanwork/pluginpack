@@ -3,6 +3,7 @@ import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "../render.js";
 import { isSafeRelativePath, json, toPosix } from "../fs.js";
 import { resolvePartials } from "../partials.js";
+import { validateNoSurvivingPartialTags } from "./validation-shared.js";
 import { deepMerge, stripUndefined } from "./shared.js";
 import { applyUpdateCheck, pluginAllowsUpdateCheck } from "../update-check.js";
 import type { UpdateCheckFormat } from "../update-check.js";
@@ -197,13 +198,17 @@ export async function emitFromDefinition(
   return artifact(target, outDir, files);
 }
 
-/** Validates one target's output using its `PluginTargetDefinition`. */
+/**
+ * Validates one target's output using its `PluginTargetDefinition`, plus the
+ * checks that hold for every target regardless of its layout.
+ */
 export async function validateFromDefinition(
   root: string,
   issues: ValidationIssue[],
   definition: PluginTargetDefinition,
 ): Promise<void> {
   await definition.validateOutput(root, issues);
+  await validateNoSurvivingPartialTags(root, issues);
 }
 
 function emittedPluginMetadata(

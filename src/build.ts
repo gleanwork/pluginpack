@@ -9,6 +9,10 @@ import {
   writeManagedManifest,
 } from "./managed.js";
 import { emitTarget, targetNames } from "./adapters.js";
+import {
+  findUnsubstitutedPartialTags,
+  substitutedExtensions,
+} from "./partials.js";
 import type {
   Artifact,
   BuildOptions,
@@ -33,6 +37,7 @@ export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
   }
   const owner = assertNoCrossTargetCollisions(artifacts);
   await assertNoCollisionsWithBuiltTargets(project, targets, owner);
+  assertNoUnsubstitutedPartialTags(artifacts);
   if (!options.dryRun) {
     // Write every target's new files before pruning any target's stale ones.
     // If a later target's write throws, no target has had files pruned yet —
@@ -49,6 +54,26 @@ export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
     }
   }
   return artifacts;
+}
+
+// A `{{> name}}` tag that reaches output is broken content: whatever reads the
+// file gets a template marker instead of the text it was meant to inline.
+// Substitution resolves (or rejects) every tag in the file types it runs on, so
+// what is left is a tag authored somewhere it never ran — a reference file, a
+// script, a data file. Fail rather than ship it.
+function assertNoUnsubstitutedPartialTags(artifacts: Artifact[]): void {
+  const found = artifacts.flatMap((artifact) =>
+    findUnsubstitutedPartialTags(artifact.files).map(
+      (tag) => `  ${artifact.target}: ${tag.path} contains ${tag.tag}`,
+    ),
+  );
+  if (found.length > 0) {
+    throw new Error(
+      `Unsubstituted partial references in emitted output:\n${found.join("\n")}\n` +
+        `Partial substitution only runs on ${substitutedExtensions()} files. ` +
+        `Move the shared text into one of those, or inline it here instead.`,
+    );
+  }
 }
 
 // Two targets pointed at overlapping output paths would silently overwrite each

@@ -46,10 +46,15 @@ diff, prune, and validate all derive from it.
   `targets/<name>/` override resolution) and `resolveMcpServers`.
 - `src/partials.ts` — `loadPartials`/`resolvePartials`: project-level
   `{{> name}}` text-reuse, wired into `collectPluginFiles` and
-  `withRootFiles`. Thin wrapper around the real `mustache` library (view is
-  always `{}` — no config/env data is ever exposed; this is not a general
-  templating hook), plus one custom check `mustache` doesn't provide
-  (circular partial reference detection at load time).
+  `withRootFiles`. Substitution is real `mustache` rendering (view is always
+  `{}` — no config/env data is ever exposed; this is not a general templating
+  hook), but only ever sees partial tags: every other `{{` is swapped for a
+  sentinel first and restored after, so text that merely looks like a template
+  survives byte-for-byte. An unresolvable tag is a build error, not an empty
+  string. Also holds two checks `mustache` doesn't provide — circular partial
+  reference detection at load time, and `findUnsubstitutedPartialTags`, the
+  guard for tags in file types substitution skips (called from `build()` and,
+  reading from disk, from `validate`).
 - `src/targets/registry.ts` — `targets: Record<TargetName, PluginTargetDefinition>`,
   one file per target (`src/targets/<name>.ts`). Everything that varies by
   target — default components, manifest/marketplace builders, output paths,

@@ -2643,7 +2643,7 @@ More instructions.
 `);
   });
 
-  it("renders a missing partial as empty, cleanly (no orphaned blank line)", async () => {
+  it("fails the build on a partial reference no partial satisfies", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
@@ -2651,6 +2651,48 @@ export default defineConfig({
   name: "partials-missing-plugins",
   version: "1.0.0",
   metadata: { description: "Partials", author: { name: "X" }, license: "MIT" },
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      partials: { "auth.md": "Authenticate first.\n" },
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md": `---
+name: demo
+description: Demo skill.
+---
+
+Before
+{{> autb}}
+After
+`,
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
+      /Partial substitution failed in "skills\/demo\/SKILL\.md": unknown partial "autb" \(did you mean "auth"\?\)\. Available partials: auth/,
+    );
+  });
+
+  it("names the config key when a partial is referenced with no partials configured", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-unconfigured",
+  version: "1.0.0",
   targets: {
     claude: {
       outDir: "dist/claude",
@@ -2663,17 +2705,7 @@ export default defineConfig({
         demo: {
           skills: {
             demo: {
-              "SKILL.md": `---
-name: demo
-description: Demo skill.
----
-
-Before
-{{> nonexistent}}
-After
-
-See: {{> nonexistent}} above.
-`,
+              "SKILL.md": skill("demo", "Demo skill.") + "\n{{> auth}}\n",
             },
           },
         },
@@ -2681,22 +2713,75 @@ See: {{> nonexistent}} above.
     });
     const root = project.baseDir;
 
-    await build({ cwd: root, target: "claude" });
-
-    const content = await readFile(
-      path.join(root, "dist/claude/plugins/demo/skills/demo/SKILL.md"),
-      "utf8",
+    await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
+      /no partials are configured — set `source\.partials`/,
     );
-    expect(content).toBe(`---
-name: demo
-description: Demo skill.
----
+  });
 
-Before
-After
+  it("fails the build on an unknown partial referenced from inside another partial", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
-See:  above.
-`);
+export default defineConfig({
+  name: "partials-nested-missing",
+  version: "1.0.0",
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      partials: { "auth.md": "Authenticate first.\n{{> footnote}}\n" },
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md": skill("demo", "Demo skill.") + "\n{{> auth}}\n",
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
+      /unknown partial "footnote"/,
+    );
+  });
+
+  it("fails the build on a malformed partial reference", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-malformed",
+  version: "1.0.0",
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      partials: { "auth.md": "Authenticate first.\n" },
+      plugins: {
+        demo: {
+          skills: {
+            demo: { "SKILL.md": skill("demo", "Demo skill.") + "\n{{> }}\n" },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
+      /malformed partial reference/,
+    );
   });
 
   it("resolves nested partial composition end to end", async () => {
@@ -3033,13 +3118,26 @@ export default defineConfig({
     expect(readme).not.toContain("{{>");
   });
 
-  it("renders unrelated {{...}}-looking text as empty (documented Mustache behavior, not a bug)", async () => {
+  it("leaves unrelated {{...}}-looking text exactly as authored", async () => {
+    const documentation = [
+      "Jinja: {{ user.name }}",
+      "Mustache section:",
+      "",
+      "```handlebars",
+      "{{#each items}}",
+      "  {{this}}",
+      "{{/each}}",
+      "```",
+      "",
+      "Triple-stash {{{raw}}} and a dangling {{ opener.",
+    ].join("\n");
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
 export default defineConfig({
-  name: "partials-collision-doc",
+  name: "partials-passthrough",
   version: "1.0.0",
+  source: { partials: "partials" },
   targets: {
     claude: {
       outDir: "dist/claude",
@@ -3048,13 +3146,16 @@ export default defineConfig({
   }
 });
 `,
+      partials: { "auth.md": "Authenticate first." },
       plugins: {
         demo: {
           skills: {
             demo: {
-              "SKILL.md":
-                skill("demo", "Demo skill.") +
-                "\nExample Handlebars tag: {{unrelated}}\n",
+              "SKILL.md": `${skill("demo", "Demo skill.")}
+${documentation}
+
+{{> auth}}
+`,
             },
           },
         },
@@ -3068,8 +3169,129 @@ export default defineConfig({
       path.join(root, "dist/claude/plugins/demo/skills/demo/SKILL.md"),
       "utf8",
     );
-    expect(content).toContain("Example Handlebars tag: \n");
-    expect(content).not.toContain("{{unrelated}}");
+    // Every non-partial construct survives verbatim, including ones Mustache
+    // would otherwise fail to parse, while the real partial still resolves.
+    expect(content).toContain(documentation);
+    expect(content).toContain("Authenticate first.");
+    expect(content).not.toContain("{{> auth}}");
+  });
+
+  it("emits a literal partial tag for an escaped \\{{> name}} reference", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-escape",
+  version: "1.0.0",
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      partials: { "auth.md": "Authenticate first." },
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md": `${skill("demo", "Demo skill.")}
+Reference a partial by writing \\{{> auth}} in a file.
+
+{{> auth}}
+`,
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const content = await readFile(
+      path.join(root, "dist/claude/plugins/demo/skills/demo/SKILL.md"),
+      "utf8",
+    );
+    expect(content).toContain("by writing {{> auth}} in a file.");
+    expect(content).toContain("Authenticate first.");
+  });
+
+  it("fails the build when a partial tag survives in a file type substitution skips", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "partials-survivor",
+  version: "1.0.0",
+  source: { partials: "partials" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } }
+    }
+  }
+});
+`,
+      partials: { "auth.md": "Authenticate first." },
+      plugins: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md": skill("demo", "Demo skill."),
+              "config.yaml": "auth: |\n  {{> auth}}\n",
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
+      /Unsubstituted partial references in emitted output:\n {2}claude: plugins\/demo\/skills\/demo\/config\.yaml contains \{\{> auth\}\}/,
+    );
+  });
+
+  it("flags a partial tag surviving in already-generated output during validate", async () => {
+    const project = await fixture();
+    const root = project.baseDir;
+    await build({ cwd: root, target: "claude" });
+    const pluginDir = path.join(root, "dist/claude/plugins/demo");
+    await writeFile(
+      path.join(pluginDir, "skills/demo/data.yaml"),
+      "auth: {{> auth}}\n",
+    );
+    await writeFile(
+      path.join(pluginDir, "skills/demo/NOTES.md"),
+      "Stale: {{> auth}}\n",
+    );
+
+    const result = await validateOutput(
+      "claude",
+      path.join(root, "dist/claude"),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.filter((issue) => issue.level === "error")).toEqual(
+      expect.arrayContaining([
+        {
+          level: "error",
+          message: expect.stringContaining(
+            "plugins/demo/skills/demo/data.yaml contains an unsubstituted partial reference {{> auth}}",
+          ),
+        },
+      ]),
+    );
+    // A substituted file type can only reach output with a tag via the
+    // documented escape, so it warns rather than failing.
+    expect(
+      result.issues.filter(
+        (issue) =>
+          issue.level === "warning" && issue.message.includes("NOTES.md"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("rejects a target that references an unknown source plugin in from:", async () => {
