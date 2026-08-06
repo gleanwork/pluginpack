@@ -9,6 +9,10 @@ import {
   writeManagedManifest,
 } from "./managed.js";
 import { emitTarget, targetNames } from "./adapters.js";
+import {
+  findUnsubstitutedPartialTags,
+  substitutedExtensions,
+} from "./partials.js";
 import type {
   Artifact,
   BuildOptions,
@@ -33,6 +37,7 @@ export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
   }
   const owner = assertNoCrossTargetCollisions(artifacts);
   await assertNoCollisionsWithBuiltTargets(project, targets, owner);
+  assertNoUnsubstitutedPartialTags(artifacts);
   if (!options.dryRun) {
     // Write every target's new files before pruning any target's stale ones.
     // If a later target's write throws, no target has had files pruned yet —
@@ -51,10 +56,34 @@ export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
   return artifacts;
 }
 
-// Two targets pointed at overlapping output paths would silently overwrite each
-// other (and one target's prune could delete the other's files). Catch it.
-// Returns the absolute-path -> owning-target map so
-// `assertNoCollisionsWithBuiltTargets` can reuse it.
+/**
+ * A `{{> name}}` tag that reaches output is broken content: whatever reads the
+ * file gets a template marker instead of the text it was meant to inline.
+ * Substitution resolves (or rejects) every tag in the file types it runs on, so
+ * what is left is a tag authored somewhere it never ran — a reference file, a
+ * script, a data file. Fail rather than ship it.
+ */
+function assertNoUnsubstitutedPartialTags(artifacts: Artifact[]): void {
+  const found = artifacts.flatMap((artifact) =>
+    findUnsubstitutedPartialTags(artifact.files).map(
+      (tag) => `  ${artifact.target}: ${tag.path} contains ${tag.tag}`,
+    ),
+  );
+  if (found.length > 0) {
+    throw new Error(
+      `Unsubstituted partial references in emitted output:\n${found.join("\n")}\n` +
+        `Partial substitution only runs on ${substitutedExtensions()} files. ` +
+        `Move the shared text into one of those, or inline it here instead.`,
+    );
+  }
+}
+
+/**
+ * Two targets pointed at overlapping output paths would silently overwrite each
+ * other (and one target's prune could delete the other's files). Catch it.
+ * Returns the absolute-path -> owning-target map so
+ * `assertNoCollisionsWithBuiltTargets` can reuse it.
+ */
 function assertNoCrossTargetCollisions(
   artifacts: Artifact[],
 ): Map<string, TargetName> {
@@ -79,14 +108,16 @@ function assertNoCrossTargetCollisions(
   return owner;
 }
 
-// assertNoCrossTargetCollisions only sees artifacts built in *this*
-// invocation. Running `pluginpack build --target X` after an earlier
-// `pluginpack build --target Y` wrote overlapping paths would otherwise slip
-// through — X's build would silently overwrite Y's files, and a later
-// `clean --target Y` would then delete what are now X's live files. Guard
-// against that by also checking incoming paths against every other
-// *configured* target's on-disk managed manifest, not just artifacts present
-// in the current invocation.
+/**
+ * `assertNoCrossTargetCollisions` only sees artifacts built in *this*
+ * invocation. Running `pluginpack build --target X` after an earlier
+ * `pluginpack build --target Y` wrote overlapping paths would otherwise slip
+ * through — X's build would silently overwrite Y's files, and a later
+ * `clean --target Y` would then delete what are now X's live files. Guard
+ * against that by also checking incoming paths against every other
+ * *configured* target's on-disk managed manifest, not just artifacts present
+ * in the current invocation.
+ */
 async function assertNoCollisionsWithBuiltTargets(
   project: ResolvedProject,
   targets: TargetName[],

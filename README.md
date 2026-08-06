@@ -383,11 +383,19 @@ export default defineConfig({
 });
 ```
 
-Partials are project-level (shared across every source plugin, not scoped to one), and may reference other partials — nested composition resolves in one pass, though a circular reference (A includes B includes A) is a build-time error. A `{{> name}}` tag with no matching partial renders as nothing rather than failing the build (see Known limitation below), and a tag alone on its own line — the common case — leaves no blank line behind when it resolves to nothing.
+Partials are project-level (shared across every source plugin, not scoped to one), and may reference other partials — nested composition resolves in one pass, though a circular reference (A includes B includes A) is a build-time error. A tag alone on its own line — the common case — leaves no blank line behind.
 
 Substitution runs on every `.md`/`.mdc`/`.markdown`/`.txt` file pluginpack emits — skills, agents, commands, rules, `additionalFiles`, and a target's `rootFiles` — via the real [`mustache`](https://github.com/janl/mustache.js) library.
 
-**Known limitation:** because substitution is real Mustache rendering, any _other_ `{{...}}`-looking text in the same file — documentation about Handlebars, Angular, Go templates, Jinja, or Mustache itself, or a curly-brace code sample — is also processed against an empty context and typically disappears. A skill that needs to show literal double-curly-brace syntax has to work around it, e.g. by splitting the braces across adjacent inline-code spans (`{{` + `}}`) rather than writing them as one contiguous run.
+**A tag that cannot be resolved fails the build.** A `{{> name}}` reference naming a partial that does not exist is an error listing the available partials and the nearest match, rather than rendering as nothing — silently dropping a section out of a shipped skill file is worse than a red build. The same applies to a malformed reference (`{{> }}`), and to a tag inside a partial's own body.
+
+Only partial tags are substituted. Any other `{{...}}`-shaped text — documentation about Handlebars, Jinja, Go templates, or Mustache itself, or a curly-brace code sample — is emitted exactly as authored, including text Mustache could not parse as a template at all. To write a literal partial tag, escape it with a backslash:
+
+```md
+Reference a partial by writing \{{> auth}} in a skill file.
+```
+
+That emits `{{> auth}}` verbatim. Because substitution does not run on other file types, a tag authored in (say) a `.yaml` reference file or a `.py` script would otherwise ship through untouched; `build` fails on any such tag left in emitted output, and `validate` reports it in an already-generated target repo.
 
 ## Other Shapes
 

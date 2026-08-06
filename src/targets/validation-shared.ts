@@ -9,6 +9,11 @@ import {
   walkFiles,
 } from "../fs.js";
 import { UPDATE_CHECK_SCRIPT_PATH } from "../update-check.js";
+import {
+  findPartialTag,
+  substitutedExtensions,
+  substitutionRunsOn,
+} from "../partials.js";
 import type { TargetName, ValidationIssue } from "../types.js";
 
 export const marketplaceNamePattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
@@ -57,6 +62,48 @@ export const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 /** Pushes an error-level issue onto `issues`. */
 export function error(issues: ValidationIssue[], message: string): void {
   issues.push({ level: "error", message });
+}
+
+/** Pushes a warning-level issue onto `issues` (does not fail validation). */
+export function warning(issues: ValidationIssue[], message: string): void {
+  issues.push({ level: "warning", message });
+}
+
+/**
+ * Flags `{{> name}}` partial references left in generated output, where a tag
+ * should never survive — it means whatever reads the file gets a template
+ * marker instead of the text meant to be inlined.
+ *
+ * Where substitution never runs (a `.yaml` reference file, a `.py` script)
+ * this is unambiguously a mistake, so it's an error. In a file substitution
+ * *does* run on, the only way a tag reaches output is the documented `\{{>`
+ * escape — which is legitimate — so a build by a current pluginpack cannot
+ * produce one accidentally, and this is a warning covering output generated
+ * before unresolved tags were caught at build time.
+ */
+export async function validateNoSurvivingPartialTags(
+  root: string,
+  issues: ValidationIssue[],
+): Promise<void> {
+  for (const file of await walkFiles(root)) {
+    const relative = toPosix(path.relative(root, file));
+    const tag = findPartialTag(await fs.readFile(file));
+    if (!tag) {
+      continue;
+    }
+    const message = `${relative} contains an unsubstituted partial reference ${tag}.`;
+    if (substitutionRunsOn(relative)) {
+      warning(
+        issues,
+        `${message} If it is not an intentional \`\\{{>\` escape, rebuild with a current pluginpack.`,
+      );
+    } else {
+      error(
+        issues,
+        `${message} Partial substitution does not run on this file type (${substitutedExtensions()}).`,
+      );
+    }
+  }
 }
 
 /** Reads and parses a JSON file, pushing an issue and returning `null` on failure. */

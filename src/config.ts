@@ -161,9 +161,11 @@ async function discoverSourcePlugins(
   return plugins;
 }
 
-// A source plugin dir declares a manifest or has at least one component dir.
-// This keeps generated target output (e.g. plugins/cursor/ in a single-repo
-// layout) from being misread as source on rebuild.
+/**
+ * A source plugin dir declares a manifest or has at least one component dir.
+ * This keeps generated target output (e.g. plugins/cursor/ in a single-repo
+ * layout) from being misread as source on rebuild.
+ */
 async function isSourcePluginDir(dir: string): Promise<boolean> {
   if (await exists(path.join(dir, "plugin.pluginpack.json"))) {
     return true;

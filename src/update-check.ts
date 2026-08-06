@@ -6,8 +6,10 @@ export const UPDATE_CHECK_SCRIPT_PATH = "scripts/pluginpack-update-check.sh";
 /** Output-relative path of a plugin's hooks registration file. */
 export const HOOKS_FILE_PATH = "hooks/hooks.json";
 
-// The marker every generated command contains; merge is idempotent on it, so a
-// re-run (or a source plugin that already wired the script) never appends twice.
+/**
+ * The marker every generated command contains; merge is idempotent on it, so a
+ * re-run (or a source plugin that already wired the script) never appends twice.
+ */
 const SCRIPT_MARKER = "pluginpack-update-check";
 
 export type UpdateCheckFormat = "claude" | "cursor";
@@ -33,19 +35,23 @@ export function pluginAllowsUpdateCheck(
   return pluginConfig.updateCheck !== false;
 }
 
-// POSIX single-quote: close, escaped quote, reopen.
+/** POSIX single-quote: close, escaped quote, reopen. */
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-// Escape a value for interpolation into a printf format string ("%" is the
-// only metacharacter) that is then JSON-string-escaped as a whole.
+/**
+ * Escape a value for interpolation into a printf format string ("%" is the
+ * only metacharacter) that is then JSON-string-escaped as a whole.
+ */
 function printfEscape(value: string): string {
   return value.replaceAll("%", "%%");
 }
 
-// Everything that varies by target format, in one place — adding a third
-// format means adding one entry here, not hunting down every `=== "claude"`.
+/**
+ * Everything that varies by target format, in one place — adding a third
+ * format means adding one entry here, not hunting down every `=== "claude"`.
+ */
 type FormatConfig = {
   mergeHooks: (existing: string | undefined) => string;
   // Shell expression supplying printf's args, in the order this format's
@@ -74,10 +80,12 @@ const FORMATS: Record<UpdateCheckFormat, FormatConfig> = {
   },
 };
 
-// The nudge is a printf format string: JSON payload with two %s slots, plus a
-// trailing newline. printf interprets backslash escapes in its format string,
-// so JSON's own escapes (e.g. \") must be doubled to survive, while the
-// appended \n is left single so printf renders the newline.
+/**
+ * The nudge is a printf format string: JSON payload with two %s slots, plus a
+ * trailing newline. printf interprets backslash escapes in its format string,
+ * so JSON's own escapes (e.g. \") must be doubled to survive, while the
+ * appended \n is left single so printf renders the newline.
+ */
 function nudgeFormat(format: UpdateCheckFormat, pluginName: string): string {
   const payload = FORMATS[format].payload(printfEscape(pluginName));
   const literal = JSON.stringify(payload).replaceAll("\\", "\\\\");
@@ -144,9 +152,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// Parse an existing hooks.json and hand back the object plus the event array to
-// append to, enforcing the shapes both hosts expect. Throws bare reasons; the
-// caller wraps them with target/plugin context.
+/**
+ * Parse an existing hooks.json and hand back the object plus the event array to
+ * append to, enforcing the shapes both hosts expect. Throws bare reasons; the
+ * caller wraps them with target/plugin context.
+ */
 function parseHooksFile(
   existing: string,
   eventName: string,

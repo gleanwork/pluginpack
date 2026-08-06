@@ -13,9 +13,11 @@ import type { PluginTargetDefinition } from "./types.js";
 
 const antigravityNamePattern = /^[a-zA-Z0-9-_]+$/;
 
-// plugin.json's schema is { name (required), description (optional) },
-// additionalProperties: false — a strict validator rejects the whole
-// manifest for an extra key, not just the key itself. See citations below.
+/**
+ * plugin.json's schema is { name (required), description (optional) },
+ * additionalProperties: false — a strict validator rejects the whole
+ * manifest for an extra key, not just the key itself. See citations below.
+ */
 const ALLOWED_MANIFEST_KEYS = new Set(["name", "description"]);
 
 /** Antigravity plugin target — see `citations` for source facts. */
