@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Require a lerna-changelog label
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const required = ["breaking", "enhancement", "bug", "documentation", "internal"];
