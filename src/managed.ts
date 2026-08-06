@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { json, toPosix } from "./fs.js";
+import { isInside, json, resolveInside, toPosix } from "./fs.js";
+import { listSourcePluginDirs } from "./config.js";
 import type {
   Artifact,
   CleanupEntry,
@@ -134,23 +135,37 @@ export async function cleanManagedFiles(
   return { target, outDir, entries };
 }
 
-/** Builds the guard that stops prune/clean from deleting paths inside the config's source tree. */
-export function buildDeleteGuard(
+/**
+ * Builds the guard that stops prune/clean from deleting the config or a source tree.
+ *
+ * `source.plugins` gets different treatment depending on whether it was set:
+ * when the user names a directory as their source-plugin root, that whole
+ * directory is protected. When they don't, the default root is `plugins/` —
+ * which is also where the recommended layout writes every target's *output*, so
+ * protecting it wholesale made the documented layout refuse to prune its own
+ * generated files after any source file was removed. Under the default, protect
+ * only the directories that really are source plugins.
+ */
+export async function buildDeleteGuard(
   rootDir: string,
   config: PluginpackConfig,
   configPath: string,
   force?: boolean,
-): DeleteGuard {
+): Promise<DeleteGuard> {
   const protectedRoots: string[] = [];
   if (config.source?.skills) {
     protectedRoots.push(path.resolve(rootDir, config.source.skills));
   }
-  // Mirrors loadConfig's default in src/config.ts so the source-plugin
-  // discovery root is always protected, whether or not it's written out
-  // explicitly in config.
-  protectedRoots.push(
-    path.resolve(rootDir, config.source?.plugins ?? "plugins"),
-  );
+  if (config.source?.partials) {
+    protectedRoots.push(path.resolve(rootDir, config.source.partials));
+  }
+  if (config.source?.plugins) {
+    protectedRoots.push(path.resolve(rootDir, config.source.plugins));
+  } else {
+    protectedRoots.push(
+      ...(await listSourcePluginDirs(path.resolve(rootDir, "plugins"))),
+    );
+  }
   return { protectedRoots, configPath: path.resolve(configPath), force };
 }
 
@@ -177,17 +192,44 @@ function assertNoProtectedDeletions(
   );
 }
 
+/**
+ * Whether deleting `relativePath` would reach into the config or a source tree.
+ *
+ * Comparison is case- and normalization-folded, not exact. On a case-insensitive
+ * filesystem (APFS, NTFS) `fs.rm` resolves `Skills/x` and `skills/x` to the same
+ * file, so an exact-match guard can be walked straight past by one letter of
+ * case — reachable from a single typo in `source.skills` that the OS forgives,
+ * or a case-only rename in git history. Folding over-protects on a
+ * case-sensitive host, which is the correct direction for a guard whose job is
+ * refusing to delete.
+ */
 function isProtectedDeletion(
   outDir: string,
   relativePath: string,
   guard: DeleteGuard,
 ): boolean {
   const absolute = path.resolve(outDir, normalizeManagedPath(relativePath));
-  if (guard.configPath && absolute === guard.configPath) {
+  if (guard.configPath && pathsEqual(absolute, guard.configPath)) {
     return true;
   }
   return guard.protectedRoots.some(
-    (root) => absolute === root || absolute.startsWith(`${root}${path.sep}`),
+    (root) => pathsEqual(absolute, root) || isUnder(absolute, root),
+  );
+}
+
+/** Case- and normalization-folded form, for comparing paths the filesystem treats as equal. */
+function fold(value: string): string {
+  return value.normalize("NFC").toLowerCase();
+}
+
+function pathsEqual(a: string, b: string): boolean {
+  return a === b || fold(a) === fold(b);
+}
+
+function isUnder(candidate: string, root: string): boolean {
+  return (
+    candidate.startsWith(`${root}${path.sep}`) ||
+    fold(candidate).startsWith(`${fold(root)}${path.sep}`)
   );
 }
 
@@ -218,13 +260,9 @@ async function removeManagedPath(
   const root = path.resolve(outDir);
   const normalized = normalizeManagedPath(relativePath);
   const destination = path.resolve(root, normalized);
-  if (destination !== root && !destination.startsWith(`${root}${path.sep}`)) {
+  if (!isInside(root, destination)) {
     throw new Error(`Managed path escapes output directory: ${relativePath}`);
   }
-  // Defense in depth: fs.rm on a symlink unlinks the symlink itself rather
-  // than following it, so this isn't currently exploitable — but refuse
-  // outright if the entry is a symlink pointing outside `root`, rather than
-  // relying on that fs.rm behavior remaining true forever.
   let stats;
   try {
     stats = await fs.lstat(destination);
@@ -239,13 +277,30 @@ async function removeManagedPath(
       path.dirname(destination),
       await fs.readlink(destination),
     );
-    if (target !== root && !target.startsWith(`${root}${path.sep}`)) {
+    if (!isInside(root, target)) {
       throw new Error(
         `Refusing to remove a symlink pointing outside the output directory: ${relativePath}`,
       );
     }
   }
-  await fs.rm(destination, { force: true });
+  // The checks above are lexical, or inspect only the final entry. Neither sees
+  // a path whose *intermediate* directory is a symlink pointing elsewhere: the
+  // string test passes and the final entry is an ordinary file. Resolve the
+  // real destination as the catch-all before deleting.
+  if ((await resolveInside(root, destination)) === null) {
+    throw new Error(
+      `Refusing to remove a path that resolves outside the output directory: ${relativePath}`,
+    );
+  }
+  try {
+    await fs.rm(destination, { force: true });
+  } catch (error) {
+    throw new Error(
+      `Failed to remove managed path "${relativePath}" under ${outDir}: ${(error as Error).message}. ` +
+        `The managed manifest still lists every path, so re-running is safe once the cause is fixed.`,
+      { cause: error },
+    );
+  }
   await removeEmptyParents(path.dirname(destination), root);
 }
 
