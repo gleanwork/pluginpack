@@ -13,7 +13,19 @@ jobs:
         with:
           script: |
             const required = ["breaking", "enhancement", "bug", "documentation", "internal"];
-            const labels = context.payload.pull_request.labels.map((label) => label.name);
+            const pullRequest = context.payload.pull_request;
+            // Dependabot and friends label their own PRs (dependencies,
+            // javascript, github_actions) and cannot be asked to pick a
+            // changelog label, so the gate does not apply to them. Passing
+            // rather than skipping the job keeps the check reportable if it
+            // ever becomes a required status check.
+            if (pullRequest.user.type === "Bot") {
+              core.info(
+                `Skipping the changelog label check for bot author ${pullRequest.user.login}.`,
+              );
+              return;
+            }
+            const labels = pullRequest.labels.map((label) => label.name);
             const matched = labels.filter((label) => required.includes(label));
             if (matched.length === 0) {
               core.setFailed(
