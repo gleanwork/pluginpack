@@ -162,6 +162,36 @@ async function discoverSourcePlugins(
 }
 
 /**
+ * Directories under `sourceRoot` that are actually source plugins.
+ *
+ * The delete guard needs this to protect source without protecting generated
+ * output: the recommended layout writes every target's output under
+ * `plugins/<target>/`, which is also the default source-plugin root, so
+ * protecting that root wholesale refuses to prune the tool's own output. A
+ * shallow filesystem scan is deliberate — `clean` must keep working when the
+ * config or source tree no longer loads.
+ */
+export async function listSourcePluginDirs(
+  sourceRoot: string,
+): Promise<string[]> {
+  if (!(await exists(sourceRoot))) {
+    return [];
+  }
+  const dirs: string[] = [];
+  const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) {
+      continue;
+    }
+    const dir = path.join(sourceRoot, entry.name);
+    if (await isSourcePluginDir(dir)) {
+      dirs.push(dir);
+    }
+  }
+  return dirs;
+}
+
+/**
  * A source plugin dir declares a manifest or has at least one component dir.
  * This keeps generated target output (e.g. plugins/cursor/ in a single-repo
  * layout) from being misread as source on rebuild.

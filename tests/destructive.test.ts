@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import {
   access,
   mkdir,
@@ -7,6 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Project, type ProjectArgs } from "fixturify-project";
 import { afterEach, describe, expect, it } from "vitest";
 import { build } from "../src/build.js";
@@ -81,6 +83,18 @@ const cursorTarget = `    cursor: {
       outDir: "dist/cursor",
       plugins: { demo: { from: ["demo"], components: ["skills"] } }
     }`;
+
+/**
+ * Whether this host's filesystem is case-insensitive (APFS, NTFS). A couple of
+ * guard behaviours only exist on such a host, and asserting them on a
+ * case-sensitive one would test the filesystem rather than the guard.
+ */
+const caseInsensitiveFs = existsSync(
+  path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "DESTRUCTIVE.TEST.TS",
+  ),
+);
 
 /** Rewrites a target's managed manifest, the on-disk record prune/clean/diff act on. */
 async function writeManifest(
@@ -307,6 +321,22 @@ describe("the delete guard protects a source tree from clean, not just prune", (
       /Refusing to clean 2 path\(s\)[\s\S]*skills\/demo\/SKILL\.md[\s\S]*skills\/demo\/OTHER\.md/,
     );
   });
+
+  it("names the protected root each blocked path resolved inside", async () => {
+    // A bare list of refused paths does not tell the user what the collision
+    // was with. Naming the root does — and when the root came from a mis-cased
+    // config value, seeing it echoed back points straight at the typo.
+    const created = await overlappingProject();
+    const root = created.baseDir;
+    await build({ cwd: root, target: "cursor" });
+    await writeManifest(root, ".", "cursor", ["skills/demo/SKILL.md"]);
+
+    await expect(clean({ cwd: root, target: "cursor" })).rejects.toThrow(
+      new RegExp(
+        `skills/demo/SKILL\\.md -> resolves inside ${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/skills`,
+      ),
+    );
+  });
 });
 
 describe("clean handles targets and manifests that are not there", () => {
@@ -460,6 +490,222 @@ describe("build writes every target before pruning any target", () => {
     await access(stale);
     const manifest = await readManagedManifest(copilotOut, "copilot");
     expect(manifest?.files).toContain("stale-from-last-build.md");
+  });
+});
+
+describe("the documented layouts stay operable through a full lifecycle", () => {
+  // The shape of test that was missing when this class of bug shipped twice:
+  // every other layout test does one fresh build and never mutates, prunes, or
+  // cleans. A guard false positive is invisible until something goes stale.
+  const layouts: Array<[string, string]> = [
+    [
+      "README Recommended Shape (output under plugins/<target>/, source.plugins unset)",
+      `    antigravity: {
+      outDir: "plugins/antigravity",
+      plugins: { acme: { from: ["core"] } }
+    }`,
+    ],
+    [
+      "README single-repo-root shape (outDir '.', output under a pluginRoot)",
+      `    claude: {
+      outDir: ".",
+      pluginRoot: "plugins/claude",
+      plugins: { acme: { from: ["core"] } }
+    }`,
+    ],
+    [
+      "init scaffold shape (dist/<target>)",
+      `    claude: {
+      outDir: "dist/claude",
+      plugins: { acme: { from: ["core"] } }
+    }`,
+    ],
+  ];
+
+  for (const [label, targetsBlock] of layouts) {
+    it(`survives build -> delete a skill -> rebuild -> prune -> clean: ${label}`, async () => {
+      const created = await makeProject(
+        targetsBlock,
+        {
+          skills: {
+            alpha: {
+              "SKILL.md": "---\nname: alpha\ndescription: Alpha.\n---\n\nA.\n",
+            },
+            beta: {
+              "SKILL.md": "---\nname: beta\ndescription: Beta.\n---\n\nB.\n",
+            },
+          },
+        },
+        `source: { skills: "skills", rootPlugin: { id: "core" } },`,
+      );
+      const root = created.baseDir;
+
+      await build({ cwd: root });
+      // A user removes a skill — the step that used to break everything after.
+      await rm(path.join(root, "skills/beta"), {
+        recursive: true,
+        force: true,
+      });
+
+      await expect(build({ cwd: root })).resolves.toBeDefined();
+      await expect(prune({ cwd: root })).resolves.toBeDefined();
+      await expect(clean({ cwd: root })).resolves.toBeDefined();
+
+      // The source tree is untouched by any of it.
+      await access(path.join(root, "skills/alpha/SKILL.md"));
+      await access(path.join(root, "pluginpack.config.ts"));
+    });
+  }
+
+  it("still refuses to delete real source when a target writes into the source tree", async () => {
+    const created = await makeProject(
+      `    antigravity: {
+      outDir: ".",
+      plugins: { acme: { from: ["core"], path: "skills/generated" } }
+    }`,
+      {
+        skills: {
+          alpha: {
+            "SKILL.md": "---\nname: alpha\ndescription: Alpha.\n---\n\nA.\n",
+          },
+        },
+      },
+      `source: { skills: "skills", rootPlugin: { id: "core" } },`,
+    );
+    const root = created.baseDir;
+    await build({ cwd: root });
+
+    await expect(clean({ cwd: root })).rejects.toThrow(
+      /Refusing to clean .* that resolve inside your source tree or config/,
+    );
+    await access(path.join(root, "skills/alpha/SKILL.md"));
+  });
+
+  it("refuses a managed path differing from a protected root only by case", async () => {
+    // Tests the guard's comparison directly, independent of how the host
+    // filesystem resolves case: the manifest names `Skills/...` while
+    // source.skills is `skills`. On a case-insensitive host fs.rm would resolve
+    // these to the same file, so an exact-match guard deletes real source.
+    const created = await makeProject(
+      `    antigravity: {
+      outDir: ".",
+      plugins: { acme: { from: ["core"], path: "generated" } }
+    }`,
+      {
+        skills: {
+          alpha: {
+            "SKILL.md": "---\nname: alpha\ndescription: Alpha.\n---\n\nA.\n",
+          },
+        },
+      },
+      `source: { skills: "skills", rootPlugin: { id: "core" } },`,
+    );
+    const root = created.baseDir;
+    await build({ cwd: root });
+    await writeManifest(root, ".", "antigravity", ["Skills/alpha/SKILL.md"]);
+
+    await expect(clean({ cwd: root })).rejects.toThrow(
+      /Refusing to clean .* that resolve inside your source tree or config/,
+    );
+    await access(path.join(root, "skills/alpha/SKILL.md"));
+  });
+
+  it.skipIf(!caseInsensitiveFs)(
+    "refuses when source.skills differs from the real directory only by case",
+    async () => {
+      // The end-to-end version of the above, and the realistic trigger: a config
+      // typo that a case-insensitive filesystem forgives, so the build succeeds
+      // against `skills/` while the guard was told `Skills/`. Only meaningful on
+      // a host that resolves the mismatch — on a case-sensitive one the build
+      // correctly fails earlier with "Root skills source directory is missing".
+      const created = await makeProject(
+        `    antigravity: {
+      outDir: ".",
+      plugins: { acme: { from: ["core"], path: "skills/generated" } }
+    }`,
+        {
+          skills: {
+            alpha: {
+              "SKILL.md": "---\nname: alpha\ndescription: Alpha.\n---\n\nA.\n",
+            },
+          },
+        },
+        `source: { skills: "Skills", rootPlugin: { id: "core" } },`,
+      );
+      const root = created.baseDir;
+      await build({ cwd: root });
+
+      await expect(clean({ cwd: root })).rejects.toThrow(
+        /Refusing to clean .* that resolve inside your source tree or config/,
+      );
+      await access(path.join(root, "skills/alpha/SKILL.md"));
+    },
+  );
+});
+
+describe("containment follows symlinks instead of trusting the path string", () => {
+  async function projectWithSymlinkedOutputDir(): Promise<{
+    root: string;
+    outside: string;
+  }> {
+    const created = await makeProject(
+      `    antigravity: {
+      outDir: "out",
+      plugins: { acme: { from: ["demo"], path: "shared" } }
+    }`,
+    );
+    const root = created.baseDir;
+    const outside = path.join(root, "outside-the-output-dir");
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(outside, "plugin.json"), "USER FILE\n");
+    await mkdir(path.join(root, "out"), { recursive: true });
+    // An intermediate segment of the output path is a symlink pointing away.
+    await symlink(outside, path.join(root, "out/shared"));
+    return { root, outside };
+  }
+
+  it("refuses to write through a symlinked intermediate directory", async () => {
+    const { root, outside } = await projectWithSymlinkedOutputDir();
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      /Refusing to write through a symlink that leaves the output directory/,
+    );
+    expect(await readFile(path.join(outside, "plugin.json"), "utf8")).toBe(
+      "USER FILE\n",
+    );
+  });
+
+  it("refuses to delete through a symlinked intermediate directory", async () => {
+    const { root, outside } = await projectWithSymlinkedOutputDir();
+    // A manifest naming a path whose intermediate segment is the symlink. Every
+    // segment is a safe relative path, so normalizeManagedPath permits it.
+    await writeManifest(root, "out", "antigravity", ["shared/plugin.json"]);
+
+    await expect(clean({ cwd: root, target: "antigravity" })).rejects.toThrow(
+      /Refusing to remove a path that resolves outside the output directory/,
+    );
+    await access(path.join(outside, "plugin.json"));
+  });
+
+  it("still writes and cleans normally when the output directory itself is a symlink", async () => {
+    // The legitimate case: outDir is a symlink. Resolving both sides means this
+    // keeps working rather than being caught as an escape.
+    const created = await makeProject(
+      `    antigravity: {
+      outDir: "linked-out",
+      plugins: { acme: { from: ["demo"] } }
+    }`,
+    );
+    const root = created.baseDir;
+    const real = path.join(root, "real-out");
+    await mkdir(real, { recursive: true });
+    await symlink(real, path.join(root, "linked-out"));
+
+    await expect(build({ cwd: root })).resolves.toBeDefined();
+    await access(path.join(real, "acme/plugin.json"));
+    await expect(
+      clean({ cwd: root, target: "antigravity" }),
+    ).resolves.toBeDefined();
   });
 });
 

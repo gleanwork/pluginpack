@@ -26,7 +26,7 @@ export async function prune(
   } = {},
 ): Promise<CleanupResult[]> {
   const project = await loadProjectConfig(options.cwd, options.configPath);
-  const guard = buildDeleteGuard(
+  const guard = await buildDeleteGuard(
     project.rootDir,
     project.config,
     project.configPath,
@@ -58,7 +58,7 @@ export async function clean(
   } = {},
 ): Promise<CleanupResult[]> {
   const project = await loadProjectConfig(options.cwd, options.configPath);
-  const guard = buildDeleteGuard(
+  const guard = await buildDeleteGuard(
     project.rootDir,
     project.config,
     project.configPath,
