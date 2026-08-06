@@ -132,12 +132,14 @@ async function resolveTargetOverride(
   return file;
 }
 
-// A source plugin declares MCP servers via a .mcp.json file (standard
-// { mcpServers: {...} } shape) or an mcpServers key in plugin.pluginpack.json.
-// The file takes precedence when both are present. The file form supports
-// per-target overrides: targets/<host>/.mcp.json wins for that host. The
-// manifest form has no per-file override; authors who need per-target MCP
-// config should use the .mcp.json file form.
+/**
+ * A source plugin declares MCP servers via a .mcp.json file (standard
+ * { mcpServers: {...} } shape) or an mcpServers key in plugin.pluginpack.json.
+ * The file takes precedence when both are present. The file form supports
+ * per-target overrides: targets/<host>/.mcp.json wins for that host. The
+ * manifest form has no per-file override; authors who need per-target MCP
+ * config should use the .mcp.json file form.
+ */
 async function readMcpServers(
   plugin: SourcePlugin,
   target: TargetName,
