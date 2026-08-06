@@ -51,13 +51,19 @@ export async function readManagedManifest(
     }
     throw error;
   }
-  let parsed: Partial<ManagedManifest>;
+  let parsed: Partial<ManagedManifest> | null;
   try {
-    parsed = JSON.parse(raw) as Partial<ManagedManifest>;
+    parsed = JSON.parse(raw) as Partial<ManagedManifest> | null;
   } catch {
     throw new Error(`Invalid managed manifest: ${manifestPath}`);
   }
   if (
+    // `JSON.parse` happily returns null, a number, or a string for a
+    // truncated or hand-edited manifest; those must land on the same clear
+    // error as malformed JSON, not a TypeError from the field checks below.
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
     parsed.version !== 1 ||
     parsed.target !== target ||
     !Array.isArray(parsed.files) ||
