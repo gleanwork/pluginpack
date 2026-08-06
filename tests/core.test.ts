@@ -3347,6 +3347,122 @@ export default defineConfig({
     );
   });
 
+  it("rejects a root skills plugin id that collides with a discovered source plugin", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "id-collision-plugins",
+  version: "1.0.0",
+  source: { skills: "skills", rootPlugin: { id: "demo" } },
+  metadata: { description: "C", author: { name: "C" }, license: "MIT" },
+  targets: {
+    claude: { outDir: "dist/claude", plugins: { demo: { from: ["demo"] } } }
+  }
+});
+`,
+      skills: { root: { "SKILL.md": skill("root", "Root skill.") } },
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+
+    await expect(
+      build({ cwd: project.baseDir, target: "claude" }),
+    ).rejects.toThrow(
+      /Root skills source plugin "demo" conflicts with an existing source plugin/,
+    );
+  });
+
+  it("rejects a configured source.skills directory that does not exist", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "missing-skills-plugins",
+  version: "1.0.0",
+  source: { skills: "skills", rootPlugin: { id: "core" } },
+  metadata: { description: "M", author: { name: "M" }, license: "MIT" },
+  targets: {
+    claude: { outDir: "dist/claude", plugins: { core: { from: ["core"] } } }
+  }
+});
+`,
+    });
+
+    await expect(
+      build({ cwd: project.baseDir, target: "claude" }),
+    ).rejects.toThrow(/Root skills source directory is missing/);
+  });
+
+  it("rejects a rootFiles source that cannot be read", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "rootfiles-missing-plugins",
+  version: "1.0.0",
+  metadata: { description: "R", author: { name: "R" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } },
+      rootFiles: { "README.md": "NOT_THERE.md" }
+    }
+  }
+});
+`,
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+
+    await expect(
+      build({ cwd: project.baseDir, target: "claude" }),
+    ).rejects.toThrow(/rootFiles source "NOT_THERE\.md" could not be read/);
+  });
+
+  // The engine also checks rootFiles destinations with isSafeRelativePath, but
+  // config validation rejects an escaping key first, so that check is
+  // unreachable defense-in-depth. Pin the guarantee at the layer that enforces
+  // it, rather than asserting an error the user can never actually see.
+  it("rejects a rootFiles destination that escapes the output directory", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "rootfiles-unsafe-plugins",
+  version: "1.0.0",
+  metadata: { description: "R", author: { name: "R" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { from: ["demo"] } },
+      rootFiles: { "../escaped.md": "SOURCE.md" }
+    }
+  }
+});
+`,
+      "SOURCE.md": "# Source\n",
+      plugins: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+    });
+
+    await expect(
+      build({ cwd: project.baseDir, target: "claude" }),
+    ).rejects.toThrow(
+      /Invalid pluginpack config in .*: targets\.claude\.rootFiles\.\.\.\/escaped\.md: Invalid key in record/,
+    );
+    await expectMissing(path.join(project.baseDir, "escaped.md"));
+  });
+
   it("rejects malformed JSON in a source plugin's .mcp.json", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
