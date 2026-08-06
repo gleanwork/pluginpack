@@ -178,22 +178,27 @@ function assertNoProtectedDeletions(
   if (!guard || guard.force) {
     return;
   }
-  const blocked = paths.filter((file) =>
-    isProtectedDeletion(outDir, file, guard),
-  );
+  const blocked = paths
+    .map((file) => ({ file, root: protectingRoot(outDir, file, guard) }))
+    .filter(
+      (entry): entry is { file: string; root: string } => entry.root !== null,
+    );
   if (blocked.length === 0) {
     return;
   }
   throw new Error(
     `Refusing to ${command} ${blocked.length} path(s) that resolve inside your source tree or config:\n` +
-      `${blocked.map((file) => `  ${file}`).join("\n")}\n` +
+      `${blocked.map(({ file, root }) => `  ${file} -> resolves inside ${root}`).join("\n")}\n` +
       `This usually means a target outDir overlaps source.skills/source.plugins. ` +
       `Fix the config, or re-run with --force to delete anyway.`,
   );
 }
 
 /**
- * Whether deleting `relativePath` would reach into the config or a source tree.
+ * The protected root `relativePath` resolves inside, or `null` if it is safe to
+ * delete. Returns the matching root rather than a boolean so the refusal can
+ * name what it collided with — "resolves inside <path>" is actionable in a way
+ * that a bare list of refused paths is not.
  *
  * Comparison is case- and normalization-folded, not exact. On a case-insensitive
  * filesystem (APFS, NTFS) `fs.rm` resolves `Skills/x` and `skills/x` to the same
@@ -203,17 +208,19 @@ function assertNoProtectedDeletions(
  * case-sensitive host, which is the correct direction for a guard whose job is
  * refusing to delete.
  */
-function isProtectedDeletion(
+function protectingRoot(
   outDir: string,
   relativePath: string,
   guard: DeleteGuard,
-): boolean {
+): string | null {
   const absolute = path.resolve(outDir, normalizeManagedPath(relativePath));
   if (guard.configPath && pathsEqual(absolute, guard.configPath)) {
-    return true;
+    return guard.configPath;
   }
-  return guard.protectedRoots.some(
-    (root) => pathsEqual(absolute, root) || isUnder(absolute, root),
+  return (
+    guard.protectedRoots.find(
+      (root) => pathsEqual(absolute, root) || isUnder(absolute, root),
+    ) ?? null
   );
 }
 

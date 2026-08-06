@@ -307,6 +307,22 @@ describe("the delete guard protects a source tree from clean, not just prune", (
       /Refusing to clean 2 path\(s\)[\s\S]*skills\/demo\/SKILL\.md[\s\S]*skills\/demo\/OTHER\.md/,
     );
   });
+
+  it("names the protected root each blocked path resolved inside", async () => {
+    // A bare list of refused paths does not tell the user what the collision
+    // was with. Naming the root does — and when the root came from a mis-cased
+    // config value, seeing it echoed back points straight at the typo.
+    const created = await overlappingProject();
+    const root = created.baseDir;
+    await build({ cwd: root, target: "cursor" });
+    await writeManifest(root, ".", "cursor", ["skills/demo/SKILL.md"]);
+
+    await expect(clean({ cwd: root, target: "cursor" })).rejects.toThrow(
+      new RegExp(
+        `skills/demo/SKILL\\.md -> resolves inside ${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/skills`,
+      ),
+    );
+  });
 });
 
 describe("clean handles targets and manifests that are not there", () => {
