@@ -25,6 +25,22 @@ export function isInside(root: string, candidate: string): boolean {
 }
 
 /**
+ * `isInside`, comparing the way a case-insensitive filesystem does.
+ *
+ * On APFS and NTFS `fs.rm` resolves `Skills/x` and `skills/x` to the same file,
+ * so an exact-match containment test can be walked past by one letter of case.
+ * Folding case and Unicode normalization over-matches on a case-sensitive host,
+ * which is the right direction for a check that decides whether to refuse.
+ */
+export function isInsideFolded(root: string, candidate: string): boolean {
+  return isInside(root, candidate) || isInside(fold(root), fold(candidate));
+}
+
+function fold(value: string): string {
+  return value.normalize("NFC").toLowerCase();
+}
+
+/**
  * Resolves `target` with symlinks followed, or returns `null` if the result
  * escapes `root`.
  *
@@ -59,7 +75,7 @@ async function realpathDeep(target: string): Promise<string> {
   for (;;) {
     try {
       const real = await fs.realpath(current);
-      return path.join(real, ...missing.reverse());
+      return path.join(real, ...[...missing].reverse());
     } catch (error) {
       if (!isNotFoundError(error)) {
         throw error;

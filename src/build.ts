@@ -26,11 +26,7 @@ export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
   const targets = options.target
     ? [options.target]
     : targetNames.filter((target) => project.config.targets[target]);
-  const guard = await buildDeleteGuard(
-    project.rootDir,
-    project.config,
-    project.configPath,
-  );
+  const guard = await buildDeleteGuard(project);
   const artifacts: Artifact[] = [];
   for (const target of targets) {
     artifacts.push(await emitTarget(project, target, options.outDir));

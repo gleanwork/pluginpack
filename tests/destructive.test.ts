@@ -494,9 +494,8 @@ describe("build writes every target before pruning any target", () => {
 });
 
 describe("the documented layouts stay operable through a full lifecycle", () => {
-  // The shape of test that was missing when this class of bug shipped twice:
-  // every other layout test does one fresh build and never mutates, prunes, or
-  // cleans. A guard false positive is invisible until something goes stale.
+  // A guard false positive is invisible to a single fresh build — it only
+  // surfaces once something goes stale. These walk the whole cycle instead.
   const layouts: Array<[string, string]> = [
     [
       "README Recommended Shape (output under plugins/<target>/, source.plugins unset)",
