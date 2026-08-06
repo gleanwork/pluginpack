@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import {
   access,
   mkdir,
@@ -7,6 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Project, type ProjectArgs } from "fixturify-project";
 import { afterEach, describe, expect, it } from "vitest";
 import { build } from "../src/build.js";
@@ -81,6 +83,18 @@ const cursorTarget = `    cursor: {
       outDir: "dist/cursor",
       plugins: { demo: { from: ["demo"], components: ["skills"] } }
     }`;
+
+/**
+ * Whether this host's filesystem is case-insensitive (APFS, NTFS). A couple of
+ * guard behaviours only exist on such a host, and asserting them on a
+ * case-sensitive one would test the filesystem rather than the guard.
+ */
+const caseInsensitiveFs = existsSync(
+  path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "DESTRUCTIVE.TEST.TS",
+  ),
+);
 
 /** Rewrites a target's managed manifest, the on-disk record prune/clean/diff act on. */
 async function writeManifest(
@@ -567,14 +581,15 @@ describe("the documented layouts stay operable through a full lifecycle", () => 
     await access(path.join(root, "skills/alpha/SKILL.md"));
   });
 
-  it("refuses when source.skills differs from the real directory only by case", async () => {
-    // A config typo a case-insensitive filesystem forgives: the build succeeds
-    // against `skills/` while the guard was told `Skills/`. Exact-match
-    // comparison let clean walk straight into the real source tree.
+  it("refuses a managed path differing from a protected root only by case", async () => {
+    // Tests the guard's comparison directly, independent of how the host
+    // filesystem resolves case: the manifest names `Skills/...` while
+    // source.skills is `skills`. On a case-insensitive host fs.rm would resolve
+    // these to the same file, so an exact-match guard deletes real source.
     const created = await makeProject(
       `    antigravity: {
       outDir: ".",
-      plugins: { acme: { from: ["core"], path: "skills/generated" } }
+      plugins: { acme: { from: ["core"], path: "generated" } }
     }`,
       {
         skills: {
@@ -583,16 +598,49 @@ describe("the documented layouts stay operable through a full lifecycle", () => 
           },
         },
       },
-      `source: { skills: "Skills", rootPlugin: { id: "core" } },`,
+      `source: { skills: "skills", rootPlugin: { id: "core" } },`,
     );
     const root = created.baseDir;
     await build({ cwd: root });
+    await writeManifest(root, ".", "antigravity", ["Skills/alpha/SKILL.md"]);
 
     await expect(clean({ cwd: root })).rejects.toThrow(
       /Refusing to clean .* that resolve inside your source tree or config/,
     );
     await access(path.join(root, "skills/alpha/SKILL.md"));
   });
+
+  it.skipIf(!caseInsensitiveFs)(
+    "refuses when source.skills differs from the real directory only by case",
+    async () => {
+      // The end-to-end version of the above, and the realistic trigger: a config
+      // typo that a case-insensitive filesystem forgives, so the build succeeds
+      // against `skills/` while the guard was told `Skills/`. Only meaningful on
+      // a host that resolves the mismatch — on a case-sensitive one the build
+      // correctly fails earlier with "Root skills source directory is missing".
+      const created = await makeProject(
+        `    antigravity: {
+      outDir: ".",
+      plugins: { acme: { from: ["core"], path: "skills/generated" } }
+    }`,
+        {
+          skills: {
+            alpha: {
+              "SKILL.md": "---\nname: alpha\ndescription: Alpha.\n---\n\nA.\n",
+            },
+          },
+        },
+        `source: { skills: "Skills", rootPlugin: { id: "core" } },`,
+      );
+      const root = created.baseDir;
+      await build({ cwd: root });
+
+      await expect(clean({ cwd: root })).rejects.toThrow(
+        /Refusing to clean .* that resolve inside your source tree or config/,
+      );
+      await access(path.join(root, "skills/alpha/SKILL.md"));
+    },
+  );
 });
 
 describe("containment follows symlinks instead of trusting the path string", () => {
