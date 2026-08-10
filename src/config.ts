@@ -138,25 +138,12 @@ async function discoverSourcePlugins(
   sourceRoot: string,
 ): Promise<Map<string, SourcePlugin>> {
   const plugins = new Map<string, SourcePlugin>();
-  if (!(await exists(sourceRoot))) {
-    return plugins;
-  }
-  const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith(".")) {
-      continue;
-    }
-    const dir = path.join(sourceRoot, entry.name);
-    if (!(await isSourcePluginDir(dir))) {
-      continue;
-    }
-    const manifestPath = path.join(dir, "plugin.pluginpack.json");
-    const manifest = await readSourceManifest(manifestPath);
-    plugins.set(entry.name, {
-      id: entry.name,
-      dir,
-      manifest,
-    });
+  for (const dir of await listSourcePluginDirs(sourceRoot)) {
+    const id = path.basename(dir);
+    const manifest = await readSourceManifest(
+      path.join(dir, "plugin.pluginpack.json"),
+    );
+    plugins.set(id, { id, dir, manifest });
   }
   return plugins;
 }

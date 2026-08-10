@@ -1,13 +1,19 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { isInside, json, resolveInside, toPosix } from "./fs.js";
+import {
+  isInside,
+  isInsideFolded,
+  json,
+  resolveInside,
+  toPosix,
+} from "./fs.js";
 import { listSourcePluginDirs } from "./config.js";
 import type {
   Artifact,
   CleanupEntry,
   CleanupResult,
   DeleteGuard,
-  PluginpackConfig,
+  ResolvedProjectConfig,
   TargetName,
 } from "./types.js";
 
@@ -141,17 +147,19 @@ export async function cleanManagedFiles(
  * `source.plugins` gets different treatment depending on whether it was set:
  * when the user names a directory as their source-plugin root, that whole
  * directory is protected. When they don't, the default root is `plugins/` —
- * which is also where the recommended layout writes every target's *output*, so
- * protecting it wholesale made the documented layout refuse to prune its own
- * generated files after any source file was removed. Under the default, protect
- * only the directories that really are source plugins.
+ * which is also where the recommended layout writes every target's output, so
+ * protecting it wholesale would refuse to prune generated files. Under the
+ * default, protect only the directories that really are source plugins.
+ *
+ * Takes the loaded config rather than plugin discovery results, so `clean` keeps
+ * working when the source tree no longer loads: the scan below is a shallow
+ * readdir, not a build.
  */
 export async function buildDeleteGuard(
-  rootDir: string,
-  config: PluginpackConfig,
-  configPath: string,
+  project: ResolvedProjectConfig,
   force?: boolean,
 ): Promise<DeleteGuard> {
+  const { rootDir, config } = project;
   const protectedRoots: string[] = [];
   if (config.source?.skills) {
     protectedRoots.push(path.resolve(rootDir, config.source.skills));
@@ -166,7 +174,11 @@ export async function buildDeleteGuard(
       ...(await listSourcePluginDirs(path.resolve(rootDir, "plugins"))),
     );
   }
-  return { protectedRoots, configPath: path.resolve(configPath), force };
+  return {
+    protectedRoots,
+    configPath: path.resolve(project.configPath),
+    force,
+  };
 }
 
 function assertNoProtectedDeletions(
@@ -200,13 +212,8 @@ function assertNoProtectedDeletions(
  * name what it collided with — "resolves inside <path>" is actionable in a way
  * that a bare list of refused paths is not.
  *
- * Comparison is case- and normalization-folded, not exact. On a case-insensitive
- * filesystem (APFS, NTFS) `fs.rm` resolves `Skills/x` and `skills/x` to the same
- * file, so an exact-match guard can be walked straight past by one letter of
- * case — reachable from a single typo in `source.skills` that the OS forgives,
- * or a case-only rename in git history. Folding over-protects on a
- * case-sensitive host, which is the correct direction for a guard whose job is
- * refusing to delete.
+ * Containment is compared with case and Unicode normalization folded, since the
+ * filesystem may treat paths differing only in case as the same file.
  */
 function protectingRoot(
   outDir: string,
@@ -214,29 +221,11 @@ function protectingRoot(
   guard: DeleteGuard,
 ): string | null {
   const absolute = path.resolve(outDir, normalizeManagedPath(relativePath));
-  if (guard.configPath && pathsEqual(absolute, guard.configPath)) {
+  if (guard.configPath && isInsideFolded(guard.configPath, absolute)) {
     return guard.configPath;
   }
   return (
-    guard.protectedRoots.find(
-      (root) => pathsEqual(absolute, root) || isUnder(absolute, root),
-    ) ?? null
-  );
-}
-
-/** Case- and normalization-folded form, for comparing paths the filesystem treats as equal. */
-function fold(value: string): string {
-  return value.normalize("NFC").toLowerCase();
-}
-
-function pathsEqual(a: string, b: string): boolean {
-  return a === b || fold(a) === fold(b);
-}
-
-function isUnder(candidate: string, root: string): boolean {
-  return (
-    candidate.startsWith(`${root}${path.sep}`) ||
-    fold(candidate).startsWith(`${fold(root)}${path.sep}`)
+    guard.protectedRoots.find((root) => isInsideFolded(root, absolute)) ?? null
   );
 }
 

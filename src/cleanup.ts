@@ -26,12 +26,7 @@ export async function prune(
   } = {},
 ): Promise<CleanupResult[]> {
   const project = await loadProjectConfig(options.cwd, options.configPath);
-  const guard = await buildDeleteGuard(
-    project.rootDir,
-    project.config,
-    project.configPath,
-    options.force,
-  );
+  const guard = await buildDeleteGuard(project, options.force);
   const artifacts = await build({
     cwd: options.cwd,
     configPath: options.configPath,
@@ -58,12 +53,7 @@ export async function clean(
   } = {},
 ): Promise<CleanupResult[]> {
   const project = await loadProjectConfig(options.cwd, options.configPath);
-  const guard = await buildDeleteGuard(
-    project.rootDir,
-    project.config,
-    project.configPath,
-    options.force,
-  );
+  const guard = await buildDeleteGuard(project, options.force);
   const targets = options.target
     ? [options.target]
     : (Object.keys(project.config.targets) as TargetName[]);
