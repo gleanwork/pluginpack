@@ -42,7 +42,7 @@ diff, prune, and validate all derive from it.
 - `src/config.ts` — `loadConfig` (jiti loads `pluginpack.config.ts`) and legacy
   0.10 source-plugin discovery during the migration window.
 - `src/source.ts` — reads canonical direct `shared/<plugin>` sources, applies
-  target overlays, packages `mcp/`, and retains the legacy filesystem source
+  target overrides, packages `mcp/`, and retains the legacy filesystem source
   provider.
 - `src/render.ts` — legacy `collectPluginFiles`/`resolveMcpServers` composition.
 - `src/partials.ts` — `loadPartials`/`resolvePartials`: project-level
@@ -99,7 +99,7 @@ schemas at runtime — vendor a pinned copy with recorded provenance.
 ## Shapes and gotchas
 
 - **Recommended shape:** `shared/<plugin>/` canonical sources,
-  `overrides/<target>/<plugin>/` target overlays, and
+  `overrides/<target>/<plugin>/` target overrides, and
   `repositories/<target>/` generated-repository files.
 - **claude + copilot collide:** both write `.claude-plugin/marketplace.json`, so
   they need distinct `outDir`s. `build()` errors on overlapping output paths.

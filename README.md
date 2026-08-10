@@ -36,7 +36,7 @@ shared/
 pluginpack.config.ts
 ```
 
-Map that shared source directly into each native plugin output. Add an `overlay`
+Map that shared source directly into each native plugin output. Add `overrides`
 only when a target needs files that differ from or do not exist in the shared
 source.
 
@@ -57,7 +57,7 @@ export default defineConfig({
       plugins: {
         acme: {
           source: "shared/acme",
-          overlay: "overrides/cursor/acme",
+          overrides: "overrides/cursor/acme",
           path: "plugins/cursor/acme",
         },
       },
@@ -117,7 +117,7 @@ It does not try to make every app behave the same. Target adapters own target-sp
 
 ## Recommended Shape
 
-The preferred authored shape separates shared plugin content, target overlays,
+The preferred authored shape separates shared plugin content, target overrides,
 and generated-repository files:
 
 ```tree
@@ -184,7 +184,7 @@ plugins/
   claude.json
 ```
 
-Each emitted plugin names one `source`. An optional `overlay` is applied after
+Each emitted plugin names one `source`. Optional `overrides` are applied after
 the source, so it can add or replace files for that target. `repositoryFiles`
 copies a whole directory into the generated repository root.
 
@@ -304,7 +304,7 @@ The repo comes from `targets.<name>.repository`, defaulting to `metadata.reposit
 ## Target Overrides
 
 When one app needs different or additional content, put it in that emitted
-plugin's target overlay:
+plugin's target overrides:
 
 ```txt
 shared/acme/skills/release-notes/SKILL.md
@@ -312,9 +312,9 @@ overrides/cursor/acme/skills/release-notes/SKILL.md
 overrides/cursor/acme/rules/cursor-only.mdc
 ```
 
-The overlay is applied after the shared source, so it can both replace the
-shared skill and add the Cursor-only rule. Set its directory with the emitted
-plugin's `overlay` field.
+The overrides are applied after the shared source, so they can both replace the
+shared skill and add the Cursor-only rule. Set their directory with the emitted
+plugin's `overrides` field.
 
 ## MCP Directory
 
@@ -492,7 +492,7 @@ rest of the artifact.
 | Field         | Type                   | Required | Meaning                                                                                                                                                                                          |
 | ------------- | ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `source`      | string (safe relative) | yes      | Direct path to the plugin's shared authored source.                                                                                                                                              |
-| `overlay`     | string (safe relative) | no       | Target-specific directory applied after `source`; may add or replace files.                                                                                                                      |
+| `overrides`   | string (safe relative) | no       | Target-specific directory applied after `source`; may add or replace files.                                                                                                                      |
 | `include`     | string[]               | no       | Exact content kinds to include (`skills`, `agents`, `rules`, `assets`, `static`, `mcp`, etc.).                                                                                                   |
 | `exclude`     | string[]               | no       | Content kinds removed from the target defaults.                                                                                                                                                  |
 | `from`        | string[] (min 1)       | legacy   | 0.10 source-plugin composition; cannot be combined with `source`.                                                                                                                                |

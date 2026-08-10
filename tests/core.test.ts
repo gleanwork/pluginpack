@@ -991,7 +991,7 @@ export default defineConfig({
     expect(result.ok).toBe(true);
   });
 
-  it("builds one direct shared plugin and applies a target overlay", async () => {
+  it("builds one direct shared plugin and applies target overrides", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
@@ -1006,7 +1006,7 @@ export default defineConfig({
         demo: {
           source: "shared/demo",
           include: ["skills", "rules", "static", "mcp"],
-          overlay: "overrides/claude/demo"
+          overrides: "overrides/claude/demo"
         }
       }
     }
@@ -1016,6 +1016,10 @@ export default defineConfig({
       shared: {
         demo: {
           "README.md": "# Shared README\n",
+          "plugin.pluginpack.json": `${JSON.stringify({
+            additionalFiles: { "scripts/start.mjs": "extra/start.mjs" },
+          })}\n`,
+          extra: { "start.mjs": "console.log('shared extra');\n" },
           skills: { demo: { "SKILL.md": skill("demo", "Shared skill.") } },
           agents: { "helper.md": agent("helper", "Should be excluded.") },
           mcp: {
@@ -1033,6 +1037,7 @@ export default defineConfig({
         claude: {
           demo: {
             "README.md": "# Claude README\n",
+            extra: { "start.mjs": "console.log('claude extra');\n" },
             rules: {
               "claude.md":
                 "---\nname: claude\ndescription: Claude rule.\n---\n",
@@ -1064,11 +1069,51 @@ export default defineConfig({
       readFile(path.join(plugin, "mcp/start.mjs"), "utf8"),
     ).resolves.toContain("claude");
     await expect(
+      readFile(path.join(plugin, "scripts/start.mjs"), "utf8"),
+    ).resolves.toContain("claude extra");
+    await expect(
       readFile(path.join(plugin, ".mcp.json"), "utf8"),
     ).resolves.toContain('"claude"');
     await expect(
       access(path.join(plugin, "agents/helper.md")),
     ).rejects.toThrow();
+  });
+
+  it("rejects MCP shipping destinations that collide with plugin content", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "mcp-collision-plugins",
+  version: "1.0.0",
+  metadata: { description: "MCP collision", author: { name: "M" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { source: "shared/demo" } }
+    }
+  }
+});
+`,
+      shared: {
+        demo: {
+          "README.md": "# Shared README\n",
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+          mcp: {
+            "pluginpack.json": `${JSON.stringify({
+              files: { "README.md": "start.mjs" },
+            })}\n`,
+            "start.mjs": "console.log('server');\n",
+          },
+        },
+      },
+    });
+
+    await expect(
+      build({ cwd: project.baseDir, target: "claude" }),
+    ).rejects.toThrow(
+      /MCP shipping destination "README\.md" collides with another emitted file/,
+    );
   });
 
   it("excludes an authored plugin's complete MCP capability", async () => {

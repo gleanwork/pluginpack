@@ -122,7 +122,7 @@ export async function emitFromDefinition(
       const authored = await readAuthoredPlugin(
         project.rootDir,
         pluginConfig.source,
-        pluginConfig.overlay,
+        pluginConfig.overrides,
         resolveContentKinds(definition, pluginConfig),
       );
       pluginFiles = new Map(

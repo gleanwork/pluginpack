@@ -14,7 +14,7 @@ export default defineConfig({
       plugins: {
         acme: {
           source: "shared/acme",
-          overlay: "overrides/cursor/acme",
+          overrides: "overrides/cursor/acme",
           path: "plugins/cursor/acme",
         },
       },

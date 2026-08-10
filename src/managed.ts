@@ -185,8 +185,8 @@ export async function buildDeleteGuard(
       if (plugin.source) {
         protectedRoots.push(path.resolve(rootDir, plugin.source));
       }
-      if (plugin.overlay) {
-        protectedRoots.push(path.resolve(rootDir, plugin.overlay));
+      if (plugin.overrides) {
+        protectedRoots.push(path.resolve(rootDir, plugin.overrides));
       }
     }
   }
@@ -217,7 +217,7 @@ function assertNoProtectedDeletions(
   throw new Error(
     `Refusing to ${command} ${blocked.length} path(s) that resolve inside your source tree or config:\n` +
       `${blocked.map(({ file, root }) => `  ${file} -> resolves inside ${root}`).join("\n")}\n` +
-      `This usually means a target outDir overlaps source, overlay, repositoryFiles, or legacy source config. ` +
+      `This usually means a target outDir overlaps source, overrides, repositoryFiles, or legacy source config. ` +
       `Fix the config, or re-run with --force to delete anyway.`,
   );
 }

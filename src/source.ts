@@ -31,23 +31,23 @@ export function createFilesystemSourceProvider(
 
 /**
  * Reads the 0.11 authored-plugin shape: one direct shared source, followed by
- * one target overlay that may add or replace selected content.
+ * one target-specific overrides directory that may add or replace content.
  */
 export async function readAuthoredPlugin(
   rootDir: string,
   sourcePath: string,
-  overlayPath: string | undefined,
+  overridesPath: string | undefined,
   selected: Set<string>,
 ): Promise<AuthoredPlugin> {
   const sourceDir = path.resolve(rootDir, sourcePath);
   if (!(await exists(sourceDir))) {
     throw new Error(`Authored plugin source is missing: ${sourcePath}`);
   }
-  const overlayDir = overlayPath
-    ? path.resolve(rootDir, overlayPath)
+  const overridesDir = overridesPath
+    ? path.resolve(rootDir, overridesPath)
     : undefined;
-  if (overlayDir && !(await exists(overlayDir))) {
-    throw new Error(`Authored plugin overlay is missing: ${overlayPath}`);
+  if (overridesDir && !(await exists(overridesDir))) {
+    throw new Error(`Authored plugin overrides are missing: ${overridesPath}`);
   }
 
   const manifest = await readOptionalJson(
@@ -62,8 +62,8 @@ export async function readAuthoredPlugin(
       continue;
     }
     await addTree(files, path.join(sourceDir, dirName), dirName, false);
-    if (overlayDir) {
-      await addTree(files, path.join(overlayDir, dirName), dirName, true);
+    if (overridesDir) {
+      await addTree(files, path.join(overridesDir, dirName), dirName, true);
     }
   }
 
@@ -73,24 +73,31 @@ export async function readAuthoredPlugin(
       if (await exists(base)) {
         files.set(fileName, await fs.readFile(base));
       }
-      if (overlayDir) {
-        const overlay = path.join(overlayDir, fileName);
-        if (await exists(overlay)) {
-          files.set(fileName, await fs.readFile(overlay));
+      if (overridesDir) {
+        const override = path.join(overridesDir, fileName);
+        if (await exists(override)) {
+          files.set(fileName, await fs.readFile(override));
         }
       }
     }
   }
 
-  await addDeclaredFiles(files, sourceDir, manifest.additionalFiles);
+  await addDeclaredFiles(
+    files,
+    sourceDir,
+    overridesDir,
+    manifest.additionalFiles,
+  );
 
   let mcpServers: Record<string, unknown> | undefined;
   if (selected.has("mcp")) {
     const mcpDir = path.join(sourceDir, "mcp");
-    const overlayMcpDir = overlayDir ? path.join(overlayDir, "mcp") : undefined;
+    const overridesMcpDir = overridesDir
+      ? path.join(overridesDir, "mcp")
+      : undefined;
     const configPath = await lastExisting([
       path.join(mcpDir, "config.json"),
-      ...(overlayMcpDir ? [path.join(overlayMcpDir, "config.json")] : []),
+      ...(overridesMcpDir ? [path.join(overridesMcpDir, "config.json")] : []),
     ]);
     if (configPath) {
       const config = await readJsonObject(configPath);
@@ -101,14 +108,16 @@ export async function readAuthoredPlugin(
 
     const mcpManifestPath = await lastExisting([
       path.join(mcpDir, "pluginpack.json"),
-      ...(overlayMcpDir ? [path.join(overlayMcpDir, "pluginpack.json")] : []),
+      ...(overridesMcpDir
+        ? [path.join(overridesMcpDir, "pluginpack.json")]
+        : []),
     ]);
     if (mcpManifestPath) {
       const mcpManifest = await readRequiredJson(
         mcpManifestPath,
         mcpManifestSchema,
       );
-      await addMcpFiles(files, mcpDir, overlayMcpDir, mcpManifest.files);
+      await addMcpFiles(files, mcpDir, overridesMcpDir, mcpManifest.files);
     }
   }
 
@@ -136,39 +145,50 @@ async function addTree(
 async function addDeclaredFiles(
   files: Map<string, FileValue>,
   sourceDir: string,
+  overridesDir: string | undefined,
   declared: Record<string, string> | undefined,
 ): Promise<void> {
   for (const [dest, source] of Object.entries(declared ?? {})) {
-    if (files.has(dest)) {
+    const destPath = toPosix(dest);
+    if (files.has(destPath)) {
       throw new Error(
         `Authored plugin additionalFiles destination "${dest}" collides with another emitted file.`,
       );
     }
-    const sourceFile = path.resolve(sourceDir, source);
-    if (!(await exists(sourceFile))) {
+    const sourceFile = await lastExisting([
+      path.resolve(sourceDir, source),
+      ...(overridesDir ? [path.resolve(overridesDir, source)] : []),
+    ]);
+    if (!sourceFile) {
       throw new Error(
         `Authored plugin additionalFiles source "${source}" could not be read.`,
       );
     }
-    files.set(toPosix(dest), await fs.readFile(sourceFile));
+    files.set(destPath, await fs.readFile(sourceFile));
   }
 }
 
 async function addMcpFiles(
   files: Map<string, FileValue>,
   mcpDir: string,
-  overlayMcpDir: string | undefined,
+  overridesMcpDir: string | undefined,
   declared: McpManifest["files"],
 ): Promise<void> {
   for (const [dest, source] of Object.entries(declared ?? {})) {
+    const destPath = toPosix(dest);
+    if (files.has(destPath)) {
+      throw new Error(
+        `MCP shipping destination "${dest}" collides with another emitted file.`,
+      );
+    }
     const sourceFile = await lastExisting([
       path.resolve(mcpDir, source),
-      ...(overlayMcpDir ? [path.resolve(overlayMcpDir, source)] : []),
+      ...(overridesMcpDir ? [path.resolve(overridesMcpDir, source)] : []),
     ]);
     if (!sourceFile) {
       throw new Error(`MCP shipping file "${source}" could not be read.`);
     }
-    files.set(toPosix(dest), await fs.readFile(sourceFile));
+    files.set(destPath, await fs.readFile(sourceFile));
   }
 }
 

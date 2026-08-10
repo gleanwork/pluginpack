@@ -75,7 +75,7 @@ const emittedPluginSchema = z
     exclude: z.array(z.string().min(1)).optional(),
     components: z.array(z.string()).optional(),
     // Applied after reading `source`, so it can add or replace target files.
-    overlay: safeRelativePath.optional(),
+    overrides: safeRelativePath.optional(),
     updateCheck: z.literal(false).optional(),
   })
   .superRefine((plugin, ctx) => {

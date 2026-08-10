@@ -6,14 +6,14 @@ the generated artifact.
 
 ## Contract change
 
-| 0.10                                    | 0.11                                             |
-| --------------------------------------- | ------------------------------------------------ |
-| Discovered source plugins plus `from`   | One direct `source` per emitted plugin           |
-| Root-level `skills/` special case       | `shared/<plugin>/skills/`                        |
-| `targets/<host>/` replacement files     | `overrides/<host>/<plugin>/` post-source overlay |
-| `components`                            | `include` or `exclude`                           |
-| Root `.mcp.json` plus `additionalFiles` | `mcp/config.json` plus `mcp/pluginpack.json`     |
-| `rootFiles` map                         | `repositoryFiles` directory                      |
+| 0.10                                    | 0.11                                          |
+| --------------------------------------- | --------------------------------------------- |
+| Discovered source plugins plus `from`   | One direct `source` per emitted plugin        |
+| Root-level `skills/` special case       | `shared/<plugin>/skills/`                     |
+| `targets/<host>/` replacement files     | `overrides/<host>/<plugin>/` target overrides |
+| `components`                            | `include` or `exclude`                        |
+| Root `.mcp.json` plus `additionalFiles` | `mcp/config.json` plus `mcp/pluginpack.json`  |
+| `rootFiles` map                         | `repositoryFiles` directory                   |
 
 Pluginpack 0.11 still reads the 0.10 fields for one migration window. Do not
 mix `source` with `from`, or `components` with `include`/`exclude`, on the same
@@ -59,11 +59,11 @@ do not pick a winner based on old `from` order because 0.10 rejected collisions.
 For each target, create `overrides/<target>/<plugin-name>/`.
 
 - Move every old `targets/<target>/<path>` replacement to the same `<path>`
-  below the overlay.
-- Move every target-only source file into the overlay.
+  below the overrides directory.
+- Move every target-only source file into the overrides directory.
 - Keep shared files in `shared/<plugin-name>/`.
 
-An overlay may replace a shared file or add a new one.
+Overrides may replace a shared file or add a new one.
 
 ## 4. Move MCP content
 
@@ -130,12 +130,12 @@ plugins: {
   acme: {
     source: "shared/acme",
     include: ["skills", "agents", "rules", "static"],
-    overlay: "overrides/cursor/acme"
+    overrides: "overrides/cursor/acme"
   }
 }
 ```
 
-Omit `overlay` when that directory does not exist. Prefer `exclude` when a
+Omit `overrides` when that directory does not exist. Prefer `exclude` when a
 target differs from pluginpack's defaults by only one or two content kinds.
 
 Delete `source.skills`, `source.rootPlugin`, and `source.plugins` after every
