@@ -425,14 +425,14 @@ describe("emitted output conforms to external target schemas", () => {
     const result = await runBin("init");
     expect(result.exitCode, String(result.stderr)).toBe(0);
     expect(result.stdout).toContain(
-      "Created pluginpack.config.ts and plugins/example.",
+      "Created pluginpack.config.ts and shared/example.",
     );
     expect(
       fs.existsSync(path.join(project.baseDir, "pluginpack.config.ts")),
     ).toBe(true);
     expect(
       fs.existsSync(
-        path.join(project.baseDir, "plugins/example/skills/example/SKILL.md"),
+        path.join(project.baseDir, "shared/example/skills/example/SKILL.md"),
       ),
     ).toBe(true);
   });

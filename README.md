@@ -21,26 +21,24 @@ Start with portable plugin components, declare the native targets you want, then
 npm install -D @gleanwork/pluginpack
 ```
 
-Create repo-level component directories:
+Create one shared source directory per plugin:
 
 ```tree
-skills/
-  release-notes/
-    SKILL.md
-agents/
-  search-assistant.md
-commands/
-  summarize.md
-rules/
-  style.mdc
-hooks/
-  before-run.sh
-assets/
-  icon.png
+shared/
+  acme/
+    skills/
+      release-notes/
+        SKILL.md
+    agents/
+      search-assistant.md
+    assets/
+      icon.png
 pluginpack.config.ts
 ```
 
-Add a config that maps that portable source into native plugin outputs. `source.skills` gives the repo a simple portable install surface; sibling component directories are included when the selected target supports them or when you opt into them with `components`.
+Map that shared source directly into each native plugin output. Add `overrides`
+only when a target needs files that differ from or do not exist in the shared
+source.
 
 ```ts snippet=readme/snippet-02.ts
 import { defineConfig } from "@gleanwork/pluginpack";
@@ -48,13 +46,6 @@ import { defineConfig } from "@gleanwork/pluginpack";
 export default defineConfig({
   name: "acme-plugins",
   version: "0.1.0",
-  source: {
-    skills: "skills",
-    rootPlugin: {
-      id: "core",
-      description: "Acme portable skills.",
-    },
-  },
   metadata: {
     description: "Acme agent plugins.",
     author: { name: "Acme" },
@@ -65,7 +56,8 @@ export default defineConfig({
       outDir: ".",
       plugins: {
         acme: {
-          from: ["core"],
+          source: "shared/acme",
+          overrides: "overrides/cursor/acme",
           path: "plugins/cursor/acme",
         },
       },
@@ -74,25 +66,25 @@ export default defineConfig({
       outDir: ".",
       pluginRoot: "plugins/claude",
       plugins: {
-        acme: { from: ["core"] },
+        acme: { source: "shared/acme" },
       },
     },
     antigravity: {
       outDir: "plugins/antigravity",
       plugins: {
-        acme: { from: ["core"] },
+        acme: { source: "shared/acme" },
       },
     },
     copilot: {
       outDir: "plugins/copilot",
       plugins: {
-        acme: { from: ["core"] },
+        acme: { source: "shared/acme" },
       },
     },
     codex: {
       outDir: "plugins/codex",
       plugins: {
-        acme: { from: ["core"] },
+        acme: { source: "shared/acme" },
       },
     },
   },
@@ -106,7 +98,9 @@ npx pluginpack build
 npx pluginpack validate --target cursor
 ```
 
-Users who only want portable skills install from the `skills/` subpath, for example `npx skills add owner/repo/skills --skill '*'`. Claude, Cursor, Antigravity, Copilot, and Codex users install from the generated native layout that can include skills, agents, rules, hooks, assets, MCP config, and target-specific manifests.
+Claude, Cursor, Antigravity, Copilot, and Codex users install from the generated
+native layout. Repositories that also expose a `skills` CLI surface may point
+that tool at `shared/<plugin>/skills`.
 
 ## Mental Model
 
@@ -123,22 +117,25 @@ It does not try to make every app behave the same. Target adapters own target-sp
 
 ## Recommended Shape
 
-The preferred path is one public plugin repository with top-level component directories. `skills/` remains the portable `skills` CLI install surface, while the other component directories feed native plugin outputs.
+The preferred authored shape separates shared plugin content, target overrides,
+and generated-repository files:
 
 ```tree
-skills/
-  release-notes/
-    SKILL.md
-agents/
-  search-assistant.md
-commands/
-  summarize.md
-rules/
-  style.mdc
-hooks/
-  before-run.sh
-assets/
-  icon.png
+shared/
+  acme/
+    skills/
+    agents/
+    assets/
+    mcp/
+      config.json
+      pluginpack.json
+overrides/
+  cursor/
+    acme/
+      rules/
+repositories/
+  cursor/
+    README.md
 pluginpack.config.ts
 
 .cursor-plugin/
@@ -187,7 +184,9 @@ plugins/
   claude.json
 ```
 
-`source.skills` points at the repo-level skills directory and creates a root source plugin from the sibling component directories. `source.rootPlugin.id` creates the source plugin name used by each target's `from` array. The repo root is intentionally also home to generated native plugin outputs, so the `skills/` subpath keeps `skills` CLI discovery focused on the canonical portable skills.
+Each emitted plugin names one `source`. Optional `overrides` are applied after
+the source, so it can add or replace files for that target. `repositoryFiles`
+copies a whole directory into the generated repository root.
 
 `pluginpack` writes a `.pluginpack/<target>.json` managed-file manifest for each built target. That manifest lets builds and cleanup commands remove stale generated files without touching source files or unmanaged repo content.
 
@@ -211,7 +210,7 @@ themes/
 
 Target adapters translate those component directories into each app's native layout and manifest fields. Each target has a smart default component list. By default, `claude`, `cursor`, `antigravity`, and `copilot` emit skills and other native plugin support files but omit `commands`, since those ecosystems increasingly expose skills as slash commands.
 
-Use `components` only when a plugin needs an exact target-specific component set:
+Use `include` or `exclude` only when a target needs a different content set:
 
 ```ts snippet=readme/snippet-03.ts
 import { defineConfig } from "@gleanwork/pluginpack";
@@ -219,13 +218,6 @@ import { defineConfig } from "@gleanwork/pluginpack";
 export default defineConfig({
   name: "acme-plugins",
   version: "0.1.0",
-  source: {
-    skills: "skills",
-    rootPlugin: {
-      id: "core",
-      description: "Acme portable skills.",
-    },
-  },
   metadata: {
     description: "Acme agent plugins.",
     author: { name: "Acme" },
@@ -235,13 +227,16 @@ export default defineConfig({
     antigravity: {
       outDir: "plugins/antigravity",
       plugins: {
-        acme: { from: ["core"], components: ["skills", "commands"] },
+        acme: {
+          source: "shared/acme",
+          include: ["skills", "commands", "static"],
+        },
       },
     },
     claude: {
       outDir: "plugins/claude",
       plugins: {
-        acme: { from: ["core"], components: ["skills"] },
+        acme: { source: "shared/acme", exclude: ["commands"] },
       },
     },
   },
@@ -264,42 +259,12 @@ Each target compiles the same source into one app's native plugin layout:
 
 New targets are added from official docs or real plugin examples — not guessed abstractions.
 
-## Source Plugins
+## Legacy 0.10 Source Composition
 
-The quick-start shape treats repo-level component directories as one source plugin. For more complex source content, keep source plugins under `plugins/` and emit them into one or more target outputs:
-
-```tree
-plugins/
-  core/
-    plugin.pluginpack.json
-    .mcp.json
-    skills/
-      release-notes/
-        SKILL.md
-    agents/
-    commands/
-    rules/
-    hooks/
-    assets/
-```
-
-A target can emit a source plugin directly, rename it, or merge multiple source plugins into one emitted plugin.
-
-## MCP Servers
-
-A source plugin declares MCP servers with a standard `.mcp.json` file at its root (`{ "mcpServers": { "name": { ... } } }`), or with an `mcpServers` key in `plugin.pluginpack.json`. The file wins if both are present, and merging plugins with the same server name is an error.
-
-The `.mcp.json` file form supports per-target overrides: a `targets/<host>/.mcp.json` file next to the base wins for that host only. This lets one source ship different server definitions per app (for example, a `${CLAUDE_PLUGIN_ROOT}/start.mjs` invocation for Claude and a `cwd: "."` + `./start.mjs` invocation for Codex). The manifest (`mcpServers` in `plugin.pluginpack.json`) form has no per-file override — authors who need per-target MCP config should use the file form.
-
-Each target wires that MCP config into its native shape:
-
-| Target        | How MCP is wired                                         |
-| ------------- | -------------------------------------------------------- |
-| `claude`      | ships `.mcp.json` at the plugin root (auto-discovered)   |
-| `cursor`      | ships `.mcp.json`, referenced from `plugin.json`         |
-| `codex`       | ships `.mcp.json`, referenced from `plugin.json`         |
-| `copilot`     | ships `.mcp.json`, referenced from the marketplace entry |
-| `antigravity` | writes `mcp_config.json` beside `plugin.json`            |
+Pluginpack 0.11 can still read `source.plugins`, `source.skills`, `rootPlugin`,
+`from`, nested `targets/<host>` replacements, and root `.mcp.json` files for one
+migration window. New repositories should not use that interface. Follow
+[`MIGRATING_TO_0.11.md`](./MIGRATING_TO_0.11.md) to convert an existing repo.
 
 ## Update Check (claude, cursor)
 
@@ -323,7 +288,7 @@ The check follows update-notifier discipline:
 
 Disable for a single plugin with `updateCheck: false` on that plugin. Configuring `updateCheck` on `copilot`, `antigravity`, or `codex` is a config error — those hosts don't run plugin hooks.
 
-Like MCP config, the generated hook is wired in regardless of a plugin's `components` selection: on `cursor`, the manifest's `hooks` field is set even if `components` doesn't include `"hooks"`, since the check itself is a separate opt-in from which source-authored component dirs get emitted.
+Like MCP config, the generated hook is wired in regardless of a plugin's content selection: on `cursor`, the manifest's `hooks` field is set even if `include` does not name `"hooks"`, since the check itself is a separate opt-in.
 
 ## Install Snippet
 
@@ -338,19 +303,61 @@ The repo comes from `targets.<name>.repository`, defaulting to `metadata.reposit
 
 ## Target Overrides
 
-Skill files are not always perfectly portable. When one app needs different frontmatter or content, add a target override next to the base file:
+When one app needs different or additional content, put it in that emitted
+plugin's target overrides:
 
 ```txt
-skills/release-notes/SKILL.md
-skills/release-notes/targets/cursor/SKILL.md
-skills/release-notes/targets/claude/SKILL.md
+shared/acme/skills/release-notes/SKILL.md
+overrides/cursor/acme/skills/release-notes/SKILL.md
+overrides/cursor/acme/rules/cursor-only.mdc
 ```
 
-Resolution order is target override first, then the base file. The same override mechanism applies to static files (README/CHANGELOG/LICENSE) and to MCP config (`.mcp.json`) and declared plugin-root `additionalFiles`.
+The overrides are applied after the shared source, so they can both replace the
+shared skill and add the Cursor-only rule. Set their directory with the emitted
+plugin's `overrides` field.
 
-## Additional Plugin-Root Files
+## MCP Directory
 
-A source plugin that needs files at its emitted root beyond the component and static files pluginpack supports by default — a bundled MCP server, a launcher script, or a `package.json` to set Node's module type — declares them under `additionalFiles` in `plugin.pluginpack.json`:
+An authored plugin keeps its MCP configuration and local server together:
+
+```txt
+shared/acme/mcp/
+  config.json
+  pluginpack.json
+  start.mjs
+  dist/index.js
+  src/
+  tests/
+```
+
+`config.json` uses the standard `{ "mcpServers": { ... } }` shape.
+`pluginpack.json` declares only the server files that ship:
+
+```json
+{
+  "files": {
+    "mcp/start.mjs": "start.mjs",
+    "mcp/dist/index.js": "dist/index.js"
+  }
+}
+```
+
+Pluginpack translates the configuration into each target's native MCP layout.
+The MCP source and tests remain in `mcp/`; only declared shipping files are
+emitted. Add `"mcp"` to `exclude` to omit the complete capability for a target.
+
+| Target        | How MCP is wired                                         |
+| ------------- | -------------------------------------------------------- |
+| `claude`      | ships `.mcp.json` at the plugin root (auto-discovered)   |
+| `cursor`      | ships `.mcp.json`, referenced from `plugin.json`         |
+| `codex`       | ships `.mcp.json`, referenced from `plugin.json`         |
+| `copilot`     | ships `.mcp.json`, referenced from the marketplace entry |
+| `antigravity` | writes `mcp_config.json` beside `plugin.json`            |
+
+## Legacy Additional Plugin-Root Files
+
+Legacy 0.10 sources may still declare `additionalFiles` in
+`plugin.pluginpack.json`. New MCPs use `mcp/pluginpack.json` instead.
 
 ```json
 {
@@ -370,8 +377,8 @@ Skills, agents, commands, and rules often need to repeat the same procedural pro
 
 ```txt
 partials/auth.md
-skills/release-notes/SKILL.md   ->  contains {{> auth}}
-skills/changelog/SKILL.md       ->  contains {{> auth}}
+shared/acme/skills/release-notes/SKILL.md   ->  contains {{> auth}}
+shared/acme/skills/changelog/SKILL.md       ->  contains {{> auth}}
 ```
 
 Point `source.partials` at that directory in `pluginpack.config.ts`:
@@ -385,7 +392,7 @@ export default defineConfig({
 
 Partials are project-level (shared across every source plugin, not scoped to one), and may reference other partials — nested composition resolves in one pass, though a circular reference (A includes B includes A) is a build-time error. A tag alone on its own line — the common case — leaves no blank line behind.
 
-Substitution runs on every `.md`/`.mdc`/`.markdown`/`.txt` file pluginpack emits — skills, agents, commands, rules, `additionalFiles`, and a target's `rootFiles` — via the real [`mustache`](https://github.com/janl/mustache.js) library.
+Substitution runs on every `.md`/`.mdc`/`.markdown`/`.txt` file pluginpack emits — skills, agents, commands, rules, declared shipping files, and a target's `repositoryFiles` — via the real [`mustache`](https://github.com/janl/mustache.js) library.
 
 **A tag that cannot be resolved fails the build.** A `{{> name}}` reference naming a partial that does not exist is an error listing the available partials and the nearest match, rather than rendering as nothing — silently dropping a section out of a shipped skill file is worse than a red build. The same applies to a malformed reference (`{{> }}`), and to a tag inside a partial's own body.
 
@@ -421,7 +428,9 @@ Use that in CI to fail clearly or to trigger an action that opens a PR against t
 
 When a generated target repo intentionally owns a path, add `ignoredDiffPaths` to that target config. Entries are target-output-relative paths; a directory entry ignores everything below it.
 
-To publish a repo-root file (for example a README authored once in the source repo) into a target's output, add `rootFiles` to that target config — a map of output path to source path (relative to the config root). Emitted root files are managed like any other generated file, so an output repo's README stays synced from source instead of hand-maintained per repo.
+To publish generated-repository files, point `repositoryFiles` at a directory.
+Every file below it is copied to the target output root and managed like the
+rest of the artifact.
 
 ## Configuration Reference
 
@@ -429,15 +438,15 @@ To publish a repo-root file (for example a README authored once in the source re
 
 **Top level**
 
-| Field      | Type   | Required | Meaning                                                                    |
-| ---------- | ------ | -------- | -------------------------------------------------------------------------- |
-| `name`     | string | yes      | Marketplace/source name written into generated manifests.                  |
-| `version`  | string | yes      | Default version stamped into manifests (per-target/plugin overridable).    |
-| `source`   | object | no       | Where source plugins come from (see **`source`**).                         |
-| `metadata` | object | no       | Shared metadata merged into manifests (see **`metadata`**).                |
-| `targets`  | object | yes      | Per-target output config, keyed by target name (see **`targets.<name>`**). |
+| Field      | Type   | Required | Meaning                                                                            |
+| ---------- | ------ | -------- | ---------------------------------------------------------------------------------- |
+| `name`     | string | yes      | Marketplace/source name written into generated manifests.                          |
+| `version`  | string | yes      | Default version stamped into manifests (per-target/plugin overridable).            |
+| `source`   | object | legacy   | 0.10 discovery/partials config; direct plugin sources now live on emitted plugins. |
+| `metadata` | object | no       | Shared metadata merged into manifests (see **`metadata`**).                        |
+| `targets`  | object | yes      | Per-target output config, keyed by target name (see **`targets.<name>`**).         |
 
-**`source`**
+**Legacy `source` (0.10 migration compatibility)**
 
 | Field        | Type   | Required | Meaning                                                                                                                                                                      |
 | ------------ | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -473,7 +482,8 @@ To publish a repo-root file (for example a README authored once in the source re
 | `version`          | string                 | no       | Override the version for this target (defaults to top-level `version`).                     |
 | `manifest`         | object                 | no       | Deep-merged into the generated marketplace manifest.                                        |
 | `ignoredDiffPaths` | string[]               | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).             |
-| `rootFiles`        | record (safe relative) | no       | Map of output path → source path emitted verbatim at the output root.                       |
+| `repositoryFiles`  | string (safe relative) | no       | Directory copied recursively into the generated repository root.                            |
+| `rootFiles`        | record (safe relative) | no       | Legacy 0.10 output path → source path map; migrate to `repositoryFiles`.                    |
 | `updateCheck`      | `{ repository? }`      | no       | Generate a session-start update-check hook (`claude`/`cursor` only; see **Update Check**).  |
 | `repository`       | string                 | no       | Repo this target's output lives in, for `install-info` (defaults to `metadata.repository`). |
 
@@ -481,14 +491,18 @@ To publish a repo-root file (for example a README authored once in the source re
 
 | Field         | Type                   | Required | Meaning                                                                                                                                                                                          |
 | ------------- | ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `from`        | string[] (min 1)       | yes      | Source plugin ids to merge into this emitted plugin.                                                                                                                                             |
+| `source`      | string (safe relative) | yes      | Direct path to the plugin's shared authored source.                                                                                                                                              |
+| `overrides`   | string (safe relative) | no       | Target-specific directory applied after `source`; may add or replace files.                                                                                                                      |
+| `include`     | string[]               | no       | Exact content kinds to include (`skills`, `agents`, `rules`, `assets`, `static`, `mcp`, etc.).                                                                                                   |
+| `exclude`     | string[]               | no       | Content kinds removed from the target defaults.                                                                                                                                                  |
+| `from`        | string[] (min 1)       | legacy   | 0.10 source-plugin composition; cannot be combined with `source`.                                                                                                                                |
 | `path`        | string (safe relative) | no       | Output path for the plugin, relative to `outDir`. Defaults to the plugin name (or `pluginRoot/<name>` for `claude`).                                                                             |
 | `version`     | string                 | no       | Per-plugin version override.                                                                                                                                                                     |
 | `displayName` | string                 | no       | Per-plugin display name.                                                                                                                                                                         |
 | `description` | string                 | no       | Per-plugin description override.                                                                                                                                                                 |
 | `manifest`    | object                 | no       | Deep-merged into the generated plugin manifest.                                                                                                                                                  |
 | `entry`       | object                 | no       | Deep-merged into the generated marketplace entry (the object in the marketplace `plugins` array). Use for target-specific entry fields pluginpack can't derive — e.g. Codex `policy`/`category`. |
-| `components`  | string[]               | no       | Exact component set, overriding the target's smart default.                                                                                                                                      |
+| `components`  | string[]               | legacy   | 0.10 include-only name; migrate to `include`.                                                                                                                                                    |
 | `updateCheck` | `false`                | no       | Opt this plugin out of the target's update-check hook.                                                                                                                                           |
 
 ## Programmatic API

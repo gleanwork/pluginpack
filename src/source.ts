@@ -2,8 +2,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { componentDirs, staticFiles } from "./components.js";
 import { exists, isSafeRelativePath, toPosix, walkFiles } from "./fs.js";
+import { mcpManifestSchema, sourcePluginManifestSchema } from "./schema.js";
 import type {
+  AuthoredPlugin,
   FileValue,
+  McpManifest,
   SourcePlugin,
   SourceProvider,
   TargetName,
@@ -24,6 +27,223 @@ export function createFilesystemSourceProvider(
     readMcpServers: (pluginId, target) =>
       readMcpServers(pluginOrThrow(plugins, pluginId), target),
   };
+}
+
+/**
+ * Reads the 0.11 authored-plugin shape: one direct shared source, followed by
+ * one target-specific overrides directory that may add or replace content.
+ */
+export async function readAuthoredPlugin(
+  rootDir: string,
+  sourcePath: string,
+  overridesPath: string | undefined,
+  selected: Set<string>,
+): Promise<AuthoredPlugin> {
+  const sourceDir = path.resolve(rootDir, sourcePath);
+  if (!(await exists(sourceDir))) {
+    throw new Error(`Authored plugin source is missing: ${sourcePath}`);
+  }
+  const overridesDir = overridesPath
+    ? path.resolve(rootDir, overridesPath)
+    : undefined;
+  if (overridesDir && !(await exists(overridesDir))) {
+    throw new Error(`Authored plugin overrides are missing: ${overridesPath}`);
+  }
+
+  const manifest = await readOptionalJson(
+    path.join(sourceDir, "plugin.pluginpack.json"),
+    sourcePluginManifestSchema,
+    {},
+  );
+  const files = new Map<string, FileValue>();
+
+  for (const dirName of componentDirs) {
+    if (!selected.has(dirName)) {
+      continue;
+    }
+    await addTree(files, path.join(sourceDir, dirName), dirName, false);
+    if (overridesDir) {
+      await addTree(files, path.join(overridesDir, dirName), dirName, true);
+    }
+  }
+
+  if (selected.has("static")) {
+    for (const fileName of staticFiles) {
+      const base = path.join(sourceDir, fileName);
+      if (await exists(base)) {
+        files.set(fileName, await fs.readFile(base));
+      }
+      if (overridesDir) {
+        const override = path.join(overridesDir, fileName);
+        if (await exists(override)) {
+          files.set(fileName, await fs.readFile(override));
+        }
+      }
+    }
+  }
+
+  await addDeclaredFiles(
+    files,
+    sourceDir,
+    overridesDir,
+    manifest.additionalFiles,
+  );
+
+  let mcpServers: Record<string, unknown> | undefined;
+  if (selected.has("mcp")) {
+    const mcpDir = path.join(sourceDir, "mcp");
+    const overridesMcpDir = overridesDir
+      ? path.join(overridesDir, "mcp")
+      : undefined;
+    const configPath = await lastExisting([
+      path.join(mcpDir, "config.json"),
+      ...(overridesMcpDir ? [path.join(overridesMcpDir, "config.json")] : []),
+    ]);
+    if (configPath) {
+      const config = await readJsonObject(configPath);
+      if (isObject(config.mcpServers)) {
+        mcpServers = config.mcpServers;
+      }
+    }
+
+    const mcpManifestPath = await lastExisting([
+      path.join(mcpDir, "pluginpack.json"),
+      ...(overridesMcpDir
+        ? [path.join(overridesMcpDir, "pluginpack.json")]
+        : []),
+    ]);
+    if (mcpManifestPath) {
+      const mcpManifest = await readRequiredJson(
+        mcpManifestPath,
+        mcpManifestSchema,
+      );
+      await addMcpFiles(files, mcpDir, overridesMcpDir, mcpManifest.files);
+    }
+  }
+
+  return { files, manifest, mcpServers };
+}
+
+async function addTree(
+  files: Map<string, FileValue>,
+  dir: string,
+  prefix: string,
+  replace: boolean,
+): Promise<void> {
+  if (!(await exists(dir))) {
+    return;
+  }
+  for (const file of await walkFiles(dir)) {
+    const relative = toPosix(path.join(prefix, path.relative(dir, file)));
+    if (!replace && files.has(relative)) {
+      throw new Error(`Duplicate authored plugin file "${relative}".`);
+    }
+    files.set(relative, await fs.readFile(file));
+  }
+}
+
+async function addDeclaredFiles(
+  files: Map<string, FileValue>,
+  sourceDir: string,
+  overridesDir: string | undefined,
+  declared: Record<string, string> | undefined,
+): Promise<void> {
+  for (const [dest, source] of Object.entries(declared ?? {})) {
+    const destPath = toPosix(dest);
+    if (files.has(destPath)) {
+      throw new Error(
+        `Authored plugin additionalFiles destination "${dest}" collides with another emitted file.`,
+      );
+    }
+    const sourceFile = await lastExisting([
+      path.resolve(sourceDir, source),
+      ...(overridesDir ? [path.resolve(overridesDir, source)] : []),
+    ]);
+    if (!sourceFile) {
+      throw new Error(
+        `Authored plugin additionalFiles source "${source}" could not be read.`,
+      );
+    }
+    files.set(destPath, await fs.readFile(sourceFile));
+  }
+}
+
+async function addMcpFiles(
+  files: Map<string, FileValue>,
+  mcpDir: string,
+  overridesMcpDir: string | undefined,
+  declared: McpManifest["files"],
+): Promise<void> {
+  for (const [dest, source] of Object.entries(declared ?? {})) {
+    const destPath = toPosix(dest);
+    if (files.has(destPath)) {
+      throw new Error(
+        `MCP shipping destination "${dest}" collides with another emitted file.`,
+      );
+    }
+    const sourceFile = await lastExisting([
+      path.resolve(mcpDir, source),
+      ...(overridesMcpDir ? [path.resolve(overridesMcpDir, source)] : []),
+    ]);
+    if (!sourceFile) {
+      throw new Error(`MCP shipping file "${source}" could not be read.`);
+    }
+    files.set(destPath, await fs.readFile(sourceFile));
+  }
+}
+
+async function lastExisting(candidates: string[]): Promise<string | undefined> {
+  let result: string | undefined;
+  for (const candidate of candidates) {
+    if (await exists(candidate)) {
+      result = candidate;
+    }
+  }
+  return result;
+}
+
+async function readJsonObject(file: string): Promise<Record<string, unknown>> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await fs.readFile(file, "utf8"));
+  } catch (error) {
+    throw new Error(`Invalid JSON in ${file}: ${(error as Error).message}`, {
+      cause: error,
+    });
+  }
+  if (!isObject(parsed)) {
+    throw new Error(`Invalid JSON object in ${file}.`);
+  }
+  return parsed;
+}
+
+async function readRequiredJson<T>(
+  file: string,
+  schema: {
+    safeParse(value: unknown): {
+      success: boolean;
+      data?: T;
+      error?: { issues: { path: PropertyKey[]; message: string }[] };
+    };
+  },
+): Promise<T> {
+  const parsed = await readJsonObject(file);
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    const details = result.error?.issues
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ");
+    throw new Error(`Invalid pluginpack JSON in ${file}: ${details}`);
+  }
+  return result.data as T;
+}
+
+async function readOptionalJson<T>(
+  file: string,
+  schema: Parameters<typeof readRequiredJson<T>>[1],
+  fallback: T,
+): Promise<T> {
+  return (await exists(file)) ? readRequiredJson(file, schema) : fallback;
 }
 
 function pluginOrThrow(

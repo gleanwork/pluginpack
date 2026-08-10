@@ -6,6 +6,7 @@ import type {
   TargetConfig,
   PluginpackConfig,
   SourcePluginManifest,
+  McpManifest,
   UpdateCheckConfig,
 } from "./schema.js";
 
@@ -17,6 +18,7 @@ export type {
   TargetConfig,
   PluginpackConfig,
   SourcePluginManifest,
+  McpManifest,
   UpdateCheckConfig,
 };
 
@@ -51,6 +53,12 @@ export interface SourceProvider {
     target: TargetName,
   ): Promise<Record<string, unknown> | undefined>;
 }
+
+export type AuthoredPlugin = {
+  files: Map<string, FileValue>;
+  manifest: SourcePluginManifest;
+  mcpServers?: Record<string, unknown>;
+};
 
 /** A loaded, fully-resolved pluginpack project, ready to build or validate. */
 export type ResolvedProject = {
