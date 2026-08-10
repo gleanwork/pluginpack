@@ -3,13 +3,6 @@ import { defineConfig } from "@gleanwork/pluginpack";
 export default defineConfig({
   name: "acme-plugins",
   version: "0.1.0",
-  source: {
-    skills: "skills",
-    rootPlugin: {
-      id: "core",
-      description: "Acme portable skills.",
-    },
-  },
   metadata: {
     description: "Acme agent plugins.",
     author: { name: "Acme" },
@@ -20,7 +13,8 @@ export default defineConfig({
       outDir: ".",
       plugins: {
         acme: {
-          from: ["core"],
+          source: "shared/acme",
+          overlay: "overrides/cursor/acme",
           path: "plugins/cursor/acme",
         },
       },
@@ -29,25 +23,25 @@ export default defineConfig({
       outDir: ".",
       pluginRoot: "plugins/claude",
       plugins: {
-        acme: { from: ["core"] },
+        acme: { source: "shared/acme" },
       },
     },
     antigravity: {
       outDir: "plugins/antigravity",
       plugins: {
-        acme: { from: ["core"] },
+        acme: { source: "shared/acme" },
       },
     },
     copilot: {
       outDir: "plugins/copilot",
       plugins: {
-        acme: { from: ["core"] },
+        acme: { source: "shared/acme" },
       },
     },
     codex: {
       outDir: "plugins/codex",
       plugins: {
-        acme: { from: ["core"] },
+        acme: { source: "shared/acme" },
       },
     },
   },

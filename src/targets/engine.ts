@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "../render.js";
+import { readAuthoredPlugin } from "../source.js";
 import { isSafeRelativePath, json, toPosix } from "../fs.js";
 import { resolvePartials } from "../partials.js";
 import { validateNoSurvivingPartialTags } from "./validation-shared.js";
@@ -28,6 +29,24 @@ function resolveComponents(
   pluginConfig: { components?: string[] },
 ): Set<string> {
   return new Set(pluginConfig.components ?? definition.defaultComponents);
+}
+
+function resolveContentKinds(
+  definition: PluginTargetDefinition,
+  pluginConfig: EmittedPluginConfig,
+): Set<string> {
+  const selected = new Set(
+    pluginConfig.include ??
+      pluginConfig.components ?? [
+        ...definition.defaultComponents,
+        "static",
+        "mcp",
+      ],
+  );
+  for (const excluded of pluginConfig.exclude ?? []) {
+    selected.delete(excluded);
+  }
+  return selected;
 }
 
 /**
@@ -96,12 +115,38 @@ export async function emitFromDefinition(
       pluginConfig,
       targetConfig,
     );
-    const pluginFiles = await collectPluginFiles(
-      project,
-      target,
-      pluginConfig.from,
-      resolveComponents(definition, pluginConfig),
-    );
+    let pluginFiles: Map<string, FileValue>;
+    let mcpServers: Record<string, unknown> | undefined;
+    let sourceMetadata: Record<string, unknown> | undefined;
+    if (pluginConfig.source) {
+      const authored = await readAuthoredPlugin(
+        project.rootDir,
+        pluginConfig.source,
+        pluginConfig.overlay,
+        resolveContentKinds(definition, pluginConfig),
+      );
+      pluginFiles = new Map(
+        [...authored.files].map(([relativePath, value]) => [
+          relativePath,
+          resolvePartials(relativePath, value, project.partials),
+        ]),
+      );
+      mcpServers = authored.mcpServers;
+      sourceMetadata = authored.manifest;
+    } else {
+      const sourceIds = pluginConfig.from ?? [];
+      pluginFiles = await collectPluginFiles(
+        project,
+        target,
+        sourceIds,
+        resolveComponents(definition, pluginConfig),
+      );
+      mcpServers = await resolveMcpServers(project, sourceIds, target);
+      sourceMetadata =
+        sourceIds.length === 1
+          ? project.plugins.get(sourceIds[0])?.manifest
+          : undefined;
+    }
     // Applied before componentDirs is derived, so an injected hooks/ dir
     // registers as a present component (e.g. for a manifest pointer) even if
     // this plugin's own `components` override excludes hooks.
@@ -133,17 +178,16 @@ export async function emitFromDefinition(
       files.set(toPosix(definition.hooksPath(pluginPath)), sourceHooksFile);
     }
 
-    const mcpServers = await resolveMcpServers(
-      project,
-      pluginConfig.from,
-      target,
-    );
     const mcpConfigPath = definition.mcpConfigPath(pluginPath);
     if (mcpServers && mcpConfigPath) {
       files.set(toPosix(mcpConfigPath), json({ mcpServers }));
     }
 
-    const metadata = emittedPluginMetadata(project, pluginConfig);
+    const metadata = emittedPluginMetadata(
+      project,
+      pluginConfig,
+      sourceMetadata,
+    );
     const manifest = definition.buildPluginManifest({
       metadata,
       version,
@@ -214,11 +258,8 @@ export async function validateFromDefinition(
 function emittedPluginMetadata(
   project: ResolvedProject,
   pluginConfig: EmittedPluginConfig,
+  sourceMetadata?: Record<string, unknown>,
 ) {
-  const sourceMetadata =
-    pluginConfig.from.length === 1
-      ? project.plugins.get(pluginConfig.from[0])?.manifest
-      : undefined;
   return stripUndefined({
     ...project.config.metadata,
     ...sourceMetadata,
@@ -251,11 +292,12 @@ export async function withRootFiles(
   result: Artifact,
 ): Promise<Artifact> {
   const rootFiles = targetConfig.rootFiles;
-  if (!rootFiles || Object.keys(rootFiles).length === 0) {
+  const repositoryFiles = targetConfig.repositoryFiles;
+  if ((!rootFiles || Object.keys(rootFiles).length === 0) && !repositoryFiles) {
     return result;
   }
   const files = new Map(result.files);
-  for (const [dest, source] of Object.entries(rootFiles)) {
+  for (const [dest, source] of Object.entries(rootFiles ?? {})) {
     const destPath = toPosix(dest);
     if (!isSafeRelativePath(destPath)) {
       throw new Error(
@@ -277,5 +319,43 @@ export async function withRootFiles(
     }
     files.set(destPath, resolvePartials(destPath, contents, project.partials));
   }
+  if (repositoryFiles) {
+    const repositoryDir = path.resolve(project.rootDir, repositoryFiles);
+    let repositoryEntries: string[];
+    try {
+      repositoryEntries = await walkRepositoryFiles(repositoryDir);
+    } catch {
+      throw new Error(
+        `Target "${result.target}" repositoryFiles directory "${repositoryFiles}" could not be read.`,
+      );
+    }
+    for (const source of repositoryEntries) {
+      const destPath = toPosix(path.relative(repositoryDir, source));
+      if (files.has(destPath)) {
+        throw new Error(
+          `Target "${result.target}" repositoryFiles path "${destPath}" collides with a generated file.`,
+        );
+      }
+      const contents = await fs.readFile(source);
+      files.set(
+        destPath,
+        resolvePartials(destPath, contents, project.partials),
+      );
+    }
+  }
   return artifact(result.target, result.outDir, files);
+}
+
+async function walkRepositoryFiles(dir: string): Promise<string[]> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const absolute = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await walkRepositoryFiles(absolute)));
+    } else if (entry.isFile()) {
+      files.push(absolute);
+    }
+  }
+  return files.sort();
 }

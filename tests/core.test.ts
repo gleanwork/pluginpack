@@ -991,6 +991,168 @@ export default defineConfig({
     expect(result.ok).toBe(true);
   });
 
+  it("builds one direct shared plugin and applies a target overlay", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "shared-source-plugins",
+  version: "1.0.0",
+  metadata: { description: "Shared", author: { name: "S" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: {
+        demo: {
+          source: "shared/demo",
+          include: ["skills", "rules", "static", "mcp"],
+          overlay: "overrides/claude/demo"
+        }
+      }
+    }
+  }
+});
+`,
+      shared: {
+        demo: {
+          "README.md": "# Shared README\n",
+          skills: { demo: { "SKILL.md": skill("demo", "Shared skill.") } },
+          agents: { "helper.md": agent("helper", "Should be excluded.") },
+          mcp: {
+            "config.json": `${JSON.stringify({
+              mcpServers: {
+                shared: { command: "node", args: ["mcp/start.mjs"] },
+              },
+            })}\n`,
+            "pluginpack.json": `${JSON.stringify({ files: { "mcp/start.mjs": "start.mjs" } })}\n`,
+            "start.mjs": "console.log('shared');\n",
+          },
+        },
+      },
+      overrides: {
+        claude: {
+          demo: {
+            "README.md": "# Claude README\n",
+            rules: {
+              "claude.md":
+                "---\nname: claude\ndescription: Claude rule.\n---\n",
+            },
+            mcp: {
+              "config.json": `${JSON.stringify({
+                mcpServers: {
+                  claude: { command: "node", args: ["mcp/start.mjs"] },
+                },
+              })}\n`,
+              "start.mjs": "console.log('claude');\n",
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const plugin = path.join(root, "dist/claude/plugins/demo");
+    await expect(
+      readFile(path.join(plugin, "README.md"), "utf8"),
+    ).resolves.toBe("# Claude README\n");
+    await expect(
+      readFile(path.join(plugin, "rules/claude.md"), "utf8"),
+    ).resolves.toContain("Claude rule.");
+    await expect(
+      readFile(path.join(plugin, "mcp/start.mjs"), "utf8"),
+    ).resolves.toContain("claude");
+    await expect(
+      readFile(path.join(plugin, ".mcp.json"), "utf8"),
+    ).resolves.toContain('"claude"');
+    await expect(
+      access(path.join(plugin, "agents/helper.md")),
+    ).rejects.toThrow();
+  });
+
+  it("excludes an authored plugin's complete MCP capability", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "no-mcp-plugins",
+  version: "1.0.0",
+  metadata: { description: "No MCP", author: { name: "N" }, license: "MIT" },
+  targets: {
+    cursor: {
+      outDir: "dist/cursor",
+      plugins: { demo: { source: "shared/demo", exclude: ["mcp"] } }
+    }
+  }
+});
+`,
+      shared: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+          mcp: {
+            "config.json": `${JSON.stringify({
+              mcpServers: { demo: { command: "node" } },
+            })}\n`,
+            "pluginpack.json": `${JSON.stringify({ files: { "mcp/start.mjs": "start.mjs" } })}\n`,
+            "start.mjs": "console.log('demo');\n",
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "cursor" });
+
+    await expect(
+      access(path.join(root, "dist/cursor/demo/.mcp.json")),
+    ).rejects.toThrow();
+    await expect(
+      access(path.join(root, "dist/cursor/demo/mcp/start.mjs")),
+    ).rejects.toThrow();
+  });
+
+  it("emits every repositoryFiles entry at the generated repository root", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "repository-files-plugins",
+  version: "1.0.0",
+  metadata: { description: "Repo", author: { name: "R" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      repositoryFiles: "repositories/claude",
+      plugins: { demo: { source: "shared/demo" } }
+    }
+  }
+});
+`,
+      shared: {
+        demo: {
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+        },
+      },
+      repositories: {
+        claude: {
+          "README.md": "# Repository\n",
+          docs: { "INSTALL.md": "# Install\n" },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    await expect(
+      readFile(path.join(root, "dist/claude/README.md"), "utf8"),
+    ).resolves.toBe("# Repository\n");
+    await expect(
+      readFile(path.join(root, "dist/claude/docs/INSTALL.md"), "utf8"),
+    ).resolves.toBe("# Install\n");
+  });
+
   it("uses target-specific file overrides", async () => {
     const project = await fixture();
     const root = project.baseDir;

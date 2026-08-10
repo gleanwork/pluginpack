@@ -54,21 +54,45 @@ const updateCheckSchema = z.object({
   repository: z.string().min(1).optional(),
 });
 
-/** A source plugin (or plugins) mapped to one emitted plugin for a target. */
-const emittedPluginSchema = z.object({
-  from: z.array(z.string().min(1)).min(1),
-  path: safeRelativePath.optional(),
-  version: z.string().optional(),
-  description: z.string().optional(),
-  displayName: z.string().optional(),
-  manifest: z.record(z.string(), z.unknown()).optional(),
-  // Deep-merged into this plugin's generated marketplace entry (the object in
-  // the marketplace `plugins` array), letting a config supply target-specific
-  // entry fields a target can't derive — e.g. Codex `policy`/`category`.
-  entry: z.record(z.string(), z.unknown()).optional(),
-  components: z.array(z.string()).optional(),
-  updateCheck: z.literal(false).optional(),
-});
+/** One authored plugin source mapped to an emitted plugin for a target. */
+const emittedPluginSchema = z
+  .object({
+    // Canonical since 0.11: a direct path to one shared authored plugin.
+    source: safeRelativePath.optional(),
+    // Legacy 0.10 composition model. Kept readable for one migration window.
+    from: z.array(z.string().min(1)).min(1).optional(),
+    path: safeRelativePath.optional(),
+    version: z.string().optional(),
+    description: z.string().optional(),
+    displayName: z.string().optional(),
+    manifest: z.record(z.string(), z.unknown()).optional(),
+    // Deep-merged into this plugin's generated marketplace entry (the object in
+    // the marketplace `plugins` array), letting a config supply target-specific
+    // entry fields a target can't derive — e.g. Codex `policy`/`category`.
+    entry: z.record(z.string(), z.unknown()).optional(),
+    // Canonical selection names. `components` is the legacy include-only name.
+    include: z.array(z.string().min(1)).optional(),
+    exclude: z.array(z.string().min(1)).optional(),
+    components: z.array(z.string()).optional(),
+    // Applied after reading `source`, so it can add or replace target files.
+    overlay: safeRelativePath.optional(),
+    updateCheck: z.literal(false).optional(),
+  })
+  .superRefine((plugin, ctx) => {
+    if (Boolean(plugin.source) === Boolean(plugin.from)) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'set exactly one of "source" or legacy "from"',
+      });
+    }
+    if (plugin.components && (plugin.include || plugin.exclude)) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          'legacy "components" cannot be combined with "include" or "exclude"',
+      });
+    }
+  });
 
 /** One target's output configuration: where it's written, and which plugins it emits. */
 const targetSchema = z.object({
@@ -89,6 +113,9 @@ const targetSchema = z.object({
   // any other emitted file, so a repo-root README/LICENSE is authored once in
   // the source repo and synced to every target instead of hand-maintained.
   rootFiles: z.record(safeRelativePath, safeRelativePath).optional(),
+  // Canonical since 0.11: every file below this directory is emitted at the
+  // generated repository root. Replaces the per-file rootFiles map.
+  repositoryFiles: safeRelativePath.optional(),
 });
 
 /**
@@ -139,7 +166,12 @@ const sourcePluginManifestSchema = metadataSchema.extend({
   additionalFiles: z.record(safeRelativePath, safeRelativePath).optional(),
 });
 
-export { configSchema, sourcePluginManifestSchema };
+/** Shipping files owned by an authored plugin's `mcp/` directory. */
+const mcpManifestSchema = z.object({
+  files: z.record(safeRelativePath, safeRelativePath).optional(),
+});
+
+export { configSchema, mcpManifestSchema, sourcePluginManifestSchema };
 
 export type Author = z.infer<typeof authorSchema>;
 export type Metadata = z.infer<typeof metadataSchema>;
@@ -149,3 +181,4 @@ export type UpdateCheckConfig = z.infer<typeof updateCheckSchema>;
 export type TargetConfig = z.infer<typeof targetSchema>;
 export type PluginpackConfig = z.infer<typeof configSchema>;
 export type SourcePluginManifest = z.infer<typeof sourcePluginManifestSchema>;
+export type McpManifest = z.infer<typeof mcpManifestSchema>;

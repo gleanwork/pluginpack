@@ -39,11 +39,12 @@ diff, prune, and validate all derive from it.
   the public types are derived with `z.infer`. Edit schemas here, not `types.ts`.
 - `src/types.ts` — non-config types; re-exports the config types from `schema.ts`.
 - `src/components.ts` — `componentDirs` + `staticFiles` (shared by render/config).
-- `src/config.ts` — `loadConfig` (jiti loads `pluginpack.config.ts`), source
-  plugin discovery (only dirs with a manifest or a component dir count, so
-  generated output is never misread as source), and the root-skills plugin.
-- `src/render.ts` — `collectPluginFiles` (component dirs + static files, with
-  `targets/<name>/` override resolution) and `resolveMcpServers`.
+- `src/config.ts` — `loadConfig` (jiti loads `pluginpack.config.ts`) and legacy
+  0.10 source-plugin discovery during the migration window.
+- `src/source.ts` — reads canonical direct `shared/<plugin>` sources, applies
+  target overlays, packages `mcp/`, and retains the legacy filesystem source
+  provider.
+- `src/render.ts` — legacy `collectPluginFiles`/`resolveMcpServers` composition.
 - `src/partials.ts` — `loadPartials`/`resolvePartials`: project-level
   `{{> name}}` text-reuse, wired into `collectPluginFiles` and
   `withRootFiles`. Substitution is real `mustache` rendering (view is always
@@ -97,14 +98,14 @@ schemas at runtime — vendor a pinned copy with recorded provenance.
 
 ## Shapes and gotchas
 
-- **Recommended shape:** top-level `skills/` (the portable surface) + generated
-  native outputs under `plugins/<target>/` in the same repo.
+- **Recommended shape:** `shared/<plugin>/` canonical sources,
+  `overrides/<target>/<plugin>/` target overlays, and
+  `repositories/<target>/` generated-repository files.
 - **claude + copilot collide:** both write `.claude-plugin/marketplace.json`, so
   they need distinct `outDir`s. `build()` errors on overlapping output paths.
-- **MCP:** a source plugin declares servers via a `.mcp.json` file (standard
-  `{ mcpServers: {...} }`) or an `mcpServers` key in `plugin.pluginpack.json`
-  (file wins). claude ships the file (auto-discovered); cursor/copilot reference
-  it; antigravity writes `mcp_config.json`.
+- **MCP:** a canonical source keeps `mcp/config.json`, its implementation, tests,
+  and `mcp/pluginpack.json` shipping-file map together. Target adapters translate
+  the config into the native output. Legacy sources still read `.mcp.json`.
 
 ## Conventions
 
