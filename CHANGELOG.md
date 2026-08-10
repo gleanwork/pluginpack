@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.11.0 (2026-08-10)
+
+#### :boom: Breaking Change
+
+- [#30](https://github.com/gleanwork/pluginpack/pull/30) feat: add shared plugin sources and target overlays ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#26](https://github.com/gleanwork/pluginpack/pull/26) fix: fail the build on unresolvable partial references ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### :rocket: Enhancement
+
+- [#30](https://github.com/gleanwork/pluginpack/pull/30) feat: add shared plugin sources and target overlays ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### :bug: Bug Fix
+
+- [#28](https://github.com/gleanwork/pluginpack/pull/28) fix: stop the delete guard breaking the documented layout, and follow symlinks when checking containment ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#26](https://github.com/gleanwork/pluginpack/pull/26) fix: fail the build on unresolvable partial references ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#22](https://github.com/gleanwork/pluginpack/pull/22) fix: close 1.0-readiness gaps (delete-guard, cross-target collisions, validation, docs) ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### :house: Internal
+
+- [#31](https://github.com/gleanwork/pluginpack/pull/31) fix(ci): set up toolchain with mise ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#29](https://github.com/gleanwork/pluginpack/pull/29) refactor: address code-review findings on the containment fixes ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#27](https://github.com/gleanwork/pluginpack/pull/27) test: cover the destructive paths, and fix two gaps they exposed ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### Committers: 1
+
+- Steve Calvert ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+
+
 ## v0.10.0 (2026-07-29)
 
 #### :rocket: Enhancement
