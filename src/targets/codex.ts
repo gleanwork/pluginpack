@@ -203,13 +203,14 @@ export const codex: PluginTargetDefinition = {
       "plugins",
       "marketplace.json",
     );
+    const ownedPaths = [marketplacePath];
     const marketplace = await readJson(
       marketplacePath,
       "Marketplace manifest",
       issues,
     );
     if (!marketplace) {
-      return;
+      return ownedPaths;
     }
     validateMarketplaceBasics(marketplace, issues);
     const plugins = Array.isArray(marketplace.plugins)
@@ -217,7 +218,7 @@ export const codex: PluginTargetDefinition = {
       : [];
     if (plugins.length === 0) {
       error(issues, 'Marketplace "plugins" must be a non-empty array.');
-      return;
+      return ownedPaths;
     }
     for (const [index, entry] of plugins.entries()) {
       const pluginName = codex.validateMarketplaceEntry(
@@ -233,6 +234,7 @@ export const codex: PluginTargetDefinition = {
       if (!pluginDir) {
         continue;
       }
+      ownedPaths.push(pluginDir);
       const manifest = await readJson(
         path.join(pluginDir, ".codex-plugin", "plugin.json"),
         `${pluginName} plugin manifest`,
@@ -263,6 +265,7 @@ export const codex: PluginTargetDefinition = {
       );
       await validateFrontmatter(pluginDir, pluginName, "codex", issues);
     }
+    return ownedPaths;
   },
 
   installSnippet: {

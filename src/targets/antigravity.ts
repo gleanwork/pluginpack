@@ -95,7 +95,7 @@ export const antigravity: PluginTargetDefinition = {
         issues,
         "Antigravity output must contain at least one plugin directory.",
       );
-      return;
+      return pluginDirs;
     }
     for (const pluginDir of pluginDirs) {
       const manifest = await readJson(
@@ -121,6 +121,7 @@ export const antigravity: PluginTargetDefinition = {
       await validateFrontmatter(pluginDir, pluginName, "antigravity", issues);
       await validateHooksShape(pluginDir, pluginName, "hooks.json", issues);
     }
+    return pluginDirs;
   },
 
   installSnippet: {

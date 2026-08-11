@@ -83,9 +83,26 @@ export function warning(issues: ValidationIssue[], message: string): void {
  */
 export async function validateNoSurvivingPartialTags(
   root: string,
+  ownedPaths: string[],
   issues: ValidationIssue[],
 ): Promise<void> {
-  for (const file of await walkFiles(root)) {
+  const files = (
+    await Promise.all(
+      ownedPaths.map(async (ownedPath) => {
+        try {
+          return (await fs.stat(ownedPath)).isDirectory()
+            ? await walkFiles(ownedPath)
+            : [ownedPath];
+        } catch (error) {
+          if (isNotFoundError(error)) {
+            return [];
+          }
+          throw error;
+        }
+      }),
+    )
+  ).flat();
+  for (const file of [...new Set(files)]) {
     const relative = toPosix(path.relative(root, file));
     const tag = findPartialTag(await fs.readFile(file));
     if (!tag) {

@@ -130,7 +130,15 @@ export type PluginTargetDefinition = {
     root: string,
     issues: ValidationIssue[],
   ) => string | null;
-  validateOutput: (root: string, issues: ValidationIssue[]) => Promise<void>;
+  /**
+   * Validates native output and returns the files/directories owned by the
+   * target. Shared validation uses these paths instead of scanning unrelated
+   * authored and dependency files that may share the repository root.
+   */
+  validateOutput: (
+    root: string,
+    issues: ValidationIssue[],
+  ) => Promise<string[]>;
 
   installSnippet: InstallSnippetDefinition;
 
