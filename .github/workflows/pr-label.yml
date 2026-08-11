@@ -4,15 +4,18 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled]
 
+permissions:
+  issues: read
+  pull-requests: read
+
 jobs:
   labels:
     runs-on: ubuntu-latest
     steps:
-      - name: Require a lerna-changelog label
+      - name: Require a repository label
         uses: actions/github-script@v9
         with:
           script: |
-            const required = ["breaking", "enhancement", "bug", "documentation", "internal"];
             const pullRequest = context.payload.pull_request;
             // Dependabot and friends label their own PRs (dependencies,
             // javascript, github_actions) and cannot be asked to pick a
@@ -25,10 +28,17 @@ jobs:
               );
               return;
             }
-            const labels = pullRequest.labels.map((label) => label.name);
-            const matched = labels.filter((label) => required.includes(label));
+            const repositoryLabels = await github.paginate(
+              github.rest.issues.listLabelsForRepo,
+              { ...context.repo, per_page: 100 },
+              (response) => response.data.map((label) => label.name),
+            );
+            const validLabels = new Set(repositoryLabels);
+            const matched = pullRequest.labels
+              .map((label) => label.name)
+              .filter((label) => validLabels.has(label));
             if (matched.length === 0) {
               core.setFailed(
-                `This PR needs one of the following labels for the changelog: ${required.join(", ")}.`,
+                `This PR needs at least one repository label. Available labels: ${repositoryLabels.sort().join(", ")}.`,
               );
             }
