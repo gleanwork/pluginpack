@@ -4,6 +4,7 @@ import {
   validateFromDefinition,
   withRootFiles,
 } from "./targets/engine.js";
+import { normalizeManagedPath, readManagedManifest } from "./managed.js";
 import { targets as registry } from "./targets/registry.js";
 import type {
   Artifact,
@@ -47,7 +48,11 @@ export async function validateOutput(
 ): Promise<ValidationResult> {
   const root = path.resolve(dir);
   const issues: ValidationIssue[] = [];
-  await validateFromDefinition(root, issues, registry[target]);
+  const managed = await readManagedManifest(root, target);
+  const managedPaths = (managed?.files ?? []).map((file) =>
+    path.resolve(root, normalizeManagedPath(file)),
+  );
+  await validateFromDefinition(root, issues, registry[target], managedPaths);
   return {
     ok: issues.every((issue) => issue.level !== "error"),
     issues,

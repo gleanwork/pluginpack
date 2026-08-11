@@ -1860,6 +1860,23 @@ export default defineConfig({
     });
   });
 
+  it("validates surviving partials in managed repository-root files", async () => {
+    const project = await recommendedShapeFixture();
+    const root = project.baseDir;
+    await build({ cwd: root });
+    await writeFile(path.join(root, "config.yaml"), "auth: {{> auth}}\n");
+
+    const result = await validateOutput("cursor", root);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual({
+      level: "error",
+      message: expect.stringContaining(
+        "config.yaml contains an unsubstituted partial reference {{> auth}}",
+      ),
+    });
+  });
+
   it("does not register generated output dirs as source plugins on rebuild", async () => {
     const project = await recommendedShapeFixture();
     const root = project.baseDir;
@@ -3863,6 +3880,7 @@ export default defineConfig({
   targets: {
     cursor: {
       outDir: ".",
+      repositoryFiles: "repositories/cursor",
       plugins: {
         acme: { source: "shared/acme", path: "plugins/cursor/acme" }
       }
@@ -3911,6 +3929,9 @@ export default defineConfig({
     },
     node_modules: {
       dependency: { "index.js": 'const example = "{{> dependency}}";\n' },
+    },
+    repositories: {
+      cursor: { "config.yaml": "auth: configured\n" },
     },
   });
 }
