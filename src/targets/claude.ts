@@ -104,13 +104,14 @@ export const claude: PluginTargetDefinition = {
       ".claude-plugin",
       "marketplace.json",
     );
+    const ownedPaths = [marketplacePath];
     const marketplace = await readJson(
       marketplacePath,
       "Marketplace manifest",
       issues,
     );
     if (!marketplace) {
-      return;
+      return ownedPaths;
     }
     validateMarketplaceBasics(marketplace, issues);
     const plugins = Array.isArray(marketplace.plugins)
@@ -118,7 +119,7 @@ export const claude: PluginTargetDefinition = {
       : [];
     if (plugins.length === 0) {
       error(issues, 'Marketplace "plugins" must be a non-empty array.');
-      return;
+      return ownedPaths;
     }
     for (const [index, entry] of plugins.entries()) {
       const pluginName = claude.validateMarketplaceEntry(
@@ -131,6 +132,7 @@ export const claude: PluginTargetDefinition = {
         continue;
       }
       const pluginDir = path.join(root, entry.source);
+      ownedPaths.push(pluginDir);
       const manifest = await readJson(
         path.join(pluginDir, ".claude-plugin", "plugin.json"),
         `${pluginName} plugin manifest`,
@@ -154,6 +156,7 @@ export const claude: PluginTargetDefinition = {
         issues,
       );
     }
+    return ownedPaths;
   },
 
   installSnippet: {

@@ -143,18 +143,23 @@ export const copilot: PluginTargetDefinition = {
       ".claude-plugin",
       "marketplace.json",
     );
+    const mirroredMarketplacePath = path.join(
+      root,
+      ".github",
+      "plugin",
+      "marketplace.json",
+    );
+    const ownedPaths = [marketplacePath, mirroredMarketplacePath];
     const marketplace = await readJson(
       marketplacePath,
       "Marketplace manifest",
       issues,
     );
     if (!marketplace) {
-      return;
+      return ownedPaths;
     }
     validateMarketplaceBasics(marketplace, issues);
-    if (
-      !(await exists(path.join(root, ".github", "plugin", "marketplace.json")))
-    ) {
+    if (!(await exists(mirroredMarketplacePath))) {
       error(
         issues,
         "Copilot output must mirror the marketplace at .github/plugin/marketplace.json.",
@@ -165,7 +170,7 @@ export const copilot: PluginTargetDefinition = {
       : [];
     if (plugins.length === 0) {
       error(issues, 'Marketplace "plugins" must be a non-empty array.');
-      return;
+      return ownedPaths;
     }
     for (const [index, entry] of plugins.entries()) {
       const pluginName = copilot.validateMarketplaceEntry(
@@ -178,6 +183,7 @@ export const copilot: PluginTargetDefinition = {
         continue;
       }
       const pluginDir = path.join(root, entry.source);
+      ownedPaths.push(pluginDir);
       // .github/plugin/ is the authoritative copy; the root copy is only
       // checked for presence, not re-parsed.
       const manifest = await readJson(
@@ -204,6 +210,7 @@ export const copilot: PluginTargetDefinition = {
       await validateAgentFileNames(pluginDir, pluginName, issues);
       await validateFrontmatter(pluginDir, pluginName, "copilot", issues);
     }
+    return ownedPaths;
   },
 
   installSnippet: {

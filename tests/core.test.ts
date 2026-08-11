@@ -1841,6 +1841,10 @@ export default defineConfig({
     await access(
       path.join(root, "plugins/claude/acme/.claude-plugin/plugin.json"),
     );
+    await access(path.join(root, ".agents/plugins/marketplace.json"));
+    await access(
+      path.join(root, "plugins/codex/acme/.codex-plugin/plugin.json"),
+    );
     await access(
       path.join(root, "plugins/copilot/.claude-plugin/marketplace.json"),
     );
@@ -1850,6 +1854,26 @@ export default defineConfig({
     });
     await expect(validateOutput("claude", root)).resolves.toMatchObject({
       ok: true,
+    });
+    await expect(validateOutput("codex", root)).resolves.toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("validates surviving partials in managed repository-root files", async () => {
+    const project = await recommendedShapeFixture();
+    const root = project.baseDir;
+    await build({ cwd: root });
+    await writeFile(path.join(root, "config.yaml"), "auth: {{> auth}}\n");
+
+    const result = await validateOutput("cursor", root);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual({
+      level: "error",
+      message: expect.stringContaining(
+        "config.yaml contains an unsubstituted partial reference {{> auth}}",
+      ),
     });
   });
 
@@ -1862,7 +1886,7 @@ export default defineConfig({
     // Loading config again must not treat them as source plugins.
     const loaded = await loadConfig(root);
 
-    expect([...loaded.plugins.keys()]).toEqual(["core"]);
+    expect([...loaded.plugins.keys()]).toEqual([]);
   });
 
   it("merges multiple source plugins and rejects colliding files", async () => {
@@ -3851,34 +3875,63 @@ async function recommendedShapeFixture(): Promise<Project> {
 export default defineConfig({
   name: "acme-plugins",
   version: "1.0.0",
-  source: {
-    skills: "skills",
-    rootPlugin: { id: "core", description: "Acme skills." }
-  },
+  source: { partials: "partials" },
   metadata: { description: "Acme", author: { name: "Acme" }, license: "MIT" },
   targets: {
     cursor: {
       outDir: ".",
+      repositoryFiles: "repositories/cursor",
       plugins: {
-        acme: { from: ["core"], path: "plugins/cursor/acme", components: ["skills"] }
+        acme: { source: "shared/acme", path: "plugins/cursor/acme" }
       }
     },
     claude: {
       outDir: ".",
       pluginRoot: "plugins/claude",
-      plugins: { acme: { from: ["core"] } }
+      plugins: { acme: { source: "shared/acme" } }
+    },
+    codex: {
+      outDir: ".",
+      plugins: {
+        acme: {
+          source: "shared/acme",
+          path: "plugins/codex/acme",
+          entry: {
+            policy: { installation: "AVAILABLE", authentication: "NOT_REQUIRED" },
+            category: "Developer Tools"
+          }
+        }
+      }
     },
     copilot: {
       outDir: "plugins/copilot",
-      plugins: { acme: { from: ["core"] } }
+      plugins: { acme: { source: "shared/acme" } }
     }
   }
 });
 `,
-    skills: {
-      "release-notes": {
-        "SKILL.md": skill("release-notes", "Release notes skill."),
+    partials: {
+      "auth.md": "Authenticate first.",
+    },
+    shared: {
+      acme: {
+        skills: {
+          "release-notes": {
+            "SKILL.md": `${skill("release-notes", "Release notes skill.")}\n{{> auth}}\n`,
+          },
+        },
       },
+    },
+    // These are authored/dependency files in the repository, not generated
+    // target output. Validation must not interpret their template syntax.
+    ".github": {
+      workflows: { "ci.yml": "# Example partial: {{> partial}}\n" },
+    },
+    node_modules: {
+      dependency: { "index.js": 'const example = "{{> dependency}}";\n' },
+    },
+    repositories: {
+      cursor: { "config.yaml": "auth: configured\n" },
     },
   });
 }
