@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.11.1 (2026-08-11)
+
+#### :bug: Bug Fix
+
+- [#32](https://github.com/gleanwork/pluginpack/pull/32) Fix validation of shared source repositories ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### :house: Internal
+
+- [#33](https://github.com/gleanwork/pluginpack/pull/33) Derive accepted PR labels from the repository ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### Committers: 1
+
+- Steve Calvert ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+
+
 ## v0.11.0 (2026-08-10)
 
 #### :boom: Breaking Change
