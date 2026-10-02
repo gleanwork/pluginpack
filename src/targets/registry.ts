@@ -1,3 +1,4 @@
+import { agentPlugins } from "./agent-plugins.js";
 import { antigravity } from "./antigravity.js";
 import { claude } from "./claude.js";
 import { codex } from "./codex.js";
@@ -18,4 +19,5 @@ export const targets: Record<TargetName, PluginTargetDefinition> = {
   cursor,
   claude,
   codex,
+  "agent-plugins": agentPlugins,
 };

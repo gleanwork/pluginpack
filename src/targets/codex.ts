@@ -1,4 +1,11 @@
 import path from "node:path";
+import {
+  buildPackageManifest,
+  hasPackageManifest,
+  packageLayout,
+  placeClientFields,
+  validatePackage,
+} from "../agent-plugins.js";
 import { isSafeRelativePath, toPosix } from "../fs.js";
 import { stripUndefined } from "./shared.js";
 import {
@@ -114,8 +121,55 @@ function validateCodexEntry(
   return name;
 }
 
-/** OpenAI Codex CLI plugin target — see `citations` for source facts. */
-export const codex: PluginTargetDefinition = {
+/**
+ * Validates one plugin directory in either Codex layout, detected the way
+ * Codex itself does: a root `plugin.json` declaring the Agent Plugins schema
+ * is a package; otherwise `.codex-plugin/plugin.json` is the legacy layout.
+ * Returns the manifest when it could be read.
+ */
+async function validateCodexPlugin(
+  pluginDir: string,
+  pluginName: string,
+  issues: ValidationIssue[],
+): Promise<Record<string, unknown> | undefined> {
+  if (await hasPackageManifest(pluginDir)) {
+    return validatePackage(pluginDir, pluginName, issues);
+  }
+  const manifest = await readJson(
+    path.join(pluginDir, ".codex-plugin", "plugin.json"),
+    `${pluginName} plugin manifest`,
+    issues,
+  );
+  if (!manifest) {
+    return undefined;
+  }
+  requireName(manifest, pluginName, issues);
+  await validateReferencedManifestPaths(
+    pluginDir,
+    pluginName,
+    manifest,
+    ["skills", "hooks", "mcpServers"],
+    issues,
+  );
+  await validateFrontmatter(pluginDir, pluginName, "codex", issues);
+  return manifest;
+}
+
+function requireName(
+  manifest: Record<string, unknown>,
+  pluginName: string,
+  issues: ValidationIssue[],
+): void {
+  if (typeof manifest.name !== "string" || !manifest.name) {
+    error(
+      issues,
+      `${pluginName}: plugin.json is missing required field "name".`,
+    );
+  }
+}
+
+/** Shared by both Codex layouts: everything outside the plugin directory. */
+const codexMarketplace = {
   name: "codex",
 
   defaultComponents: ["skills", "hooks", "scripts", "assets"],
@@ -123,6 +177,162 @@ export const codex: PluginTargetDefinition = {
   resolvePluginPath: (pluginName, pluginConfig, targetConfig) =>
     pluginConfig.path ??
     toPosix(path.join(targetConfig.pluginRoot ?? "plugins", pluginName)),
+
+  // Author-supplied `policy`/`category` land here via the per-plugin `entry`
+  // passthrough (see engine.ts's deepMerge) — pluginpack has no way to infer
+  // installation/authentication policy on its own, so the base entry stays
+  // guess-free and validateOutput errors clearly if they're never supplied.
+  buildMarketplaceEntry: ({ pluginName, pluginPath, pluginConfig, manifest }) =>
+    stripUndefined({
+      name: pluginName,
+      source: `./${pluginPath}`,
+      description:
+        pluginConfig.description ??
+        (manifest?.description as string | undefined),
+      version:
+        pluginConfig.version ?? (manifest?.version as string | undefined),
+    }),
+
+  buildMarketplaceManifest: ({ project, plugins }) =>
+    stripUndefined({
+      name: project.config.name,
+      interface: {
+        displayName:
+          project.config.metadata?.displayName ?? project.config.name,
+      },
+      plugins,
+    }),
+  marketplacePaths: () => [path.join(".agents", "plugins", "marketplace.json")],
+
+  // Codex discovers hooks/hooks.json by default in both layouts.
+  hooksPath: (pluginPath) => path.join(pluginPath, "hooks", "hooks.json"),
+
+  validateManifest: requireName,
+  validateMarketplaceEntry: validateCodexEntry,
+
+  validateOutput: async (root, issues) => {
+    const marketplacePath = path.join(
+      root,
+      ".agents",
+      "plugins",
+      "marketplace.json",
+    );
+    const ownedPaths = [marketplacePath];
+    const marketplace = await readJson(
+      marketplacePath,
+      "Marketplace manifest",
+      issues,
+    );
+    if (!marketplace) {
+      return ownedPaths;
+    }
+    validateMarketplaceBasics(marketplace, issues);
+    const plugins = Array.isArray(marketplace.plugins)
+      ? marketplace.plugins
+      : [];
+    if (plugins.length === 0) {
+      error(issues, 'Marketplace "plugins" must be a non-empty array.');
+      return ownedPaths;
+    }
+    for (const [index, entry] of plugins.entries()) {
+      const pluginName = validateCodexEntry(entry, index, root, issues);
+      if (!pluginName) {
+        continue;
+      }
+      const pluginDir = resolveLocalPluginDir(root, entry.source);
+      if (!pluginDir) {
+        continue;
+      }
+      ownedPaths.push(pluginDir);
+      const manifest = await validateCodexPlugin(pluginDir, pluginName, issues);
+      if (!manifest) {
+        continue;
+      }
+      if (manifest.name !== pluginName) {
+        error(
+          issues,
+          `${pluginName}: marketplace entry name does not match plugin.json name ("${manifest.name}").`,
+        );
+      }
+      await validateHooksShape(
+        pluginDir,
+        pluginName,
+        "hooks/hooks.json",
+        issues,
+      );
+    }
+    return ownedPaths;
+  },
+
+  installSnippet: {
+    userConfigurable: true,
+    build: ({ repository }) => ({
+      kind: "command",
+      snippet: `codex plugin marketplace add ${repository}`,
+      note: "Installs the marketplace; individual plugins are then installed from Codex's plugin picker.",
+    }),
+    citation: {
+      claim: "codex plugin marketplace add syntax",
+      documentationUrl: "https://learn.chatgpt.com/codex/developer-commands",
+      verifiedAt: "2026-07-25",
+    },
+  },
+
+  citations: [
+    {
+      claim:
+        "a root plugin.json declaring the Agent Plugins schema is the preferred package format; OpenAI-specific settings go under extensions.com.openai; .codex-plugin/plugin.json remains a compatibility fallback",
+      documentationUrl: "https://developers.openai.com/codex/plugins/build",
+      verifiedAt: "2026-10-02",
+    },
+    {
+      claim:
+        "when extensions.com.openai is an object it replaces the .codex-plugin/plugin.json overlay (they aren't merged); hooks/hooks.json is discovered by default",
+      documentationUrl: "https://developers.openai.com/codex/plugins/build",
+      verifiedAt: "2026-10-02",
+    },
+    {
+      claim:
+        'legacy .codex-plugin/plugin.json requires only "name"; version/description/author etc. are optional',
+      documentationUrl: "https://developers.openai.com/codex/plugins/build",
+      verifiedAt: "2026-07-26",
+    },
+    {
+      claim:
+        "marketplace entries require policy.installation, policy.authentication, and category",
+      documentationUrl: "https://developers.openai.com/codex/plugins/build",
+      verifiedAt: "2026-10-02",
+    },
+    {
+      claim:
+        'a marketplace entry\'s source is a bare string only for local plugins; url/git-subdir/npm sources are structured objects with an inner "source" discriminator',
+      documentationUrl: "https://developers.openai.com/codex/plugins/build",
+      verifiedAt: "2026-10-02",
+    },
+    {
+      claim:
+        "marketplace.json's top level is { name, interface, plugins }, with no owner field",
+      documentationUrl: "https://developers.openai.com/codex/plugins/build",
+      verifiedAt: "2026-10-02",
+    },
+  ],
+} satisfies Omit<
+  PluginTargetDefinition,
+  "buildPluginManifest" | "manifestPaths" | "mcpConfigPath" | "mcpDialect"
+>;
+
+/** The OpenAI client profile: settings live under `extensions.com.openai`. */
+const openaiProfile = { namespace: "com.openai" };
+
+/**
+ * The pre-Agent Plugins Codex layout (`format: "legacy"`):
+ * `.codex-plugin/plugin.json` pointing at `skills/`, `hooks/`, and
+ * `.mcp.json`. Kept for Codex builds that predate Agent Plugins support
+ * (v0.146–v0.147) — see
+ * docs/adr/0001-codex-emits-agent-plugins-packages.md.
+ */
+const codexLegacy: PluginTargetDefinition = {
+  ...codexMarketplace,
 
   buildPluginManifest: ({
     metadata,
@@ -157,158 +367,29 @@ export const codex: PluginTargetDefinition = {
     path.join(pluginPath, ".codex-plugin", "plugin.json"),
   ],
 
-  // Author-supplied `policy`/`category` land here via the per-plugin `entry`
-  // passthrough (see engine.ts's deepMerge) — pluginpack has no way to infer
-  // installation/authentication policy on its own, so the base entry stays
-  // guess-free and validateOutput errors clearly if they're never supplied.
-  buildMarketplaceEntry: ({ pluginName, pluginPath, pluginConfig, manifest }) =>
-    stripUndefined({
-      name: pluginName,
-      source: `./${pluginPath}`,
-      description:
-        pluginConfig.description ??
-        (manifest?.description as string | undefined),
-      version:
-        pluginConfig.version ?? (manifest?.version as string | undefined),
-    }),
-
-  buildMarketplaceManifest: ({ project, plugins }) =>
-    stripUndefined({
-      name: project.config.name,
-      interface: {
-        displayName:
-          project.config.metadata?.displayName ?? project.config.name,
-      },
-      plugins,
-    }),
-  marketplacePaths: () => [path.join(".agents", "plugins", "marketplace.json")],
-
   mcpConfigPath: (pluginPath) => path.join(pluginPath, ".mcp.json"),
-  // Legacy `.codex-plugin` layout: emitted as authored until the Agent
-  // Plugins format lands for this target.
   mcpDialect: "verbatim",
-  hooksPath: (pluginPath) => path.join(pluginPath, "hooks", "hooks.json"),
+};
 
-  validateManifest: (manifest, pluginName, issues) => {
-    if (typeof manifest.name !== "string" || !manifest.name) {
-      error(
-        issues,
-        `${pluginName}: plugin.json is missing required field "name".`,
-      );
-    }
-  },
-  validateMarketplaceEntry: validateCodexEntry,
+/**
+ * OpenAI Codex / ChatGPT target. Emits Agent Plugins packages by default —
+ * root `plugin.json` with OpenAI settings under `extensions.com.openai`, and
+ * `mcp.json` — listed in `.agents/plugins/marketplace.json`. `format:
+ * "legacy"` selects the `.codex-plugin` layout instead. See `citations`.
+ */
+export const codex: PluginTargetDefinition = {
+  ...codexMarketplace,
 
-  validateOutput: async (root, issues) => {
-    const marketplacePath = path.join(
-      root,
-      ".agents",
-      "plugins",
-      "marketplace.json",
-    );
-    const ownedPaths = [marketplacePath];
-    const marketplace = await readJson(
-      marketplacePath,
-      "Marketplace manifest",
-      issues,
-    );
-    if (!marketplace) {
-      return ownedPaths;
-    }
-    validateMarketplaceBasics(marketplace, issues);
-    const plugins = Array.isArray(marketplace.plugins)
-      ? marketplace.plugins
-      : [];
-    if (plugins.length === 0) {
-      error(issues, 'Marketplace "plugins" must be a non-empty array.');
-      return ownedPaths;
-    }
-    for (const [index, entry] of plugins.entries()) {
-      const pluginName = codex.validateMarketplaceEntry(
-        entry,
-        index,
-        root,
-        issues,
-      );
-      if (!pluginName) {
-        continue;
-      }
-      const pluginDir = resolveLocalPluginDir(root, entry.source);
-      if (!pluginDir) {
-        continue;
-      }
-      ownedPaths.push(pluginDir);
-      const manifest = await readJson(
-        path.join(pluginDir, ".codex-plugin", "plugin.json"),
-        `${pluginName} plugin manifest`,
-        issues,
-      );
-      if (!manifest) {
-        continue;
-      }
-      if (manifest.name !== pluginName) {
-        error(
-          issues,
-          `${pluginName}: marketplace entry name does not match plugin.json name ("${manifest.name}").`,
-        );
-      }
-      codex.validateManifest(manifest, pluginName, issues);
-      await validateReferencedManifestPaths(
-        pluginDir,
-        pluginName,
-        manifest,
-        ["skills", "hooks", "mcpServers"],
-        issues,
-      );
-      await validateHooksShape(
-        pluginDir,
-        pluginName,
-        "hooks/hooks.json",
-        issues,
-      );
-      await validateFrontmatter(pluginDir, pluginName, "codex", issues);
-    }
-    return ownedPaths;
-  },
+  forConfig: (targetConfig) =>
+    targetConfig.format === "legacy" ? codexLegacy : codex,
 
-  installSnippet: {
-    userConfigurable: true,
-    build: ({ repository }) => ({
-      kind: "command",
-      snippet: `codex plugin marketplace add ${repository}`,
-      note: "Installs the marketplace; individual plugins are then installed from Codex's plugin picker.",
-    }),
-    citation: {
-      claim: "codex plugin marketplace add syntax",
-      documentationUrl: "https://learn.chatgpt.com/codex/developer-commands",
-      verifiedAt: "2026-07-25",
-    },
-  },
-
-  citations: [
-    {
-      claim:
-        'plugin.json requires only "name"; version/description/author etc. are optional',
-      documentationUrl: "https://developers.openai.com/codex/plugins/build",
-      verifiedAt: "2026-07-26",
-    },
-    {
-      claim:
-        "marketplace entries require policy.installation, policy.authentication, and category",
-      documentationUrl: "https://developers.openai.com/codex/plugins/build",
-      verifiedAt: "2026-07-26",
-    },
-    {
-      claim:
-        'a marketplace entry\'s source is a bare string only for local plugins; url/git-subdir/npm sources are structured objects with an inner "source" discriminator',
-      documentationUrl: "https://developers.openai.com/codex/plugins/build",
-      verifiedAt: "2026-07-26",
-    },
-    {
-      claim:
-        "marketplace.json's top level is { name, interface, plugins }, with no owner field",
-      documentationUrl: "https://developers.openai.com/codex/plugins/build",
-      verifiedAt: "2026-07-26",
-    },
+  buildPluginManifest: buildPackageManifest,
+  finalizeManifest: (manifest, pluginName) =>
+    placeClientFields(manifest, openaiProfile, pluginName),
+  manifestPaths: (pluginPath) => [
+    path.join(pluginPath, packageLayout.manifest),
   ],
+
+  mcpConfigPath: (pluginPath) => path.join(pluginPath, packageLayout.mcp),
+  mcpDialect: "agent-plugins",
 };
