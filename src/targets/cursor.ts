@@ -137,6 +137,7 @@ export const cursor: PluginTargetDefinition = {
   ],
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, ".mcp.json"),
+  mcpDialect: "cursor",
   hooksPath: (pluginPath) => path.join(pluginPath, "hooks", "hooks.json"),
 
   validateManifest: (manifest, pluginName, issues) => {
