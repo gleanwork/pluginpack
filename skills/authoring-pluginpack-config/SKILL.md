@@ -82,8 +82,21 @@ at `plugins/copilot`). `pluginpack build` errors on overlapping output paths.
 ## MCP servers
 
 Add a `.mcp.json` (`{ "mcpServers": { "name": { ... } } }`) at the source plugin
-root, or an `mcpServers` key in `plugin.pluginpack.json`. pluginpack wires it
-into each target natively.
+root, or an `mcpServers` key in `plugin.pluginpack.json`. pluginpack renders it
+into each target's MCP dialect (plugin-root variable names and transport labels),
+so author it once. Don't add a per-target copy just to change
+`${CLAUDE_PLUGIN_ROOT}`.
+
+## Agent Plugins
+
+`codex` emits [Agent Plugins](https://agent-plugins.org/specification) packages
+(root `plugin.json` + `mcp.json`). Codex-only manifest fields such as
+`interface` move under `extensions["com.openai"]` automatically. Set
+`format: "legacy"` on the codex target only to keep the old
+`.codex-plugin/plugin.json` layout. The standalone `agent-plugins` target emits
+portable packages with no marketplace; it can't include `agents`, `commands`,
+`rules`, or `hooks`. Skill names must be lowercase letters, digits, and hyphens
+and match their directory, or Agent Plugins clients skip them.
 
 ## Verify
 

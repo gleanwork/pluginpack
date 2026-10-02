@@ -23,7 +23,7 @@ export type {
 };
 
 export type TargetName =
-  "claude" | "copilot" | "cursor" | "antigravity" | "codex";
+  "claude" | "copilot" | "cursor" | "antigravity" | "codex" | "agent-plugins";
 
 /** A discovered source plugin, before it's emitted into any target. */
 export type SourcePlugin = {

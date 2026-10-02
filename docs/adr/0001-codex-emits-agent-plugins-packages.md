@@ -8,8 +8,8 @@ OpenAI's packaging docs make the Agent Plugins root `plugin.json` (OpenAI
 settings under `extensions.com.openai`) the preferred format and keep
 `.codex-plugin/plugin.json` only as a fallback. From 0.12.0 the `codex` target
 therefore emits Agent Plugins packages by default. A `format: "legacy"` option
-keeps the old layout for one release window, for users on Codex older than
-v0.146.
+keeps the old layout for one release window, for users on Codex builds that
+predate Agent Plugins support (it landed across v0.146 and v0.147).
 
 We deliberately do not emit both layouts in one build. A dual layout would need
 two MCP files in different shapes (`mcp.json` and `.mcp.json`) and a

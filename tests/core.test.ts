@@ -933,7 +933,7 @@ export default defineConfig({
     ).toBe(true);
   });
 
-  it("points a codex plugin.json's hooks field at the bundled hooks file when hooks/ is present", async () => {
+  it("points a legacy codex plugin.json's hooks field at the bundled hooks file when hooks/ is present", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
@@ -943,6 +943,7 @@ export default defineConfig({
   targets: {
     codex: {
       outDir: "dist/codex",
+      format: "legacy",
       plugins: {
         demo: {
           from: ["demo"],
@@ -1842,9 +1843,7 @@ export default defineConfig({
       path.join(root, "plugins/claude/acme/.claude-plugin/plugin.json"),
     );
     await access(path.join(root, ".agents/plugins/marketplace.json"));
-    await access(
-      path.join(root, "plugins/codex/acme/.codex-plugin/plugin.json"),
-    );
+    await access(path.join(root, "plugins/codex/acme/plugin.json"));
     await access(
       path.join(root, "plugins/copilot/.claude-plugin/marketplace.json"),
     );
