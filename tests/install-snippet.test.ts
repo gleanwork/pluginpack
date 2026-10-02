@@ -70,26 +70,25 @@ describe("install snippet", () => {
     );
   });
 
-  it("every target is user-configurable today", () => {
+  it("every marketplace target is user-configurable; agent-plugins has no install surface", () => {
     expect(getSupportedInstallTargets().sort()).toEqual(
       ["antigravity", "claude", "codex", "copilot", "cursor"].sort(),
     );
-    expect(getUnsupportedInstallTargets()).toEqual([]);
+    expect(getUnsupportedInstallTargets()).toEqual(["agent-plugins"]);
+    expect(buildInstallSnippet("agent-plugins", params)).toMatchObject({
+      userConfigurable: false,
+      reason: expect.stringContaining("defines no marketplace"),
+    });
   });
 
   it("every target carries a dated documentation citation", () => {
-    for (const target of getSupportedInstallTargets()) {
+    for (const target of [
+      ...getSupportedInstallTargets(),
+      ...getUnsupportedInstallTargets(),
+    ]) {
       const citation = getInstallSnippetCitation(target);
       expect(citation.documentationUrl).toMatch(/^https:\/\//);
       expect(citation.verifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
-  });
-
-  it("represents the userConfigurable:false shape (no target hits it today, but the type is exercised)", () => {
-    const unsupported: ReturnType<typeof buildInstallSnippet> = {
-      userConfigurable: false,
-      reason: "No CLI or URL install path exists for this target.",
-    };
-    expect(unsupported.userConfigurable).toBe(false);
   });
 });

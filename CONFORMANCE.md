@@ -5,16 +5,17 @@ format.
 
 ## Why this is hard
 
-There is no single, referenceable, upstream JSON Schema for any supported target.
-Each app's source of truth is something other than a stable schema URL:
+Agent Plugins is the only format with a referenceable upstream JSON Schema. Every
+other target's source of truth is something other than a stable schema URL:
 
-| Target        | Canonical source of truth                                                                                                                            | Referenceable schema?                                                                                                                                                                                                              |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `claude`      | `claude plugin validate` CLI + [plugins-reference docs](https://code.claude.com/docs/en/plugins-reference)                                           | **No.** The `$schema` URL the manifest declares (`https://anthropic.com/claude-code/marketplace.schema.json`) returns 404.                                                                                                         |
-| `cursor`      | Glean-authored schemas in `gleanwork/cursor-plugins/schemas/`                                                                                        | **No upstream.** The schema `$id` (`https://cursor.com/schemas/cursor-plugin/...`) 500s; no Cursor-published schema found.                                                                                                         |
-| `antigravity` | Antigravity CLI plugin docs (`plugin.json`, optional `mcp_config.json`)                                                                              | **No.** Defined by product docs and observed CLI layout, not a published schema.                                                                                                                                                   |
-| `copilot`     | [`github/copilot-plugins`](https://github.com/github/copilot-plugins) — a Claude-marketplace-derived format                                          | **Structural.** Copilot shares the Claude marketplace base but extends entries (`skills[]`, `mcpServers` as a path), which `claude plugin validate` rejects — so conformance is asserted structurally against the official format. |
-| `codex`       | [OpenAI Codex CLI plugin docs](https://developers.openai.com/codex/plugins/build) (`.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json`) | **No published schema.** Defined by product docs; conformance is asserted structurally against the documented format (retrieved 2026-07-26).                                                                                       |
+| Target          | Canonical source of truth                                                                                                                        | Referenceable schema?                                                                                                                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude`        | `claude plugin validate` CLI + [plugins-reference docs](https://code.claude.com/docs/en/plugins-reference)                                       | **No.** The `$schema` URL the manifest declares (`https://anthropic.com/claude-code/marketplace.schema.json`) returns 404.                                                                                                         |
+| `cursor`        | Glean-authored schemas in `gleanwork/cursor-plugins/schemas/`                                                                                    | **No upstream.** The schema `$id` (`https://cursor.com/schemas/cursor-plugin/...`) 500s; no Cursor-published schema found.                                                                                                         |
+| `antigravity`   | Antigravity CLI plugin docs (`plugin.json`, optional `mcp_config.json`)                                                                          | **No.** Defined by product docs and observed CLI layout, not a published schema.                                                                                                                                                   |
+| `copilot`       | [`github/copilot-plugins`](https://github.com/github/copilot-plugins) — a Claude-marketplace-derived format                                      | **Structural.** Copilot shares the Claude marketplace base but extends entries (`skills[]`, `mcpServers` as a path), which `claude plugin validate` rejects — so conformance is asserted structurally against the official format. |
+| `codex`         | [OpenAI plugin packaging docs](https://developers.openai.com/codex/plugins/build): an Agent Plugins package + `.agents/plugins/marketplace.json` | **Package: yes** (Agent Plugins 1.0 schemas, vendored). **Marketplace: no** published schema; asserted structurally against the docs (retrieved 2026-10-02).                                                                       |
+| `agent-plugins` | [Agent Plugins Specification 1.0.0](https://agent-plugins.org/specification)                                                                     | **Yes.** `schemas/1.0.0/plugin.schema.json` and `mcp.schema.json`, vendored in `tests/fixtures/agent-plugins/` with provenance in `SOURCE.md`. The spec text wins where they disagree.                                             |
 
 ## Oracles the harness uses
 
@@ -48,14 +49,23 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   `tests/core.test.ts` (required `plugin.json` fields present; optional
   `mcp_config.json` written when MCP servers are present). Antigravity CLI does
   not expose a published schema to validate against.
-- **codex** — asserted structurally in `tests/conformance.test.ts` and
+- **agent-plugins** — the emitted `plugin.json` and `mcp.json` validate
+  against the vendored Agent Plugins 1.0 schemas (draft 2020-12, via ajv's 2020
+  build), and `pluginpack validate` must pass on the same output. The shipped
+  validator (`src/agent-plugins.ts`) re-implements the closed-schema checks
+  without ajv, plus the semantic rules a JSON Schema can't express: skill names
+  per the Agent Skills specification and matching their directory, and MCP
+  server rules from spec §7.2 and §9 (`src/mcp.ts`).
+- **codex** — the package half uses the Agent Plugins oracle above. The
+  marketplace half is asserted structurally in `tests/conformance.test.ts` and
   `tests/core.test.ts` against the
-  [documented Codex plugin format](https://developers.openai.com/codex/plugins/build)
-  (re-verified 2026-07-26 via direct fetch, twice, for consistency): a
-  repo-scoped `.agents/plugins/marketplace.json` (`{ name, interface, plugins }`,
-  no `owner` field) plus a per-plugin `.codex-plugin/plugin.json` where only
-  `name` is required — `version`/`description`/`skills`/`hooks`/`mcpServers` are
-  optional pointers to bundled components. Every marketplace entry must carry
+  [OpenAI packaging docs](https://developers.openai.com/codex/plugins/build)
+  (re-verified 2026-10-02): a repo-scoped `.agents/plugins/marketplace.json`
+  (`{ name, interface, plugins }`, no `owner` field). The default package is a
+  root `plugin.json` with OpenAI settings under `extensions.com.openai`.
+  `format: "legacy"` instead emits `.codex-plugin/plugin.json`, where only
+  `name` is required and `skills`/`hooks`/`mcpServers` are optional pointers;
+  `validate` detects either layout per plugin. Every marketplace entry must carry
   `policy.installation`, `policy.authentication`, and `category`; pluginpack has
   no way to infer these, so the base entry stays guess-free and `validateOutput`
   errors clearly if an author never supplies them via the per-plugin `entry`
@@ -118,16 +128,20 @@ session, with no shell equivalent — but once a marketplace is already added,
 `claude plugin install <name>@<marketplace>` does work as a standalone shell
 command, surfaced as a secondary `note`.
 
-Every target resolves to `userConfigurable: true` today;
-`getUnsupportedInstallTargets()` returns `[]`. The `false` branch of the
-`InstallSnippet` union exists for forward-compatibility, not because any
-target needs it now.
+`agent-plugins` is the one target with `userConfigurable: false`. The
+specification defines no marketplace or install command, and installation is
+left to each client (for example, VS Code installs a plugin directly from a Git
+repository URL:
+<https://code.visualstudio.com/docs/agent-customization/agent-plugins>,
+verified 2026-10-02).
 
 ## Refreshing vendored schemas
 
-The Cursor schemas are pinned copies. To update them, re-fetch from the source
-recorded in `tests/fixtures/cursor/SOURCE.md`, then re-run the suite. Do not
-hand-edit — they are an oracle.
+The Cursor and Agent Plugins schemas are pinned copies. To update them, re-fetch
+from the source recorded in `tests/fixtures/<format>/SOURCE.md`, then re-run the
+suite. Do not hand-edit — they are an oracle. Published Agent Plugins schema
+identifiers are never reassigned (spec §10.1), so a new specification version
+means a new vendored directory, not an edit.
 
 ## Why vendor instead of fetch at runtime?
 

@@ -96,8 +96,10 @@ export async function emitFromDefinition(
   target: TargetName,
   targetConfig: TargetConfig,
   outDir: string,
-  definition: PluginTargetDefinition,
+  targetDefinition: PluginTargetDefinition,
 ): Promise<Artifact> {
+  const definition =
+    targetDefinition.forConfig?.(targetConfig) ?? targetDefinition;
   const version = targetConfig.version ?? project.config.version;
   const files = new Map<string, FileValue>();
   const entries: Record<string, unknown>[] = [];
@@ -206,8 +208,11 @@ export async function emitFromDefinition(
       componentDirs,
       mcpServers,
     });
+    const merged = stripUndefined(
+      deepMerge(manifest, pluginConfig.manifest ?? {}),
+    );
     const manifestContent = json(
-      stripUndefined(deepMerge(manifest, pluginConfig.manifest ?? {})),
+      definition.finalizeManifest?.(merged, pluginName) ?? merged,
     );
     for (const manifestPath of definition.manifestPaths(
       pluginPath,

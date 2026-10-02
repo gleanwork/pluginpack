@@ -247,17 +247,53 @@ export default defineConfig({
 
 Each target compiles the same source into one app's native plugin layout:
 
-| Target        | Native format                                                                 | Output it writes                                                                                                 |
-| ------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `cursor`      | Cursor plugin + marketplace                                                   | `.cursor-plugin/marketplace.json`; a `.cursor-plugin/plugin.json` per plugin                                     |
-| `claude`      | Claude plugin + marketplace                                                   | `.claude-plugin/marketplace.json`; a `.claude-plugin/plugin.json` per plugin                                     |
-| `antigravity` | Antigravity CLI plugin                                                        | a `plugin.json` per plugin + optional `mcp_config.json` (no marketplace)                                         |
-| `copilot`     | [GitHub Copilot plugins](https://github.com/github/copilot-plugins)           | `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`; plugins under `plugins/<name>/` |
-| `codex`       | [OpenAI Codex CLI plugins](https://developers.openai.com/codex/plugins/build) | `.agents/plugins/marketplace.json`; a `.codex-plugin/plugin.json` per plugin + optional `.mcp.json`              |
+| Target          | Native format                                                                       | Output it writes                                                                                                                |
+| --------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `cursor`        | Cursor plugin + marketplace                                                         | `.cursor-plugin/marketplace.json`; a `.cursor-plugin/plugin.json` per plugin                                                    |
+| `claude`        | Claude plugin + marketplace                                                         | `.claude-plugin/marketplace.json`; a `.claude-plugin/plugin.json` per plugin                                                    |
+| `antigravity`   | Antigravity CLI plugin                                                              | a `plugin.json` per plugin + optional `mcp_config.json` (no marketplace)                                                        |
+| `copilot`       | [GitHub Copilot plugins](https://github.com/github/copilot-plugins)                 | `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`; plugins under `plugins/<name>/`                |
+| `codex`         | [OpenAI Codex / ChatGPT plugins](https://developers.openai.com/codex/plugins/build) | `.agents/plugins/marketplace.json`; an [Agent Plugins](#agent-plugins) package per plugin (`plugin.json` + optional `mcp.json`) |
+| `agent-plugins` | [Agent Plugins 1.0](https://agent-plugins.org/specification)                        | a portable package per plugin under `plugins/<name>/` (no marketplace)                                                          |
 
 > **Heads up:** `claude` and `copilot` both write `.claude-plugin/marketplace.json`, so they need distinct `outDir`s (or separate repos). `build` errors on overlapping output paths.
 
 New targets are added from official docs or real plugin examples — not guessed abstractions.
+
+## Agent Plugins
+
+[Agent Plugins 1.0](https://agent-plugins.org/specification) is an open
+specification for the plugin package itself: a closed `plugin.json`
+manifest, Agent Skills under `skills/`, MCP servers in `mcp.json`, and
+reverse-domain extension namespaces for anything client-specific.
+Marketplaces, hooks, agents, commands, and rules are deliberately outside it.
+Pluginpack emits packages in two ways:
+
+- **`codex`** emits a package per plugin and keeps Codex's
+  `.agents/plugins/marketplace.json`. Authored manifest fields that aren't
+  part of the portable manifest (`interface`, `apps`, `hooks`) move under
+  `extensions["com.openai"]` automatically, so an existing config needs no
+  changes. Set `format: "legacy"` on the target to keep the older
+  `.codex-plugin/plugin.json` layout for Codex builds without Agent Plugins
+  support, which landed across v0.146 and v0.147 (see
+  [ADR 0001](./docs/adr/0001-codex-emits-agent-plugins-packages.md)).
+- **`agent-plugins`** emits portable packages only. It has no client profile,
+  so it ships `skills`, `assets`, static files, and `mcp`. Selecting `agents`,
+  `commands`, `rules`, or `hooks` is a config error, and a manifest field
+  outside the portable manifest is a build error. It writes no marketplace,
+  because the specification defines none; install each package with the
+  client's own flow.
+
+`validate` checks packages against the specification: the closed manifest, a
+valid plugin name, `mcp.json` servers, and skill names that follow the
+[Agent Skills specification](https://agentskills.io/specification) and match
+their directory. Conforming clients skip a skill that fails these checks.
+
+**Upgrading from 0.11:** the `codex` target's output layout changes. Run
+`pluginpack build`, and either publish the new layout or set
+`format: "legacy"`. If `validate` reports skill names such as
+`skill_name`, rename them before switching, because Agent Plugins clients
+skip them.
 
 ## Legacy 0.10 Source Composition
 
@@ -286,7 +322,7 @@ The check follows update-notifier discipline:
 - Fail-open: offline, missing `git`, odd tags, or any other problem exits silently.
 - Skipped entirely when `CI` is set or `PLUGINPACK_NO_UPDATE_CHECK=1`.
 
-Disable for a single plugin with `updateCheck: false` on that plugin. Configuring `updateCheck` on `copilot`, `antigravity`, or `codex` is a config error — those hosts don't run plugin hooks.
+Disable for a single plugin with `updateCheck: false` on that plugin. Configuring `updateCheck` on `copilot`, `antigravity`, `codex`, or `agent-plugins` is a config error — those hosts don't run plugin hooks.
 
 Like MCP config, the generated hook is wired in regardless of a plugin's content selection: on `cursor`, the manifest's `hooks` field is set even if `include` does not name `"hooks"`, since the check itself is a separate opt-in.
 
@@ -352,13 +388,21 @@ form (`type` optional, `${CLAUDE_PLUGIN_ROOT}`). Pluginpack renders it into
 each target's MCP dialect, so you don't need a per-target `config.json`
 override just to change a variable name:
 
-| Target        | File                                         | Plugin root / data variables                      | Transport labels                                       |
-| ------------- | -------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------ |
-| `claude`      | `.mcp.json` at the plugin root               | `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}` | `streamable-http` becomes `http`                       |
-| `cursor`      | `.mcp.json`, referenced from `plugin.json`   | `${CURSOR_PLUGIN_ROOT}` / none (a build error)    | `type` dropped for stdio and HTTP (Cursor infers them) |
-| `copilot`     | `.mcp.json`, referenced from the marketplace | `${PLUGIN_ROOT}` / as authored                    | `streamable-http` becomes `http`                       |
-| `codex`       | `.mcp.json`, referenced from `plugin.json`   | as authored                                       | as authored                                            |
-| `antigravity` | `mcp_config.json` beside `plugin.json`       | as authored                                       | as authored                                            |
+| Target          | File                                         | Plugin root / data variables                      | Transport labels                                       |
+| --------------- | -------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------ |
+| `claude`        | `.mcp.json` at the plugin root               | `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}` | `streamable-http` becomes `http`                       |
+| `cursor`        | `.mcp.json`, referenced from `plugin.json`   | `${CURSOR_PLUGIN_ROOT}` / none (a build error)    | `type` dropped for stdio and HTTP (Cursor infers them) |
+| `copilot`       | `.mcp.json`, referenced from the marketplace | `${PLUGIN_ROOT}` / as authored                    | `streamable-http` becomes `http`                       |
+| `codex`         | `mcp.json` (Agent Plugins, with `$schema`)   | `${PLUGIN_ROOT}` / `${PLUGIN_DATA}`               | explicit `type`: `stdio`, `streamable-http`, `sse`     |
+| `agent-plugins` | `mcp.json` (Agent Plugins, with `$schema`)   | `${PLUGIN_ROOT}` / `${PLUGIN_DATA}`               | explicit `type`: `stdio`, `streamable-http`, `sse`     |
+| `antigravity`   | `mcp_config.json` beside `plugin.json`       | as authored                                       | as authored                                            |
+
+For Agent Plugins output, a `${<root variable>}/bin/server` command becomes
+`./bin/server`. Anything a conforming client would silently skip fails the
+build instead: a shell string as `command`, a `${VAR}` other than
+`${PLUGIN_ROOT}`/`${PLUGIN_DATA}` (left unexpanded), plain `http` to a
+non-loopback host, or a `cwd` outside the plugin. With `format: "legacy"`,
+`codex` writes `.mcp.json` as authored.
 
 A `./bin/server` command becomes `${<root variable>}/bin/server` for targets
 whose clients don't resolve plugin-relative commands. Config already written in
@@ -481,21 +525,22 @@ rest of the artifact.
 | `category`    | string                   | Marketplace category.                |
 | `tags`        | string[]                 | Free-form tags.                      |
 
-**`targets.<name>`** — `<name>` is one of `cursor`, `claude`, `antigravity`, `copilot`, `codex`.
+**`targets.<name>`** — `<name>` is one of `cursor`, `claude`, `antigravity`, `copilot`, `codex`, `agent-plugins`.
 
-| Field              | Type                   | Required | Meaning                                                                                     |
-| ------------------ | ---------------------- | -------- | ------------------------------------------------------------------------------------------- |
-| `outDir`           | string                 | yes      | Output directory for this target, relative to the config root.                              |
-| `plugins`          | record                 | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).    |
-| `marketplaceDir`   | string (safe relative) | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).               |
-| `pluginRoot`       | string (safe relative) | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                             |
-| `version`          | string                 | no       | Override the version for this target (defaults to top-level `version`).                     |
-| `manifest`         | object                 | no       | Deep-merged into the generated marketplace manifest.                                        |
-| `ignoredDiffPaths` | string[]               | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).             |
-| `repositoryFiles`  | string (safe relative) | no       | Directory copied recursively into the generated repository root.                            |
-| `rootFiles`        | record (safe relative) | no       | Legacy 0.10 output path → source path map; migrate to `repositoryFiles`.                    |
-| `updateCheck`      | `{ repository? }`      | no       | Generate a session-start update-check hook (`claude`/`cursor` only; see **Update Check**).  |
-| `repository`       | string                 | no       | Repo this target's output lives in, for `install-info` (defaults to `metadata.repository`). |
+| Field              | Type                            | Required | Meaning                                                                                           |
+| ------------------ | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `outDir`           | string                          | yes      | Output directory for this target, relative to the config root.                                    |
+| `format`           | `"agent-plugins"` \| `"legacy"` | no       | `codex` only. `"legacy"` keeps the `.codex-plugin/plugin.json` layout; default `"agent-plugins"`. |
+| `plugins`          | record                          | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).          |
+| `marketplaceDir`   | string (safe relative)          | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).                     |
+| `pluginRoot`       | string (safe relative)          | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                                   |
+| `version`          | string                          | no       | Override the version for this target (defaults to top-level `version`).                           |
+| `manifest`         | object                          | no       | Deep-merged into the generated marketplace manifest.                                              |
+| `ignoredDiffPaths` | string[]                        | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).                   |
+| `repositoryFiles`  | string (safe relative)          | no       | Directory copied recursively into the generated repository root.                                  |
+| `rootFiles`        | record (safe relative)          | no       | Legacy 0.10 output path → source path map; migrate to `repositoryFiles`.                          |
+| `updateCheck`      | `{ repository? }`               | no       | Generate a session-start update-check hook (`claude`/`cursor` only; see **Update Check**).        |
+| `repository`       | string                          | no       | Repo this target's output lives in, for `install-info` (defaults to `metadata.repository`).       |
 
 **`targets.<name>.plugins.<name>`**
 
@@ -559,7 +604,7 @@ The result and config types (`Artifact`, `DiffResult`/`DiffEntry`, `ValidationRe
 
 A few things worth knowing about this surface before depending on it:
 
-- **The target set is closed.** `TargetName` is `"claude" | "cursor" | "antigravity" | "copilot" | "codex"` today, with no public API for registering a sixth target — adding one means a PR to this repo (see `PluginTargetDefinition` in `src/targets/types.ts`, not exported). There is no supported third-party target-extension mechanism.
+- **The target set is closed.** `TargetName` is `"claude" | "cursor" | "antigravity" | "copilot" | "codex" | "agent-plugins"` today, with no public API for registering another target — adding one means a PR to this repo (see `PluginTargetDefinition` in `src/targets/types.ts`, not exported). There is no supported third-party target-extension mechanism.
 - **The package is ESM-only.** `package.json`'s `exports` map has no `require` condition; a CommonJS consumer needs dynamic `import()`. This is a deliberate choice, not a tsup default left unexamined.
 - **`Artifact.files` and `ResolvedProject.plugins` are `Map`s, not plain objects.** `JSON.stringify()` on either silently produces `{}` — iterate with `for...of`/`Object.fromEntries()` instead of serializing directly if you need to log or transport a result.
 
@@ -589,7 +634,7 @@ Exit codes:
 Compile configured source plugins into target-native plugin payloads.
 
 ```bash
-pluginpack build [--target copilot|antigravity|cursor|claude|codex] [--out-dir <path>] [--dry-run]
+pluginpack build [--target copilot|antigravity|cursor|claude|codex|agent-plugins] [--out-dir <path>] [--dry-run]
 ```
 
 Options:
@@ -614,7 +659,7 @@ Exit codes:
 Validate an existing target output directory for native manifest, path, and frontmatter requirements.
 
 ```bash
-pluginpack validate --target copilot|antigravity|cursor|claude|codex [--dir <path>]
+pluginpack validate --target copilot|antigravity|cursor|claude|codex|agent-plugins [--dir <path>]
 ```
 
 Options:
@@ -636,7 +681,7 @@ Exit codes:
 Build into a temporary directory and compare generated managed files with an existing target repo.
 
 ```bash
-pluginpack diff --target copilot|antigravity|cursor|claude|codex --against <path>
+pluginpack diff --target copilot|antigravity|cursor|claude|codex|agent-plugins --against <path>
 ```
 
 Options:
@@ -658,7 +703,7 @@ Exit codes:
 Remove stale managed files that are no longer emitted by the current config.
 
 ```bash
-pluginpack prune [--target copilot|antigravity|cursor|claude|codex] [--dry-run]
+pluginpack prune [--target copilot|antigravity|cursor|claude|codex|agent-plugins] [--dry-run]
 ```
 
 Options:
@@ -682,7 +727,7 @@ Exit codes:
 Remove all managed files for configured target outputs.
 
 ```bash
-pluginpack clean [--target copilot|antigravity|cursor|claude|codex] [--dry-run]
+pluginpack clean [--target copilot|antigravity|cursor|claude|codex|agent-plugins] [--dry-run]
 ```
 
 Options:
@@ -706,7 +751,7 @@ Exit codes:
 Print the real install command or URL for a target's built marketplace.
 
 ```bash
-pluginpack install-info [--target copilot|antigravity|cursor|claude|codex] [--json]
+pluginpack install-info [--target copilot|antigravity|cursor|claude|codex|agent-plugins] [--json]
 ```
 
 Options:

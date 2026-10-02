@@ -80,7 +80,10 @@ diff, prune, and validate all derive from it.
 
 ## Targets
 
-`copilot`, `antigravity`, `cursor`, `claude`, `codex`. Adding a target means one
+`copilot`, `antigravity`, `cursor`, `claude`, `codex`, `agent-plugins`. `codex`
+and `agent-plugins` emit Agent Plugins packages through `src/agent-plugins.ts`
+(the package module; marketplaces stay on each target). Each target's MCP config
+is rendered by `src/mcp.ts` in the dialect its `mcpDialect` names. Adding a target means one
 new file implementing `PluginTargetDefinition` (`src/targets/<name>.ts`) plus one
 new entry in `src/targets/registry.ts` — `TargetName` (`types.ts`) is still a
 separate union to extend, but everything else (CLI `--target` choices, `build()`'s
@@ -92,7 +95,8 @@ target set, emit/validate dispatch) derives from the registry automatically.
 Schema for any target, so the harness uses the strongest available oracle per
 target: Cursor against vendored published schemas (`tests/fixtures/cursor/`,
 provenance in `SOURCE.md`); Claude via `claude plugin validate --strict` (when
-the CLI is present); Copilot and Antigravity structurally against their real
+the CLI is present); Agent Plugins (and the Codex package) against the vendored 1.0 schemas
+(`tests/fixtures/agent-plugins/`); Copilot and Antigravity structurally against their real
 formats (`github/copilot-plugins`, Antigravity CLI plugin docs). Don't fetch
 schemas at runtime — vendor a pinned copy with recorded provenance.
 

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import AjvImport from "ajv";
+import Ajv2020Import from "ajv/dist/2020.js";
 import addFormatsImport from "ajv-formats";
 import { createBintastic, type BintasticProject } from "bintastic";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // ajv 8 ships CJS with a default export; under NodeNext tsc widens the default
 // import to the module namespace, so re-bind to the real default-export types.
 const Ajv = AjvImport as unknown as typeof import("ajv").default;
+const Ajv2020 =
+  Ajv2020Import as unknown as typeof import("ajv/dist/2020.js").default;
 const addFormats =
   addFormatsImport as unknown as typeof import("ajv-formats").default;
 
@@ -20,6 +23,16 @@ addFormats(ajv);
 
 const cursorMarketplaceSchema = readSchema("marketplace.schema.json");
 const cursorPluginSchema = readSchema("plugin.schema.json");
+
+// Agent Plugins publishes versioned JSON Schemas (draft 2020-12); vendored
+// copies with provenance live in tests/fixtures/agent-plugins/.
+const ajv2020 = new Ajv2020({ allErrors: true, strict: false });
+addFormats(ajv2020);
+const agentPluginsPluginSchema = readSchema(
+  "plugin.schema.json",
+  "agent-plugins",
+);
+const agentPluginsMcpSchema = readSchema("mcp.schema.json", "agent-plugins");
 
 // Claude's canonical oracle is its own CLI, not a published schema. Run it only
 // when present (skips in CI without claude installed).
@@ -39,9 +52,9 @@ if (!hasClaude) {
   );
 }
 
-function readSchema(name: string): object {
+function readSchema(name: string, dir = "cursor"): object {
   return JSON.parse(
-    fs.readFileSync(path.join(here, "fixtures", "cursor", name), "utf8"),
+    fs.readFileSync(path.join(here, "fixtures", dir, name), "utf8"),
   ) as object;
 }
 
@@ -60,7 +73,11 @@ function schemaErrors(
   options: { allowExtra?: string[] } = {},
 ): string[] {
   const allowExtra = new Set(options.allowExtra ?? []);
-  const validate = ajv.compile(schema);
+  const validate = (
+    (schema as { $schema?: string }).$schema?.includes("2020-12")
+      ? ajv2020
+      : ajv
+  ).compile(schema);
   if (validate(data)) {
     return [];
   }
@@ -350,6 +367,42 @@ describe("emitted output conforms to external target schemas", () => {
       category: "Developer Tools",
     });
 
+    // Agent Plugins package: identity only, components at fixed locations.
+    const plugin = readJson(
+      project.baseDir,
+      "out-codex/plugins/glean/plugin.json",
+    );
+    expect(schemaErrors(agentPluginsPluginSchema, plugin)).toEqual([]);
+    expect(plugin).toMatchObject({
+      $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+      name: "glean",
+      version: "2.1.1",
+    });
+    const mcp = readJson(project.baseDir, "out-codex/plugins/glean/mcp.json");
+    expect(schemaErrors(agentPluginsMcpSchema, mcp)).toEqual([]);
+    expect(mcp.mcpServers).toEqual({
+      glean: { type: "stdio", command: "glean-mcp" },
+    });
+    expect(
+      fs.existsSync(
+        path.join(project.baseDir, "out-codex/plugins/glean/.codex-plugin"),
+      ),
+    ).toBe(false);
+
+    const validated = await runBin("validate", "--target", "codex");
+    expect(validated.exitCode, String(validated.stdout)).toBe(0);
+  });
+
+  it("codex format legacy keeps the .codex-plugin layout", async () => {
+    await project.write({
+      "pluginpack.config.ts": CONFIG.replace(
+        'outDir: "out-codex",',
+        'outDir: "out-codex", format: "legacy",',
+      ),
+    });
+    const result = await runBin("build", "--target", "codex");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+
     const plugin = readJson(
       project.baseDir,
       "out-codex/plugins/glean/.codex-plugin/plugin.json",
@@ -360,6 +413,35 @@ describe("emitted output conforms to external target schemas", () => {
       skills: "./skills/",
       mcpServers: "./.mcp.json",
     });
+    const validated = await runBin("validate", "--target", "codex");
+    expect(validated.exitCode, String(validated.stdout)).toBe(0);
+  });
+
+  it("agent-plugins packages validate against the published Agent Plugins schemas", async () => {
+    await project.write({
+      "pluginpack.config.ts": CONFIG.replace(
+        "  targets: {",
+        '  targets: {\n    "agent-plugins": { outDir: "out-ap", plugins: { glean: { from: ["glean"] } } },',
+      ),
+    });
+    const result = await runBin("build", "--target", "agent-plugins");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+
+    const plugin = readJson(
+      project.baseDir,
+      "out-ap/plugins/glean/plugin.json",
+    );
+    expect(schemaErrors(agentPluginsPluginSchema, plugin)).toEqual([]);
+    const mcp = readJson(project.baseDir, "out-ap/plugins/glean/mcp.json");
+    expect(schemaErrors(agentPluginsMcpSchema, mcp)).toEqual([]);
+    expect(
+      fs.existsSync(
+        path.join(project.baseDir, "out-ap/.pluginpack/agent-plugins.json"),
+      ),
+    ).toBe(true);
+
+    const validated = await runBin("validate", "--target", "agent-plugins");
+    expect(validated.exitCode, String(validated.stdout)).toBe(0);
   });
 
   it("install-info prints every configured target's snippet by default", async () => {
