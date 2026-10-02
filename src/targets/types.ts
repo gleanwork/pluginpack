@@ -1,3 +1,4 @@
+import type { McpDialect } from "../mcp.js";
 import type {
   EmittedPluginConfig,
   FileValue,
@@ -112,6 +113,8 @@ export type PluginTargetDefinition = {
 
   /** Return `undefined` for a target with no bundled-MCP-config file convention. */
   mcpConfigPath: (pluginPath: string) => string | undefined;
+  /** The MCP dialect this target's MCP config file is rendered in — see `../mcp.ts`. */
+  mcpDialect: McpDialect;
   hooksPath: (pluginPath: string) => string;
 
   validateManifest: (

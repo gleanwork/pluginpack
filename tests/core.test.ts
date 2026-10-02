@@ -1860,6 +1860,60 @@ export default defineConfig({
     });
   });
 
+  it("renders one authored MCP config into each target's MCP dialect", async () => {
+    const project = await recommendedShapeFixture();
+    const root = project.baseDir;
+    await mergeFixture(project, {
+      shared: {
+        acme: {
+          mcp: {
+            "config.json": `${JSON.stringify(
+              {
+                mcpServers: {
+                  local: {
+                    type: "stdio",
+                    command: "node",
+                    args: ["${PLUGIN_ROOT}/mcp/start.mjs"],
+                  },
+                },
+              },
+              null,
+              2,
+            )}\n`,
+          },
+        },
+      },
+    });
+
+    await build({ cwd: root });
+
+    const readServers = async (file: string) =>
+      (
+        JSON.parse(await readFile(path.join(root, file), "utf8")) as {
+          mcpServers: Record<string, unknown>;
+        }
+      ).mcpServers;
+    expect(await readServers("plugins/claude/acme/.mcp.json")).toEqual({
+      local: {
+        type: "stdio",
+        command: "node",
+        args: ["${CLAUDE_PLUGIN_ROOT}/mcp/start.mjs"],
+      },
+    });
+    expect(await readServers("plugins/cursor/acme/.mcp.json")).toEqual({
+      local: { command: "node", args: ["${CURSOR_PLUGIN_ROOT}/mcp/start.mjs"] },
+    });
+    expect(await readServers("plugins/copilot/plugins/acme/.mcp.json")).toEqual(
+      {
+        local: {
+          type: "stdio",
+          command: "node",
+          args: ["${PLUGIN_ROOT}/mcp/start.mjs"],
+        },
+      },
+    );
+  });
+
   it("validates surviving partials in managed repository-root files", async () => {
     const project = await recommendedShapeFixture();
     const root = project.baseDir;

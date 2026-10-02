@@ -115,6 +115,7 @@ export const copilot: PluginTargetDefinition = {
   ],
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, ".mcp.json"),
+  mcpDialect: "copilot",
   hooksPath: (pluginPath) => path.join(pluginPath, "hooks", "hooks.json"),
 
   validateManifest: (manifest, pluginName, issues) => {

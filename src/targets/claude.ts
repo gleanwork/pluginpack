@@ -73,6 +73,7 @@ export const claude: PluginTargetDefinition = {
   ],
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, ".mcp.json"),
+  mcpDialect: "claude",
   hooksPath: (pluginPath) => path.join(pluginPath, "hooks", "hooks.json"),
 
   validateManifest: (manifest, pluginName, issues) => {
