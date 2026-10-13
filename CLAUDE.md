@@ -113,3 +113,5 @@ schemas at runtime — vendor a pinned copy with recorded provenance.
   `src/targets/validation-shared.ts`).
 - Prettier + eslint enforced by the gate.
 - Conventional commits. Keep the README CLI reference regenerated.
+
+Agent permissions, review rules and commit conventions: @AGENTS.md
