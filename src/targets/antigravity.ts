@@ -52,6 +52,8 @@ export const antigravity: PluginTargetDefinition = {
   marketplacePaths: () => [],
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, "mcp_config.json"),
+  // Antigravity doesn't document its MCP variables; emit as authored.
+  mcpDialect: "verbatim",
   // Root-level hooks.json, not a hooks/ directory (see citations).
   hooksPath: (pluginPath) => path.join(pluginPath, "hooks.json"),
 

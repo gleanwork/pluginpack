@@ -184,6 +184,9 @@ export const codex: PluginTargetDefinition = {
   marketplacePaths: () => [path.join(".agents", "plugins", "marketplace.json")],
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, ".mcp.json"),
+  // Legacy `.codex-plugin` layout: emitted as authored until the Agent
+  // Plugins format lands for this target.
+  mcpDialect: "verbatim",
   hooksPath: (pluginPath) => path.join(pluginPath, "hooks", "hooks.json"),
 
   validateManifest: (manifest, pluginName, issues) => {

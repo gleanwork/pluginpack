@@ -3,6 +3,7 @@ import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "../render.js";
 import { readAuthoredPlugin } from "../source.js";
 import { isSafeRelativePath, json, toPosix } from "../fs.js";
+import { renderMcpConfig } from "../mcp.js";
 import { resolvePartials } from "../partials.js";
 import { validateNoSurvivingPartialTags } from "./validation-shared.js";
 import { deepMerge, stripUndefined } from "./shared.js";
@@ -180,7 +181,16 @@ export async function emitFromDefinition(
 
     const mcpConfigPath = definition.mcpConfigPath(pluginPath);
     if (mcpServers && mcpConfigPath) {
-      files.set(toPosix(mcpConfigPath), json({ mcpServers }));
+      files.set(
+        toPosix(mcpConfigPath),
+        json(
+          renderMcpConfig(
+            mcpServers,
+            definition.mcpDialect,
+            `Target "${target}" plugin "${pluginName}"`,
+          ),
+        ),
+      );
     }
 
     const metadata = emittedPluginMetadata(

@@ -342,17 +342,27 @@ shared/acme/mcp/
 }
 ```
 
-Pluginpack translates the configuration into each target's native MCP layout.
 The MCP source and tests remain in `mcp/`; only declared shipping files are
 emitted. Add `"mcp"` to `exclude` to omit the complete capability for a target.
 
-| Target        | How MCP is wired                                         |
-| ------------- | -------------------------------------------------------- |
-| `claude`      | ships `.mcp.json` at the plugin root (auto-discovered)   |
-| `cursor`      | ships `.mcp.json`, referenced from `plugin.json`         |
-| `codex`       | ships `.mcp.json`, referenced from `plugin.json`         |
-| `copilot`     | ships `.mcp.json`, referenced from the marketplace entry |
-| `antigravity` | writes `mcp_config.json` beside `plugin.json`            |
+Author `config.json` once, in either the
+[Agent Plugins](https://agent-plugins.org/specification) form (an explicit
+`type` per server, `${PLUGIN_ROOT}` / `${PLUGIN_DATA}`) or the Claude-style
+form (`type` optional, `${CLAUDE_PLUGIN_ROOT}`). Pluginpack renders it into
+each target's MCP dialect, so you don't need a per-target `config.json`
+override just to change a variable name:
+
+| Target        | File                                         | Plugin root / data variables                      | Transport labels                                       |
+| ------------- | -------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------ |
+| `claude`      | `.mcp.json` at the plugin root               | `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}` | `streamable-http` becomes `http`                       |
+| `cursor`      | `.mcp.json`, referenced from `plugin.json`   | `${CURSOR_PLUGIN_ROOT}` / none (a build error)    | `type` dropped for stdio and HTTP (Cursor infers them) |
+| `copilot`     | `.mcp.json`, referenced from the marketplace | `${PLUGIN_ROOT}` / as authored                    | `streamable-http` becomes `http`                       |
+| `codex`       | `.mcp.json`, referenced from `plugin.json`   | as authored                                       | as authored                                            |
+| `antigravity` | `mcp_config.json` beside `plugin.json`       | as authored                                       | as authored                                            |
+
+A `./bin/server` command becomes `${<root variable>}/bin/server` for targets
+whose clients don't resolve plugin-relative commands. Config already written in
+a target's own dialect is emitted unchanged.
 
 ## Legacy Additional Plugin-Root Files
 
