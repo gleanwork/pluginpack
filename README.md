@@ -421,7 +421,8 @@ With `format: "legacy"`, `codex` writes `.mcp.json` as authored.
 A `./bin/server` command or `./server` `cwd` becomes
 `${<root variable>}/bin/server` for targets whose clients don't resolve
 plugin-relative paths. Config already written in
-a target's own dialect is emitted unchanged.
+a target's own dialect is emitted unchanged, except that Cursor output drops
+`type` from stdio and HTTP servers, because Cursor infers the transport.
 
 ## Legacy Additional Plugin-Root Files
 

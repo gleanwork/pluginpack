@@ -2,12 +2,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import {
   buildPackageManifest,
-  isPackageManifest,
   packageLayout,
   placeClientFields,
   validatePackage,
 } from "../agent-plugins.js";
-import { toPosix } from "../fs.js";
+import { exists, toPosix } from "../fs.js";
 import { CLIENT_ONLY_CONTENT_KINDS } from "../schema.js";
 import { error } from "./validation-shared.js";
 import type { ValidationIssue } from "../types.js";
@@ -57,7 +56,7 @@ export const agentPlugins: PluginTargetDefinition = {
     if (pluginDirs.length === 0) {
       error(
         issues,
-        "Agent Plugins output must contain at least one package (a plugin.json declaring the Agent Plugins schema).",
+        "Agent Plugins output must contain at least one package (a directory with a plugin.json).",
       );
     }
     for (const pluginDir of pluginDirs) {
@@ -91,24 +90,15 @@ export const agentPlugins: PluginTargetDefinition = {
 };
 
 /**
- * Finds every package below `root` — a directory whose `plugin.json`
- * declares the Agent Plugins schema — skipping dot-directories and
- * `node_modules`, and not descending into a package once found.
+ * Finds every package below `root` — a directory with a `plugin.json` —
+ * skipping dot-directories and `node_modules`, and not descending into a
+ * package once found. A `plugin.json` that doesn't parse or doesn't declare
+ * the Agent Plugins schema still counts, so `validatePackage` reports it
+ * instead of the package being skipped.
  */
-async function findPackages(root: string, depth = 0): Promise<string[]> {
-  if (depth > 4) {
-    return [];
-  }
-  const manifestFile = path.join(root, packageLayout.manifest);
-  try {
-    const manifest: unknown = JSON.parse(
-      await fs.readFile(manifestFile, "utf8"),
-    );
-    if (isPackageManifest(manifest)) {
-      return [root];
-    }
-  } catch {
-    // Not a package; keep looking below.
+async function findPackages(root: string): Promise<string[]> {
+  if (await exists(path.join(root, packageLayout.manifest))) {
+    return [root];
   }
   let entries;
   try {
@@ -123,9 +113,7 @@ async function findPackages(root: string, depth = 0): Promise<string[]> {
       !entry.name.startsWith(".") &&
       entry.name !== "node_modules"
     ) {
-      found.push(
-        ...(await findPackages(path.join(root, entry.name), depth + 1)),
-      );
+      found.push(...(await findPackages(path.join(root, entry.name))));
     }
   }
   return found.sort();

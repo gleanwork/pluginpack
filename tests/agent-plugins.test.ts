@@ -220,6 +220,37 @@ describe("codex emits Agent Plugins packages", () => {
     });
   });
 
+  it("reports a broken root plugin.json as itself, not as a missing legacy manifest", async () => {
+    const root = await setup(`
+    codex: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme", ${CODEX_ENTRY} } }
+    }`);
+    await build({ cwd: root });
+    const file = path.join(root, "out/plugins/acme/plugin.json");
+    const manifest = JSON.parse(await readFile(file, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...manifest,
+        $schema: "https://agent-plugins.org/schemas/9.9.9/plugin.schema.json",
+      }),
+    );
+
+    const result = await validateOutput("codex", path.join(root, "out"));
+    const messages = result.issues.map((issue) => issue.message);
+
+    expect(messages).toContain(
+      `acme: plugin.json "$schema" must be "${PLUGIN_SCHEMA}".`,
+    );
+    expect(messages.some((message) => message.includes(".codex-plugin"))).toBe(
+      false,
+    );
+  });
+
   it("reports a hand-edited mcp.json server that isn't in Agent Plugins form", async () => {
     const root = await setup(`
     codex: {
@@ -366,6 +397,34 @@ describe("standalone agent-plugins target", () => {
     await expect(
       validateOutput("agent-plugins", path.join(root, "out")),
     ).resolves.toMatchObject({ ok: true, issues: [] });
+  });
+
+  it("validates every package, including deep and broken ones", async () => {
+    const root = await setup(`
+    "agent-plugins": {
+      outDir: "out",
+      plugins: {
+        acme: { source: "shared/acme" },
+        deep: { source: "shared/acme", path: "a/b/c/d/deep" }
+      }
+    }`);
+    await build({ cwd: root });
+    await expect(
+      validateOutput("agent-plugins", path.join(root, "out")),
+    ).resolves.toMatchObject({ ok: true, issues: [] });
+
+    await writeFile(path.join(root, "out/a/b/c/d/deep/plugin.json"), "{ nope");
+    const result = await validateOutput(
+      "agent-plugins",
+      path.join(root, "out"),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(
+      result.issues.some((issue) =>
+        issue.message.startsWith("deep plugin manifest"),
+      ),
+    ).toBe(true);
   });
 
   it("ships scripts/ by default so a bundled MCP command resolves", async () => {

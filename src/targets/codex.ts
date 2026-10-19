@@ -6,7 +6,7 @@ import {
   placeClientFields,
   validatePackage,
 } from "../agent-plugins.js";
-import { isSafeRelativePath, toPosix } from "../fs.js";
+import { exists, isSafeRelativePath, toPosix } from "../fs.js";
 import { stripUndefined } from "./shared.js";
 import {
   error,
@@ -125,6 +125,8 @@ function validateCodexEntry(
  * Validates one plugin directory in either Codex layout, detected the way
  * Codex itself does: a root `plugin.json` declaring the Agent Plugins schema
  * is a package; otherwise `.codex-plugin/plugin.json` is the legacy layout.
+ * A root `plugin.json` with no legacy manifest beside it is validated as a
+ * package too, so a broken or mis-versioned file is reported as itself.
  * Returns the manifest when it could be read.
  */
 async function validateCodexPlugin(
@@ -132,7 +134,11 @@ async function validateCodexPlugin(
   pluginName: string,
   issues: ValidationIssue[],
 ): Promise<Record<string, unknown> | undefined> {
-  if (await hasPackageManifest(pluginDir)) {
+  if (
+    (await hasPackageManifest(pluginDir)) ||
+    ((await exists(path.join(pluginDir, packageLayout.manifest))) &&
+      !(await exists(path.join(pluginDir, ".codex-plugin", "plugin.json"))))
+  ) {
     return validatePackage(pluginDir, pluginName, issues);
   }
   const manifest = await readJson(
