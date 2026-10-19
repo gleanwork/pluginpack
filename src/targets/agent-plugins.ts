@@ -25,7 +25,9 @@ const noProfile = {};
 export const agentPlugins: PluginTargetDefinition = {
   name: "agent-plugins",
 
-  defaultComponents: ["skills", "assets"],
+  // scripts/ ships by default: an MCP command such as ./scripts/server.sh
+  // points into it.
+  defaultComponents: ["skills", "scripts", "assets"],
 
   resolvePluginPath: (pluginName, pluginConfig, targetConfig) =>
     pluginConfig.path ??

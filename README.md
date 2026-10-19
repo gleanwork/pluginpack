@@ -272,13 +272,14 @@ Pluginpack emits packages in two ways:
 - **`codex`** emits a package per plugin and keeps Codex's
   `.agents/plugins/marketplace.json`. Authored manifest fields that aren't
   part of the portable manifest (`interface`, `apps`, `hooks`) move under
-  `extensions["com.openai"]` automatically, so an existing config needs no
-  changes. Set `format: "legacy"` on the target to keep the older
+  `extensions["com.openai"]` automatically, so existing manifest config needs
+  no changes. MCP config is held to the stricter Agent Plugins rules (see
+  [MCP Directory](#mcp-directory)). Set `format: "legacy"` on the target to keep the older
   `.codex-plugin/plugin.json` layout for Codex builds without Agent Plugins
   support, which landed across v0.146 and v0.147 (see
   [ADR 0001](./docs/adr/0001-codex-emits-agent-plugins-packages.md)).
 - **`agent-plugins`** emits portable packages only. It has no client profile,
-  so it ships `skills`, `assets`, static files, and `mcp`. Selecting `agents`,
+  so it ships `skills`, `scripts`, `assets`, static files, and `mcp`. Selecting `agents`,
   `commands`, `rules`, or `hooks` is a config error, and a manifest field
   outside the portable manifest is a build error. It writes no marketplace,
   because the specification defines none; install each package with the
@@ -293,7 +294,10 @@ their directory. Conforming clients skip a skill that fails these checks.
 `pluginpack build`, and either publish the new layout or set
 `format: "legacy"`. If `validate` reports skill names such as
 `skill_name`, rename them before switching, because Agent Plugins clients
-skip them.
+skip them. The build can also fail on MCP config that 0.11 copied as
+authored, such as `cwd: "."` or a `${API_TOKEN}` placeholder. Change it to
+follow the Agent Plugins rules in [MCP Directory](#mcp-directory), or set
+`format: "legacy"` to keep writing `.mcp.json` as authored.
 
 ## Legacy 0.10 Source Composition
 
@@ -335,7 +339,7 @@ pluginpack install-info
 pluginpack install-info --target claude
 ```
 
-The repo comes from `targets.<name>.repository`, defaulting to `metadata.repository` (an error if neither is set) — the same fallback `updateCheck.repository` uses. Every target today resolves to a real command except `cursor`, which has no CLI equivalent: it prints the repo URL and a note to paste it into Cursor's Dashboard under Team Marketplaces. See `CONFORMANCE.md`'s "Install-snippet facts" section for the doc citation behind each target's snippet.
+The repo comes from `targets.<name>.repository`, defaulting to `metadata.repository` (an error if neither is set) — the same fallback `updateCheck.repository` uses. Every target today resolves to a real command except `cursor` and `agent-plugins`. `cursor` has no CLI equivalent: it prints the repo URL and a note to paste it into Cursor's Dashboard under Team Marketplaces. `agent-plugins` has no install snippet, because the specification defines no marketplace or install command. See `CONFORMANCE.md`'s "Install-snippet facts" section for the doc citation behind each target's snippet.
 
 ## Target Overrides
 
@@ -399,13 +403,24 @@ override just to change a variable name:
 
 For Agent Plugins output, a `${<root variable>}/bin/server` command becomes
 `./bin/server`. Anything a conforming client would silently skip fails the
-build instead: a shell string as `command`, a `${VAR}` other than
-`${PLUGIN_ROOT}`/`${PLUGIN_DATA}` (left unexpanded), plain `http` to a
-non-loopback host, or a `cwd` outside the plugin. With `format: "legacy"`,
-`codex` writes `.mcp.json` as authored.
+build instead:
 
-A `./bin/server` command becomes `${<root variable>}/bin/server` for targets
-whose clients don't resolve plugin-relative commands. Config already written in
+- a shell string as `command`;
+- a `${VAR}` other than `${PLUGIN_ROOT}`/`${PLUGIN_DATA}` (left unexpanded),
+  or any placeholder in `url` or `headers`;
+- a `cwd` that isn't `./<path>`, `${PLUGIN_ROOT}`, `${PLUGIN_DATA}`, or a
+  path under one of them that stays inside it (`.` and bare relative paths
+  fail; omit `cwd` to use the plugin root);
+- a field outside `type`, `command`, `args`, `env`, `cwd` (stdio) or `type`,
+  `url`, `headers` (remote);
+- an `env` entry named `PLUGIN_ROOT` or `PLUGIN_DATA`, or a header set twice;
+- plain `http` to a non-loopback host.
+
+With `format: "legacy"`, `codex` writes `.mcp.json` as authored.
+
+A `./bin/server` command or `./server` `cwd` becomes
+`${<root variable>}/bin/server` for targets whose clients don't resolve
+plugin-relative paths. Config already written in
 a target's own dialect is emitted unchanged.
 
 ## Legacy Additional Plugin-Root Files
@@ -592,7 +607,7 @@ import {
 | `buildInstallSnippet(target, params)` | `InstallSnippet`            | The install command/URL for one target (see **Install Snippet**). |
 | `getInstallSnippetCitation(target)`   | `Citation`                  | The documentation source backing that target's install snippet.   |
 | `getSupportedInstallTargets()`        | `TargetName[]`              | Targets with a real install snippet today.                        |
-| `getUnsupportedInstallTargets()`      | `TargetName[]`              | Targets with none (empty today, kept for forward-compatibility).  |
+| `getUnsupportedInstallTargets()`      | `TargetName[]`              | Targets with none (today, `agent-plugins`).                       |
 
 Option objects:
 

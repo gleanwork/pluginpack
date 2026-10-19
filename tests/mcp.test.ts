@@ -104,6 +104,29 @@ describe("renderMcpConfig: native dialects", () => {
     });
   });
 
+  it("spells out the plugin root for a ./ cwd", () => {
+    const servers = {
+      s: { type: "stdio", command: "node", cwd: "./server" },
+      root: { type: "stdio", command: "node", cwd: "./" },
+    };
+    expect(render(servers, "claude").mcpServers).toEqual({
+      s: {
+        type: "stdio",
+        command: "node",
+        cwd: "${CLAUDE_PLUGIN_ROOT}/server",
+      },
+      root: { type: "stdio", command: "node", cwd: "${CLAUDE_PLUGIN_ROOT}" },
+    });
+    expect(render(servers, "cursor").mcpServers).toEqual({
+      s: { command: "node", cwd: "${CURSOR_PLUGIN_ROOT}/server" },
+      root: { command: "node", cwd: "${CURSOR_PLUGIN_ROOT}" },
+    });
+    expect(render(servers, "copilot").mcpServers).toEqual({
+      s: { type: "stdio", command: "node", cwd: "${PLUGIN_ROOT}/server" },
+      root: { type: "stdio", command: "node", cwd: "${PLUGIN_ROOT}" },
+    });
+  });
+
   it("maps plugin-data variables for claude and leaves copilot's alone", () => {
     const servers = {
       s: { command: "node", env: { DATA: "${PLUGIN_DATA}/cache" } },

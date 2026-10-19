@@ -219,6 +219,124 @@ describe("codex emits Agent Plugins packages", () => {
         'acme: plugin.json has field "skills", which the closed Agent Plugins manifest does not allow — client data belongs under "extensions".',
     });
   });
+
+  it("reports a hand-edited mcp.json server that isn't in Agent Plugins form", async () => {
+    const root = await setup(`
+    codex: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme", ${CODEX_ENTRY} } }
+    }`);
+    await build({ cwd: root });
+    const file = path.join(root, "out/plugins/acme/mcp.json");
+    const config = JSON.parse(await readFile(file, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...config,
+        mcpServers: {
+          untyped: { command: "node" },
+          remote: { type: "http", url: "https://mcp.acme.example" },
+        },
+      }),
+    );
+
+    const result = await validateOutput("codex", path.join(root, "out"));
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.message)).toEqual([
+      'acme: mcp.json server "untyped" isn\'t in Agent Plugins form (check "type"); expected {"type":"stdio","command":"node"}.',
+      'acme: mcp.json server "remote" isn\'t in Agent Plugins form (check "type"); expected {"type":"streamable-http","url":"https://mcp.acme.example"}.',
+    ]);
+  });
+
+  it("never runs JavaScript frontmatter while validating", async () => {
+    const root = await setup(`
+    codex: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme", ${CODEX_ENTRY} } }
+    }`);
+    await build({ cwd: root });
+    const flag = "__pluginpackFrontmatterEval";
+    await writeFile(
+      path.join(root, "out/plugins/acme/skills/search/SKILL.md"),
+      `---js\n{ name: (globalThis.${flag} = "search"), description: "x" }\n---\n`,
+    );
+
+    const result = await validateOutput("codex", path.join(root, "out"));
+
+    expect((globalThis as Record<string, unknown>)[flag]).toBeUndefined();
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.message)).toContain(
+      'acme: skill "skills/search" has unparseable frontmatter: JavaScript frontmatter is not supported; use YAML frontmatter.',
+    );
+  });
+
+  it("fails the build on manifest data that validate would reject", async () => {
+    const badNamespace = await setup(`
+    codex: {
+      outDir: "out",
+      plugins: {
+        acme: {
+          source: "shared/acme",
+          manifest: { extensions: { openai: { apps: "./.app.json" } } },
+          ${CODEX_ENTRY}
+        }
+      }
+    }`);
+    await expect(build({ cwd: badNamespace })).rejects.toThrow(
+      'acme: plugin.json extension namespace "openai" must be a reverse-domain identifier such as "com.example.client".',
+    );
+    await project?.dispose();
+
+    const badAuthor = await setup(`
+    codex: {
+      outDir: "out",
+      plugins: {
+        acme: {
+          source: "shared/acme",
+          manifest: { author: { name: "Acme", twitter: "@acme" } },
+          ${CODEX_ENTRY}
+        }
+      }
+    }`);
+    await expect(build({ cwd: badAuthor })).rejects.toThrow(
+      'acme: plugin.json "author" may only contain string "name", "email", and "url".',
+    );
+  });
+
+  it("emits hooks/hooks.json without a manifest pointer and validates it", async () => {
+    const root = await setup(
+      `
+    codex: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme", ${CODEX_ENTRY} } }
+    }`,
+      {
+        hooks: {
+          "hooks.json": `${JSON.stringify({
+            hooks: {
+              SessionStart: [
+                { hooks: [{ type: "command", command: "echo hi" }] },
+              ],
+            },
+          })}\n`,
+        },
+      },
+    );
+
+    const [artifact] = await build({ cwd: root });
+
+    expect(artifact.managedPaths).toContain("plugins/acme/hooks/hooks.json");
+    const manifest = await readJsonFile(root, "out/plugins/acme/plugin.json");
+    expect(manifest).not.toHaveProperty("hooks");
+    expect(manifest.$schema).toBe(PLUGIN_SCHEMA);
+    await expect(
+      validateOutput("codex", path.join(root, "out")),
+    ).resolves.toMatchObject({ ok: true, issues: [] });
+  });
 });
 
 describe("standalone agent-plugins target", () => {
@@ -248,6 +366,37 @@ describe("standalone agent-plugins target", () => {
     await expect(
       validateOutput("agent-plugins", path.join(root, "out")),
     ).resolves.toMatchObject({ ok: true, issues: [] });
+  });
+
+  it("ships scripts/ by default so a bundled MCP command resolves", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {
+        scripts: { "server.sh": "#!/bin/sh\nexec node server.mjs\n" },
+        mcp: {
+          "config.json": `${JSON.stringify({
+            mcpServers: {
+              local: { command: "${CLAUDE_PLUGIN_ROOT}/scripts/server.sh" },
+            },
+          })}\n`,
+        },
+      },
+    );
+
+    const [artifact] = await build({ cwd: root });
+
+    expect(artifact.managedPaths).toContain("plugins/acme/scripts/server.sh");
+    expect(await readJsonFile(root, "out/plugins/acme/mcp.json")).toMatchObject(
+      {
+        mcpServers: {
+          local: { type: "stdio", command: "./scripts/server.sh" },
+        },
+      },
+    );
   });
 
   it("fails the build on a manifest field with no extension namespace to hold it", async () => {

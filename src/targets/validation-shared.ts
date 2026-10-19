@@ -426,11 +426,28 @@ function detectFrontmatterKind(
   return null;
 }
 
+/**
+ * Parses frontmatter from a file pluginpack is validating. gray-matter
+ * evaluates `---js` / `---javascript` frontmatter with `eval()`, so those
+ * engines are replaced with one that throws: validating a package must never
+ * run code from it.
+ */
+export function parseMatter(content: string): matter.GrayMatterFile<string> {
+  const refuse = () => {
+    throw new Error(
+      "JavaScript frontmatter is not supported; use YAML frontmatter.",
+    );
+  };
+  return matter(content, {
+    engines: { js: refuse, javascript: refuse },
+  });
+}
+
 function parseFrontmatter(
   content: string,
 ): { ok: true; value: Record<string, unknown> } | { ok: false; error: string } {
   try {
-    const parsed = matter(content);
+    const parsed = parseMatter(content);
     if (Object.keys(parsed.data).length === 0) {
       return { ok: false, error: "No frontmatter found" };
     }

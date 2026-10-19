@@ -1,10 +1,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import matter from "gray-matter";
+import { isDeepStrictEqual } from "node:util";
 import { exists } from "./fs.js";
 import { AGENT_PLUGINS_MCP_SCHEMA, renderMcpConfig } from "./mcp.js";
 import { deepMerge, stripUndefined } from "./targets/shared.js";
-import { error, readJson } from "./targets/validation-shared.js";
+import { error, parseMatter, readJson } from "./targets/validation-shared.js";
 import type { ManifestBuildContext } from "./targets/types.js";
 import type { ValidationIssue } from "./types.js";
 
@@ -135,6 +135,15 @@ export function placeClientFields(
   }
   if (Object.keys(extensions).length > 0) {
     portable.extensions = extensions;
+  }
+  // Build must not emit a manifest that `validate` rejects.
+  const issues: ValidationIssue[] = [];
+  validateManifest(portable, pluginName, issues);
+  if (issues.length > 0) {
+    throw new Error(
+      `Plugin "${pluginName}": the merged manifest isn't a valid Agent Plugins manifest.\n` +
+        issues.map((issue) => `  - ${issue.message}`).join("\n"),
+    );
   }
   return portable;
 }
@@ -296,10 +305,34 @@ async function validateMcp(
     return;
   }
   for (const [name, server] of Object.entries(config.mcpServers)) {
+    let rendered: unknown;
     try {
-      renderMcpConfig({ [name]: server }, "agent-plugins", pluginName);
+      rendered = (
+        renderMcpConfig({ [name]: server }, "agent-plugins", pluginName)
+          .mcpServers as Record<string, unknown>
+      )[name];
     } catch (err) {
       error(issues, (err as Error).message);
+      continue;
+    }
+    // Rendering normalizes authored config (it infers `type`, maps "http",
+    // and rewrites client variables). A file on disk must already be in the
+    // normalized form, because clients read it as written.
+    if (!isDeepStrictEqual(rendered, server)) {
+      const fields =
+        isObject(server) && isObject(rendered)
+          ? [
+              ...new Set([...Object.keys(server), ...Object.keys(rendered)]),
+            ].filter((key) => !isDeepStrictEqual(server[key], rendered[key]))
+          : [];
+      error(
+        issues,
+        `${pluginName}: mcp.json server "${name}" isn't in Agent Plugins form${
+          fields.length > 0
+            ? ` (check ${fields.map((key) => `"${key}"`).join(", ")})`
+            : ""
+        }; expected ${JSON.stringify(rendered)}.`,
+      );
     }
   }
 }
@@ -329,7 +362,7 @@ async function validateSkills(
     const where = `${pluginName}: skill "skills/${entry.name}"`;
     let frontmatter: Record<string, unknown>;
     try {
-      frontmatter = matter(await fs.readFile(skillFile, "utf8")).data;
+      frontmatter = parseMatter(await fs.readFile(skillFile, "utf8")).data;
     } catch (err) {
       error(
         issues,

@@ -161,6 +161,15 @@ function toNativeServer(
         : rewrite(value);
       continue;
     }
+    if (key === "cwd" && typeof value === "string" && value.startsWith("./")) {
+      // A plugin-relative cwd too: native clients resolve a relative cwd
+      // against their own working directory, not the plugin.
+      const rest = value.slice(2);
+      result.cwd = rest
+        ? `\${${rules.root.canonical}}/${rest}`
+        : `\${${rules.root.canonical}}`;
+      continue;
+    }
     result[key] = rewriteField(key, value, rewrite);
   }
   return result;

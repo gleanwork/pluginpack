@@ -91,9 +91,9 @@ target set, emit/validate dispatch) derives from the registry automatically.
 
 ## Conformance
 
-`CONFORMANCE.md` is the reference. There is no referenceable upstream JSON
-Schema for any target, so the harness uses the strongest available oracle per
-target: Cursor against vendored published schemas (`tests/fixtures/cursor/`,
+`CONFORMANCE.md` is the reference. Agent Plugins is the only format with a
+referenceable upstream JSON Schema, so for the other targets the harness uses
+the strongest available oracle per target: Cursor against vendored published schemas (`tests/fixtures/cursor/`,
 provenance in `SOURCE.md`); Claude via `claude plugin validate --strict` (when
 the CLI is present); Agent Plugins (and the Codex package) against the vendored 1.0 schemas
 (`tests/fixtures/agent-plugins/`); Copilot and Antigravity structurally against their real
