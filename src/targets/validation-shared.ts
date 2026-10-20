@@ -1,6 +1,6 @@
 import { promises as fs, statSync } from "node:fs";
 import path from "node:path";
-import matter from "gray-matter";
+import yaml from "js-yaml";
 import {
   exists,
   isNotFoundError,
@@ -427,20 +427,51 @@ function detectFrontmatterKind(
 }
 
 /**
- * Parses frontmatter from a file pluginpack is validating. gray-matter
- * evaluates `---js` / `---javascript` frontmatter with `eval()`, so those
- * engines are replaced with one that throws: validating a package must never
- * run code from it.
+ * Parses YAML frontmatter from a file pluginpack is validating: a `---` line
+ * at the top, YAML, and a closing `---` line (to end of file when it's
+ * missing). The delimiter rules match gray-matter, which pluginpack used
+ * before. Only YAML is accepted, and js-yaml 4's `load` is safe by default,
+ * so validating a package never runs code from it. Throws when the block
+ * isn't a YAML mapping.
  */
-export function parseMatter(content: string): matter.GrayMatterFile<string> {
-  const refuse = () => {
-    throw new Error(
-      "JavaScript frontmatter is not supported; use YAML frontmatter.",
-    );
-  };
-  return matter(content, {
-    engines: { js: refuse, javascript: refuse },
-  });
+export function parseMatter(content: string): {
+  data: Record<string, unknown>;
+  content: string;
+} {
+  let text = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+  if (!text.startsWith("---") || text.charAt(3) === "-") {
+    return { data: {}, content: text };
+  }
+  text = text.slice(3);
+  const lineEnd = text.search(/\r?\n/);
+  const language = (lineEnd === -1 ? text : text.slice(0, lineEnd))
+    .trim()
+    .toLowerCase();
+  if (language) {
+    if (language !== "yaml" && language !== "yml") {
+      throw new Error(
+        language === "js" || language === "javascript"
+          ? "JavaScript frontmatter is not supported; use YAML frontmatter."
+          : `Frontmatter language "${language}" is not supported; use YAML frontmatter.`,
+      );
+    }
+    text = lineEnd === -1 ? "" : text.slice(lineEnd);
+  }
+  const closeIndex = text.indexOf("\n---");
+  const block = closeIndex === -1 ? text : text.slice(0, closeIndex);
+  const body =
+    closeIndex === -1 ? "" : text.slice(closeIndex + 4).replace(/^\r?\n/, "");
+  if (block.replace(/^\s*#[^\n]+/gm, "").trim() === "") {
+    return { data: {}, content: body };
+  }
+  const data: unknown = yaml.load(block);
+  if (data === null || data === undefined) {
+    return { data: {}, content: body };
+  }
+  if (typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("Frontmatter must be a YAML mapping of fields.");
+  }
+  return { data: data as Record<string, unknown>, content: body };
 }
 
 function parseFrontmatter(
