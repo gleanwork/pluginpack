@@ -94,9 +94,24 @@ const emittedPluginSchema = z
     }
   });
 
+/**
+ * Content kinds that only mean something inside a client's extension
+ * namespace, so the standalone `agent-plugins` target (which has no client
+ * profile) can't ship them.
+ */
+export const CLIENT_ONLY_CONTENT_KINDS = [
+  "agents",
+  "commands",
+  "rules",
+  "hooks",
+];
+
 /** One target's output configuration: where it's written, and which plugins it emits. */
 const targetSchema = z.object({
   outDir: z.string().min(1),
+  // codex only: "agent-plugins" (default) emits Agent Plugins packages;
+  // "legacy" emits the .codex-plugin layout. See docs/adr/0001.
+  format: z.enum(["agent-plugins", "legacy"]).optional(),
   marketplaceDir: safeRelativePath.optional(),
   pluginRoot: safeRelativePath.optional(),
   version: z.string().optional(),
@@ -142,17 +157,48 @@ const configSchema = z
       cursor: targetSchema.optional(),
       antigravity: targetSchema.optional(),
       codex: targetSchema.optional(),
+      "agent-plugins": targetSchema.optional(),
     }),
   })
   .superRefine((config, ctx) => {
     // updateCheck emits a session-start hook; only claude and cursor run hooks.
-    for (const target of ["copilot", "antigravity", "codex"] as const) {
+    for (const target of [
+      "copilot",
+      "antigravity",
+      "codex",
+      "agent-plugins",
+    ] as const) {
       if (config.targets[target]?.updateCheck) {
         ctx.addIssue({
           code: "custom",
           path: ["targets", target, "updateCheck"],
           message:
             "updateCheck is only supported for the claude and cursor targets",
+        });
+      }
+    }
+    for (const [target, targetConfig] of Object.entries(config.targets)) {
+      if (target !== "codex" && targetConfig?.format) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["targets", target, "format"],
+          message: "format is only supported for the codex target",
+        });
+      }
+    }
+    const agentPlugins = config.targets["agent-plugins"];
+    for (const [pluginName, plugin] of Object.entries(
+      agentPlugins?.plugins ?? {},
+    )) {
+      const selected = plugin.include ?? plugin.components ?? [];
+      const clientOnly = selected.filter((kind) =>
+        CLIENT_ONLY_CONTENT_KINDS.includes(kind),
+      );
+      if (clientOnly.length > 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["targets", "agent-plugins", "plugins", pluginName],
+          message: `${clientOnly.join(", ")} only exist inside a client extension namespace; the agent-plugins target can't include them`,
         });
       }
     }

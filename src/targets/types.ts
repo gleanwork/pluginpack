@@ -97,7 +97,24 @@ export type PluginTargetDefinition = {
     targetConfig: TargetConfig,
   ) => string;
 
+  /**
+   * Selects the definition a given target config builds with, for a target
+   * offering more than one output layout (e.g. `codex`'s `format`). Validation
+   * still runs through this definition, so its `validateOutput` must accept
+   * every layout it can select.
+   */
+  forConfig?: (targetConfig: TargetConfig) => PluginTargetDefinition;
+
   buildPluginManifest: (ctx: ManifestBuildContext) => Record<string, unknown>;
+  /**
+   * Runs after the config's per-plugin `manifest` override is deep-merged
+   * into the built manifest — for a layout whose manifest shape constrains
+   * where author-supplied fields may live.
+   */
+  finalizeManifest?: (
+    manifest: Record<string, unknown>,
+    pluginName: string,
+  ) => Record<string, unknown>;
   /** Output-relative paths the plugin manifest is written to (may be more than one). */
   manifestPaths: (pluginPath: string, targetConfig: TargetConfig) => string[];
 
