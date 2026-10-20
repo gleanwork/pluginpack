@@ -1,6 +1,5 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import fastGlob from "fast-glob";
 import type { FileValue } from "./types.js";
 
 /** Converts OS-specific path separators to forward slashes. */
@@ -8,15 +7,49 @@ export function toPosix(value: string): string {
   return value.split(path.sep).join("/");
 }
 
-/** Lists every file under `dir`, recursively, as absolute paths, sorted. */
+/**
+ * Lists every file under `dir`, recursively, as absolute paths, sorted.
+ * Dotfiles are included. Symlinks are followed: a link to a file is listed
+ * as a file and a link to a directory is walked, except a link back to a
+ * directory already being walked, which would loop. Broken links are
+ * skipped. A missing `dir` yields no files.
+ */
 export async function walkFiles(dir: string): Promise<string[]> {
-  const entries = await fastGlob("**/*", {
-    cwd: dir,
-    absolute: true,
-    onlyFiles: true,
-    dot: true,
-  });
-  return entries.sort();
+  const files: string[] = [];
+  async function walk(current: string, ancestors: Set<string>) {
+    let real: string;
+    let entries;
+    try {
+      real = await fs.realpath(current);
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch (err) {
+      if (isNotFoundError(err)) {
+        return;
+      }
+      throw err;
+    }
+    if (ancestors.has(real)) {
+      return;
+    }
+    const below = new Set(ancestors).add(real);
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      let isFile = entry.isFile();
+      let isDirectory = entry.isDirectory();
+      if (entry.isSymbolicLink()) {
+        const stats = await fs.stat(full).catch(() => null);
+        isFile = stats?.isFile() ?? false;
+        isDirectory = stats?.isDirectory() ?? false;
+      }
+      if (isDirectory) {
+        await walk(full, below);
+      } else if (isFile) {
+        files.push(full);
+      }
+    }
+  }
+  await walk(path.resolve(dir), new Set());
+  return files.sort();
 }
 
 /** Whether `candidate` is `root` itself or sits beneath it, comparing already-resolved paths. */
