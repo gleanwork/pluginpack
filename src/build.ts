@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { assertOutDirsOutsideSource, loadConfig } from "./config.js";
 import { physicalKey, withPathCache, writeArtifact } from "./fs.js";
@@ -5,6 +6,7 @@ import {
   assertManagedManifestContained,
   buildDeleteGuard,
   executePrune,
+  managedManifestPath,
   managedPathKey,
   normalizeManagedPath,
   planPrune,
@@ -23,6 +25,7 @@ import type {
   Artifact,
   BuildOptions,
   ResolvedProject,
+  ResolvedProjectConfig,
   TargetName,
 } from "./types.js";
 
@@ -99,6 +102,10 @@ async function planBuildChecked(
       })),
     );
   }
+  await assertNoOrphanManifests(
+    project,
+    artifacts.map(({ target, outDir }) => ({ target, outDir })),
+  );
   const incoming = await assertNoCrossTargetCollisions(artifacts);
   const claimedElsewhere = await assertNoCollisionsWithBuiltTargets(
     project,
@@ -297,6 +304,97 @@ async function assertNoCollisionsWithBuiltTargets(
     );
   }
   return claimed;
+}
+
+/** Where a target's managed manifest lives: `<outDir>/.pluginpack/<target>.json`. */
+export type ManifestLocation = { target: TargetName; outDir: string };
+
+/**
+ * Managed manifests in the outDirs this config uses that no target builds
+ * into: a target the config dropped, or one whose outDir moved. Switching an
+ * outDir from codex to agent-plugins, say, leaves `.pluginpack/codex.json`
+ * behind. No configured target prunes the files it lists, so they would stay
+ * forever, and some (a codex hooks file inside an agent-plugins package)
+ * make the new output invalid.
+ *
+ * Scans the outDir of every configured target, plus `building` (the outDirs
+ * of this invocation, which a `--out-dir` override moves). A manifest is
+ * expected where its target is configured to write or is writing now.
+ */
+export async function findOrphanManifests(
+  project: ResolvedProjectConfig,
+  building: ManifestLocation[] = [],
+): Promise<ManifestLocation[]> {
+  const expected = new Map<TargetName, Set<string>>();
+  const scanned = new Map<string, string>();
+  const add = async ({ target, outDir }: ManifestLocation) => {
+    const key = await physicalKey(outDir);
+    expected.set(target, (expected.get(target) ?? new Set()).add(key));
+    if (!scanned.has(key)) {
+      scanned.set(key, outDir);
+    }
+  };
+  for (const [target, config] of Object.entries(project.config.targets)) {
+    if (config) {
+      await add({
+        target: target as TargetName,
+        outDir: path.resolve(project.rootDir, config.outDir),
+      });
+    }
+  }
+  for (const location of building) {
+    await add(location);
+  }
+  const known = new Set<string>(targetNames);
+  const orphans: ManifestLocation[] = [];
+  for (const [key, outDir] of scanned) {
+    const names = await fs
+      .readdir(path.join(outDir, ".pluginpack"))
+      .catch(() => [] as string[]);
+    for (const name of names.sort()) {
+      const target = name.endsWith(".json") ? name.slice(0, -5) : "";
+      if (!known.has(target)) {
+        continue;
+      }
+      if (!expected.get(target as TargetName)?.has(key)) {
+        orphans.push({ target: target as TargetName, outDir });
+      }
+    }
+  }
+  return orphans;
+}
+
+/**
+ * Refuses to build or prune while an outDir holds a manifest no target builds
+ * there (see `findOrphanManifests`).
+ *
+ * Pruning those files instead would delete on the authority of a manifest
+ * alone, with no config left describing that output: a target dropped from
+ * the config by mistake, or a second project that shares the output
+ * repository, would lose its files without a word. Refusing costs one
+ * command, and `clean --target <old>` (which finds these manifests) deletes
+ * the files through the same guard and checks as any clean.
+ */
+async function assertNoOrphanManifests(
+  project: ResolvedProjectConfig,
+  building: ManifestLocation[],
+): Promise<void> {
+  const orphans = await findOrphanManifests(project, building);
+  if (orphans.length === 0) {
+    return;
+  }
+  const lines = orphans.map(
+    ({ target, outDir }) =>
+      `  ${path.join(outDir, managedManifestPath(target))} (${target})`,
+  );
+  const commands = [...new Set(orphans.map(({ target }) => target))]
+    .map((target) => `\`pluginpack clean --target ${target}\``)
+    .join(", then ");
+  throw new Error(
+    `Found managed output from a target this config does not build there:\n${lines.join("\n")}\n` +
+      `No configured target prunes the files these manifests list, so they would stay in the output. ` +
+      `Run ${commands} to delete them first. To keep the files unmanaged instead, delete the manifest.`,
+  );
 }
 
 /** One path, or both spellings when two different strings name the same file. */

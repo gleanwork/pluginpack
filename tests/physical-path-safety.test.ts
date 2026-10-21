@@ -637,11 +637,11 @@ describe("a stale path another target now owns is left in place", () => {
   it("does not prune a stale path another configured target's manifest claims", async () => {
     const root = await makeProject(agentPluginsWithCodex);
     await build({ cwd: root });
-    // The project swaps targets; agent-plugins' old manifest stays on disk.
-    await build({
-      cwd: root,
-      configPath: await revision(root, "codex-only", codexTarget),
-    });
+    // A codex manifest an older pluginpack could have left claiming the
+    // marketplace agent-plugins still lists.
+    await writeManifest(root, "out", "codex", [
+      ".agents/plugins/marketplace.json",
+    ]);
     const configPath = await revision(
       root,
       "both",
@@ -658,6 +658,113 @@ describe("a stale path another target now owns is left in place", () => {
       ".agents/plugins/marketplace.json",
     );
     await access(path.join(root, marketplace));
+  });
+});
+
+describe("managed output from a target the config no longer builds there", () => {
+  const entry = `entry: { policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" }, category: "Productivity" }`;
+  const codexIn = (outDir: string) => `    codex: {
+      outDir: "${outDir}",
+      plugins: { acme: { source: "shared/acme", ${entry} } }
+    }`;
+  const agentPlugins = `    "agent-plugins": {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme" } }
+    }`;
+  const hooks = {
+    "hooks.json": `${JSON.stringify({
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: "echo hi" }] }],
+      },
+    })}\n`,
+  };
+
+  /** Builds codex into out, then switches the config to agent-plugins there. */
+  async function switchedWithoutCleaning(): Promise<{
+    root: string;
+    configPath: string;
+  }> {
+    const root = await makeProject(codexIn("out"));
+    await mkdir(path.join(root, "shared/acme/hooks"));
+    await writeFile(
+      path.join(root, "shared/acme/hooks/hooks.json"),
+      hooks["hooks.json"],
+    );
+    await build({ cwd: root });
+    await access(path.join(root, "out/plugins/acme/hooks/hooks.json"));
+    const configPath = path.join(root, "switched.config.ts");
+    await writeFile(configPath, configText(agentPlugins));
+    return { root, configPath };
+  }
+
+  it("refuses to build or prune, naming the manifest and the clean command", async () => {
+    const { root, configPath } = await switchedWithoutCleaning();
+    const manifest = path.join(root, "out", managedManifestPath("codex"));
+    const message = `Found managed output from a target this config does not build there:\n  ${manifest} (codex)\n`;
+
+    await expect(build({ cwd: root, configPath })).rejects.toThrow(message);
+    await expect(build({ cwd: root, configPath })).rejects.toThrow(
+      "Run `pluginpack clean --target codex` to delete them first.",
+    );
+    await expect(prune({ cwd: root, configPath })).rejects.toThrow(message);
+    await expect(
+      exists(path.join(root, "out", managedManifestPath("agent-plugins"))),
+    ).resolves.toBe(false);
+  });
+
+  it("clean --target <old> removes it, after which the new target builds clean output", async () => {
+    const { root, configPath } = await switchedWithoutCleaning();
+
+    const [result] = await clean({ cwd: root, configPath, target: "codex" });
+    expect(result.target).toBe("codex");
+    await expect(exists(path.join(root, "out/plugins"))).resolves.toBe(false);
+    await expect(exists(path.join(root, "out/.pluginpack"))).resolves.toBe(
+      false,
+    );
+
+    const [artifact] = await build({ cwd: root, configPath });
+    expect(artifact.managedPaths).not.toContain(
+      "plugins/acme/hooks/hooks.json",
+    );
+    await expect(
+      exists(path.join(root, "out/plugins/acme/hooks/hooks.json")),
+    ).resolves.toBe(false);
+    await clean({ cwd: root, configPath });
+    await expect(walkFiles(path.join(root, "out"))).resolves.toEqual([]);
+    await sourceSurvives(root);
+  });
+
+  it("a plain clean removes it along with the configured targets' output", async () => {
+    const { root, configPath } = await switchedWithoutCleaning();
+
+    const results = await clean({ cwd: root, configPath });
+
+    expect(results.map((result) => result.target)).toEqual([
+      "agent-plugins",
+      "codex",
+    ]);
+    await expect(walkFiles(path.join(root, "out"))).resolves.toEqual([]);
+    await sourceSurvives(root);
+  });
+
+  it("clean --target finds the manifest a target left in its old outDir", async () => {
+    const root = await makeProject(`${codexIn("out")},\n${agentPlugins}`);
+    await build({ cwd: root, target: "codex" });
+    const configPath = path.join(root, "moved.config.ts");
+    await writeFile(
+      configPath,
+      configText(`${codexIn("out2")},\n${agentPlugins}`),
+    );
+
+    await expect(build({ cwd: root, configPath })).rejects.toThrow(
+      /Found managed output[\s\S]*out\/\.pluginpack\/codex\.json \(codex\)/,
+    );
+    await clean({ cwd: root, configPath, target: "codex" });
+
+    await expect(
+      exists(path.join(root, "out", managedManifestPath("codex"))),
+    ).resolves.toBe(false);
+    await expect(build({ cwd: root, configPath })).resolves.toHaveLength(2);
   });
 });
 
@@ -1141,7 +1248,11 @@ describe("the config loader reads the config file fresh each time", () => {
 
       await writeFile(
         path.join(root, name),
-        configText(antigravity.replace("antigravity", "cursor")),
+        configText(
+          antigravity
+            .replace("antigravity", "cursor")
+            .replace('"out"', '"out-cursor"'),
+        ),
       );
       const [second] = await build({ cwd: root });
 

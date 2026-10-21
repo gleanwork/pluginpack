@@ -173,12 +173,14 @@ function createProgram(): Command {
 
   program
     .command("clean")
-    .description("Remove all managed files for configured target outputs.")
+    .description(
+      "Remove all managed files in configured target outputs, including those of a target the config no longer builds there.",
+    )
     .usage(`[--target ${targetList}] [--dry-run]`)
     .addOption(
       new Option(
         "--target <target>",
-        "Clean only one configured target.",
+        "Clean only one target. It may be one the config no longer builds, if its manifest is in a configured outDir.",
       ).choices([...targetNames]),
     )
     .option("--dry-run", "Print managed files without deleting them.")

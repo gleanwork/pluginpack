@@ -1,5 +1,10 @@
 import path from "node:path";
-import { describeAlias, planBuild } from "./build.js";
+import {
+  describeAlias,
+  findOrphanManifests,
+  planBuild,
+  type ManifestLocation,
+} from "./build.js";
 import { targetNames } from "./adapters.js";
 import { loadProjectConfig } from "./config.js";
 import { withPathCache } from "./fs.js";
@@ -68,17 +73,26 @@ export async function clean(
   const plans = await withPathCache(async () => {
     const project = await loadProjectConfig(options.cwd, options.configPath);
     const guard = await buildDeleteGuard(project, options.force);
-    const targets = options.target
-      ? [options.target]
-      : (Object.keys(project.config.targets) as TargetName[]);
-    await assertNoManifestCollisions(project, targets, options.force);
+    const configured = configuredLocations(project);
+    const orphans = await findOrphanManifests(project);
+    const selected = (location: ManifestLocation) =>
+      !options.target || location.target === options.target;
+    // A target the config dropped, or one whose outDir moved, left its
+    // manifest in an outDir this config uses; cleaning it is how a user
+    // removes that output, so it counts as that target's to clean.
+    const cleaning = [...configured, ...orphans].filter(selected);
+    if (options.target && cleaning.length === 0) {
+      throw new Error(
+        `Target "${options.target}" is not configured, and no outDir this config uses holds a .pluginpack/${options.target}.json manifest.`,
+      );
+    }
+    await assertNoManifestCollisions(
+      [...configured, ...orphans],
+      cleaning,
+      options.force,
+    );
     const planned: CleanPlan[] = [];
-    for (const target of targets) {
-      const targetConfig = project.config.targets[target];
-      if (!targetConfig) {
-        throw new Error(`Target "${target}" is not configured.`);
-      }
-      const outDir = path.resolve(project.rootDir, targetConfig.outDir);
+    for (const { target, outDir } of cleaning) {
       planned.push(
         await planClean(outDir, target, { dryRun: options.dryRun, guard }),
       );
@@ -93,8 +107,20 @@ export async function clean(
   return plans.map(cleanResult);
 }
 
+/** Where each configured target's managed manifest lives, in registry order. */
+function configuredLocations(
+  project: ResolvedProjectConfig,
+): ManifestLocation[] {
+  return targetNames.flatMap((target) => {
+    const config = project.config.targets[target];
+    return config
+      ? [{ target, outDir: path.resolve(project.rootDir, config.outDir) }]
+      : [];
+  });
+}
+
 /**
- * Refuses to clean a path another configured target's manifest also claims.
+ * Refuses to clean a path another target's manifest also claims.
  *
  * `build()` and `prune()` share one plan that rejects overlapping output and
  * leaves a stale path alone when another target owns it. `clean()`
@@ -112,21 +138,22 @@ export async function clean(
  * unable to tear down their own repo.
  */
 async function assertNoManifestCollisions(
-  project: ResolvedProjectConfig,
-  cleaning: TargetName[],
+  manifests: ManifestLocation[],
+  cleaning: ManifestLocation[],
   force?: boolean,
 ): Promise<void> {
   if (force) {
     return;
   }
-  const owners = new Map<string, { target: TargetName; absolute: string }>();
+  const isCleaning = (location: ManifestLocation) =>
+    cleaning.includes(location);
+  const owners = new Map<
+    string,
+    { location: ManifestLocation; absolute: string }
+  >();
   const collisions: string[] = [];
-  for (const target of targetNames) {
-    const targetConfig = project.config.targets[target];
-    if (!targetConfig) {
-      continue;
-    }
-    const outDir = path.resolve(project.rootDir, targetConfig.outDir);
+  for (const location of manifests) {
+    const { target, outDir } = location;
     const manifest = await readManagedManifest(outDir, target);
     if (!manifest) {
       continue;
@@ -135,15 +162,15 @@ async function assertNoManifestCollisions(
       const absolute = path.resolve(outDir, normalizeManagedPath(file));
       const key = await managedPathKey(outDir, target, file, { entry: true });
       const owner = owners.get(key);
-      if (owner && owner.target !== target) {
-        if (cleaning.includes(owner.target) || cleaning.includes(target)) {
+      if (owner && owner.location !== location) {
+        if (isCleaning(owner.location) || isCleaning(location)) {
           collisions.push(
-            `  ${owner.target} and ${target}: ${describeAlias(owner.absolute, absolute)}`,
+            `  ${owner.location.target} and ${target}: ${describeAlias(owner.absolute, absolute)}`,
           );
         }
         continue;
       }
-      owners.set(key, { target, absolute });
+      owners.set(key, { location, absolute });
     }
   }
   if (collisions.length > 0) {

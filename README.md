@@ -192,9 +192,11 @@ copies a whole directory into the generated repository root.
 
 Before it deletes anything, pluginpack compares real paths, with symlinks resolved and, on a case-insensitive filesystem, case folded. It refuses an `outDir` that lands inside a source, overrides, partials, `repositoryFiles` or `rootFiles` path, even through a symlink. It also refuses two targets that write the same file through different spellings, such as `out` and `OUT` on macOS, or through a generated file that is a symlink to another target's file. Under the default `plugins/` root, a directory with a component directory counts as legacy source and is never deleted, unless pluginpack recorded writing every file in it. `--dry-run` runs the same checks, so it fails wherever the real command would.
 
+If an `outDir` holds a manifest for a target the config no longer builds there, `build` and `prune` refuse to run. That happens when a config drops a target, or moves an outDir to another target, such as `codex` to `agent-plugins`, without cleaning first. No configured target would prune those files, so they would stay forever. Run `pluginpack clean --target <old>` to delete them. It finds the old target's manifest in any outDir the config uses, even when that target is no longer configured. A plain `clean` deletes them too. To keep the files unmanaged instead, delete the manifest.
+
 An `outDir` outside the project, such as a sibling output repository (`../cursor-plugins`), works. The guard there knows only that repository's `.git` directory and the files the manifest lists, so it cannot protect anything else in that repository from a manifest someone edited by hand.
 
-**Upgrading from 0.11 (managed files):** the first build rewrites each manifest as version 2. pluginpack 0.11 cannot read a version 2 manifest, so upgrade every machine and CI job that builds the same output together. A manifest from a newer pluginpack fails with a message saying to upgrade. Some configs that 0.11 accepted now fail at load or build: `source.partials` outside the project, an `outDir` inside a source path, and a `rootFiles` entry that copies a file onto itself (`"README.md": "README.md"` with `outDir: "."`). Each error names the field to change.
+**Upgrading from 0.11 (managed files):** the first build rewrites each manifest as version 2. pluginpack 0.11 cannot read a version 2 manifest, so upgrade every machine and CI job that builds the same output together. A manifest from a newer pluginpack fails with a message saying to upgrade. Some configs that 0.11 accepted now fail at load or build: `source.partials` outside the project, an `outDir` inside a source path, and a `rootFiles` entry that copies a file onto itself (`"README.md": "README.md"` with `outDir: "."`). Each error names the field to change. A build into an outDir that still holds a dropped target's manifest also fails until you run `pluginpack clean --target <old>`.
 
 ## Components
 
@@ -809,7 +811,7 @@ Exit codes:
 
 ### `clean`
 
-Remove all managed files for configured target outputs.
+Remove all managed files in configured target outputs, including those of a target the config no longer builds there.
 
 ```bash
 pluginpack clean [--target copilot|antigravity|cursor|claude|codex|agent-plugins] [--dry-run]
@@ -817,7 +819,7 @@ pluginpack clean [--target copilot|antigravity|cursor|claude|codex|agent-plugins
 
 Options:
 
-- `--target <target>`: Clean only one configured target.
+- `--target <target>`: Clean only one target. It may be one the config no longer builds, if its manifest is in a configured outDir.
 - `--dry-run`: Print managed files without deleting them.
 - `--force`: Delete even paths that resolve inside the source tree or config.
 
