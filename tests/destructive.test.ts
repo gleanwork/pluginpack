@@ -192,7 +192,12 @@ describe("writeArtifact refuses to write outside its output directory", () => {
 
 describe("readManagedManifest rejects a manifest it cannot trust", () => {
   const invalid: Array<[string, unknown]> = [
-    ["a wrong version", { version: 2, target: "cursor", files: [] }],
+    ["an unknown older version", { version: 0, target: "cursor", files: [] }],
+    ["a non-numeric version", { version: "2", target: "cursor", files: [] }],
+    [
+      "a version 2 manifest with no hashes",
+      { version: 2, target: "cursor", files: [] },
+    ],
     ["a mismatched target", { version: 1, target: "claude", files: [] }],
     [
       "a non-array files field",
@@ -274,7 +279,10 @@ describe("the delete guard protects a source tree from clean, not just prune", (
     await access(path.join(root, "pluginpack.config.ts"));
   });
 
-  it("refuses to clean the default source.plugins root even when unset in config", async () => {
+  it("refuses to clean a legacy source plugin a target reads through from, even with source.plugins unset", async () => {
+    // Under the default plugins/ root only the source plugins a target reads
+    // are protected, not every directory there: generated output lives there
+    // too in the README layouts.
     const created = await makeProject(`    cursor: {
       outDir: ".",
       plugins: { demo: { from: ["demo"], path: "out/demo", components: ["skills"] } }

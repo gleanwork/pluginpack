@@ -1,12 +1,16 @@
 import path from "node:path";
-import { loadConfig } from "./config.js";
-import { writeArtifact } from "./fs.js";
+import { assertOutDirsOutsideSource, loadConfig } from "./config.js";
+import { physicalKey, writeArtifact } from "./fs.js";
 import {
+  assertManagedManifestContained,
   buildDeleteGuard,
+  executePrune,
   normalizeManagedPath,
-  pruneManagedFiles,
+  planPrune,
   readManagedManifest,
+  warnOnEditedOverwrites,
   writeManagedManifest,
+  type PrunePlan,
 } from "./managed.js";
 import { emitTarget, targetNames } from "./adapters.js";
 import {
@@ -22,18 +26,10 @@ import type {
 
 /** Builds every configured (or explicitly selected) target and writes its output, unless `dryRun` is set. */
 export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
-  const project = await loadConfig(options.cwd, options.configPath);
-  const targets = options.target
-    ? [options.target]
-    : targetNames.filter((target) => project.config.targets[target]);
-  const guard = await buildDeleteGuard(project);
-  const artifacts: Artifact[] = [];
-  for (const target of targets) {
-    artifacts.push(await emitTarget(project, target, options.outDir));
+  const { artifacts, prunes } = await planBuild(options);
+  for (const plan of prunes) {
+    await warnOnEditedOverwrites(plan, options.dryRun);
   }
-  const owner = assertNoCrossTargetCollisions(artifacts);
-  await assertNoCollisionsWithBuiltTargets(project, targets, owner);
-  assertNoUnsubstitutedPartialTags(artifacts);
   if (!options.dryRun) {
     // Write every target's new files before pruning any target's stale ones.
     // If a later target's write throws, no target has had files pruned yet —
@@ -44,12 +40,68 @@ export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
     for (const artifact of artifacts) {
       await writeArtifact(artifact.outDir, artifact.files);
     }
-    for (const artifact of artifacts) {
-      await pruneManagedFiles(artifact, { guard });
-      await writeManagedManifest(artifact);
+    for (const plan of prunes) {
+      await executePrune(plan);
+      await writeManagedManifest(plan.artifact);
     }
   }
   return artifacts;
+}
+
+/**
+ * Emits every selected target and runs every check that could refuse the
+ * build, without touching disk: cross-target collisions, collisions with other
+ * targets' manifests, unsubstituted partials, self-referential rootFiles,
+ * manifest containment, and the delete guard over each target's stale files.
+ *
+ * `build` and `prune` both start here, and a dry run stops here, so a dry run
+ * fails exactly where the real command would, and a refused prune never
+ * leaves a half-written build behind. `force` relaxes only the delete guard.
+ */
+export async function planBuild(
+  options: BuildOptions,
+  force?: boolean,
+): Promise<{ artifacts: Artifact[]; prunes: PrunePlan[] }> {
+  const project = await loadConfig(options.cwd, options.configPath);
+  const targets = options.target
+    ? [options.target]
+    : targetNames.filter((target) => project.config.targets[target]);
+  const guard = await buildDeleteGuard(project, force);
+  const artifacts: Artifact[] = [];
+  for (const target of targets) {
+    artifacts.push(await emitTarget(project, target, options.outDir));
+  }
+  if (options.outDir) {
+    await assertOutDirsOutsideSource(
+      project,
+      artifacts.map((artifact) => ({
+        target: artifact.target,
+        outDir: artifact.outDir,
+      })),
+    );
+  }
+  const incoming = await assertNoCrossTargetCollisions(artifacts);
+  const claimedElsewhere = await assertNoCollisionsWithBuiltTargets(
+    project,
+    targets,
+    incoming,
+  );
+  assertNoUnsubstitutedPartialTags(artifacts);
+  await assertNoSelfReferentialRootFiles(project, artifacts);
+  for (const artifact of artifacts) {
+    await assertManagedManifestContained(artifact.outDir, artifact.target);
+  }
+  const owners = new Map<string, TargetName>(claimedElsewhere);
+  for (const [key, claim] of incoming) {
+    owners.set(key, claim.target);
+  }
+  const prunes: PrunePlan[] = [];
+  for (const artifact of artifacts) {
+    prunes.push(
+      await planPrune(artifact, { dryRun: options.dryRun, guard, owners }),
+    );
+  }
+  return { artifacts, prunes };
 }
 
 /**
@@ -75,24 +127,68 @@ function assertNoUnsubstitutedPartialTags(artifacts: Artifact[]): void {
 }
 
 /**
+ * A `rootFiles` entry whose destination is its own source makes the authored
+ * file a managed output: the build copies it onto itself, and the next `clean`
+ * (or a prune after the entry is removed) deletes the only copy. Refuse it
+ * before writing anything. (A `repositoryFiles` directory that is the outDir
+ * is caught earlier, at config load, as an outDir inside a source path.)
+ */
+async function assertNoSelfReferentialRootFiles(
+  project: ResolvedProject,
+  artifacts: Artifact[],
+): Promise<void> {
+  const problems: string[] = [];
+  for (const artifact of artifacts) {
+    const targetConfig = project.config.targets[artifact.target];
+    for (const [dest, source] of Object.entries(
+      targetConfig?.rootFiles ?? {},
+    )) {
+      const [destKey, sourceKey] = await Promise.all([
+        physicalKey(path.resolve(artifact.outDir, dest)),
+        physicalKey(path.resolve(project.rootDir, source)),
+      ]);
+      if (destKey === sourceKey) {
+        problems.push(
+          `  targets.${artifact.target}.rootFiles["${dest}"] copies ${path.resolve(project.rootDir, source)} onto itself`,
+        );
+      }
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `Invalid pluginpack config: a generated file would replace its own source:\n${problems.join("\n")}\n` +
+        `pluginpack would then manage, and later delete, the authored file. ` +
+        `Map each entry to a different destination, or remove it if the file already lives in the output repository.`,
+    );
+  }
+}
+
+/** Which target claims a path, and the path as that target names it. */
+type Claim = { target: TargetName; absolute: string };
+
+/**
  * Two targets pointed at overlapping output paths would silently overwrite each
  * other (and one target's prune could delete the other's files). Catch it.
- * Returns the absolute-path -> owning-target map so
- * `assertNoCollisionsWithBuiltTargets` can reuse it.
+ * Keys on physical paths, so `out` and `OUT` on a case-insensitive filesystem,
+ * or an outDir reached through a symlink, are one path, as they are on disk.
+ * Returns the physical-key -> claim map so later checks can reuse it.
  */
-function assertNoCrossTargetCollisions(
+async function assertNoCrossTargetCollisions(
   artifacts: Artifact[],
-): Map<string, TargetName> {
-  const owner = new Map<string, TargetName>();
+): Promise<Map<string, Claim>> {
+  const owner = new Map<string, Claim>();
   const collisions: string[] = [];
   for (const artifact of artifacts) {
     for (const managedPath of artifact.managedPaths) {
       const absolute = path.resolve(artifact.outDir, managedPath);
-      const previous = owner.get(absolute);
-      if (previous && previous !== artifact.target) {
-        collisions.push(`  ${previous} and ${artifact.target}: ${absolute}`);
+      const key = await physicalKey(absolute, { entry: true });
+      const previous = owner.get(key);
+      if (previous && previous.target !== artifact.target) {
+        collisions.push(
+          `  ${previous.target} and ${artifact.target}: ${describeAlias(previous.absolute, absolute)}`,
+        );
       } else {
-        owner.set(absolute, artifact.target);
+        owner.set(key, { target: artifact.target, absolute });
       }
     }
   }
@@ -113,13 +209,17 @@ function assertNoCrossTargetCollisions(
  * against that by also checking incoming paths against every other
  * *configured* target's on-disk managed manifest, not just artifacts present
  * in the current invocation.
+ *
+ * Returns the physical key of every path those other manifests claim, so
+ * prune can leave a stale path alone when another target owns it now.
  */
 async function assertNoCollisionsWithBuiltTargets(
   project: ResolvedProject,
   targets: TargetName[],
-  incoming: Map<string, TargetName>,
-): Promise<void> {
+  incoming: Map<string, Claim>,
+): Promise<Map<string, TargetName>> {
   const building = new Set(targets);
+  const claimed = new Map<string, TargetName>();
   const collisions: string[] = [];
   for (const other of targetNames) {
     if (building.has(other)) {
@@ -136,10 +236,12 @@ async function assertNoCollisionsWithBuiltTargets(
     }
     for (const file of manifest.files) {
       const absolute = path.resolve(otherOutDir, normalizeManagedPath(file));
-      const conflicting = incoming.get(absolute);
+      const key = await physicalKey(absolute, { entry: true });
+      claimed.set(key, other);
+      const conflicting = incoming.get(key);
       if (conflicting) {
         collisions.push(
-          `  ${other} (previously built) and ${conflicting}: ${absolute}`,
+          `  ${other} (previously built) and ${conflicting.target}: ${describeAlias(absolute, conflicting.absolute)}`,
         );
       }
     }
@@ -150,4 +252,10 @@ async function assertNoCollisionsWithBuiltTargets(
         `Run a full \`build\` (no --target) to see every target's paths at once, or fix the outDir configuration.`,
     );
   }
+  return claimed;
+}
+
+/** One path, or both spellings when two different strings name the same file. */
+export function describeAlias(first: string, second: string): string {
+  return first === second ? first : `${first} (same file as ${second})`;
 }

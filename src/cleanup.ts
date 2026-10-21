@@ -1,12 +1,14 @@
 import path from "node:path";
-import { build } from "./build.js";
+import { describeAlias, planBuild } from "./build.js";
 import { targetNames } from "./adapters.js";
 import { loadProjectConfig } from "./config.js";
+import { physicalKey } from "./fs.js";
 import {
   buildDeleteGuard,
   cleanManagedFiles,
+  executePrune,
   normalizeManagedPath,
-  pruneManagedFiles,
+  pruneResult,
   readManagedManifest,
 } from "./managed.js";
 import type {
@@ -15,7 +17,12 @@ import type {
   TargetName,
 } from "./types.js";
 
-/** Deletes managed files no longer produced by the current build, without rewriting current output. */
+/**
+ * Deletes managed files no longer produced by the current build, without
+ * rewriting current output. Runs the same plan, and so the same checks, as
+ * `build`: the delete guard, cross-target ownership of stale paths, and every
+ * collision check. `--dry-run` runs them too and only skips the deletes.
+ */
 export async function prune(
   options: {
     cwd?: string;
@@ -25,21 +32,21 @@ export async function prune(
     force?: boolean;
   } = {},
 ): Promise<CleanupResult[]> {
-  const project = await loadProjectConfig(options.cwd, options.configPath);
-  const guard = await buildDeleteGuard(project, options.force);
-  const artifacts = await build({
-    cwd: options.cwd,
-    configPath: options.configPath,
-    target: options.target,
-    dryRun: true,
-  });
-  const results: CleanupResult[] = [];
-  for (const artifact of artifacts) {
-    results.push(
-      await pruneManagedFiles(artifact, { dryRun: options.dryRun, guard }),
-    );
+  const { prunes } = await planBuild(
+    {
+      cwd: options.cwd,
+      configPath: options.configPath,
+      target: options.target,
+      dryRun: options.dryRun,
+    },
+    options.force,
+  );
+  if (!options.dryRun) {
+    for (const plan of prunes) {
+      await executePrune(plan);
+    }
   }
-  return results;
+  return prunes.map(pruneResult);
 }
 
 /** Deletes every managed file for the given target(s), tearing the generated output down entirely. */
@@ -78,17 +85,20 @@ export async function clean(
 /**
  * Refuses to clean a path another configured target's manifest also claims.
  *
- * `build()` rejects two targets writing overlapping output paths, and `prune()`
- * inherits that check for free by running `build({ dryRun: true })` first.
- * `clean()` deliberately never builds — teardown has to keep working when the
- * source tree or config no longer does, which is often exactly why someone is
- * cleaning — so it cannot inherit the check the same way. This is the
- * standalone equivalent, working purely from the manifests on disk.
+ * `build()` and `prune()` share one plan that rejects overlapping output and
+ * leaves a stale path alone when another target owns it. `clean()`
+ * deliberately never builds — teardown has to keep working when the source
+ * tree or config no longer does, which is often exactly why someone is
+ * cleaning — so it cannot share that plan. This is the standalone check,
+ * working purely from the manifests on disk.
  *
- * Overlapping manifests can only come from a pluginpack older than that build
- * check, or from a manifest edited out of band; either way the file being
- * deleted is another target's live output, so refuse rather than delete it.
- * `--force` still wins, so nobody ends up unable to tear down their own repo.
+ * Paths are compared physically, so two outDirs that differ only in case on a
+ * case-insensitive filesystem, or that alias one directory through a symlink,
+ * collide here just as they do on disk. Overlapping manifests otherwise come
+ * from a pluginpack older than the build check, or from a manifest edited out
+ * of band; either way the file being deleted is another target's live output,
+ * so refuse rather than delete it. `--force` still wins, so nobody ends up
+ * unable to tear down their own repo.
  */
 async function assertNoManifestCollisions(
   project: ResolvedProjectConfig,
@@ -98,7 +108,7 @@ async function assertNoManifestCollisions(
   if (force) {
     return;
   }
-  const owners = new Map<string, TargetName>();
+  const owners = new Map<string, { target: TargetName; absolute: string }>();
   const collisions: string[] = [];
   for (const target of targetNames) {
     const targetConfig = project.config.targets[target];
@@ -112,14 +122,17 @@ async function assertNoManifestCollisions(
     }
     for (const file of manifest.files) {
       const absolute = path.resolve(outDir, normalizeManagedPath(file));
-      const owner = owners.get(absolute);
-      if (owner && owner !== target) {
-        if (cleaning.includes(owner) || cleaning.includes(target)) {
-          collisions.push(`  ${owner} and ${target}: ${absolute}`);
+      const key = await physicalKey(absolute, { entry: true });
+      const owner = owners.get(key);
+      if (owner && owner.target !== target) {
+        if (cleaning.includes(owner.target) || cleaning.includes(target)) {
+          collisions.push(
+            `  ${owner.target} and ${target}: ${describeAlias(owner.absolute, absolute)}`,
+          );
         }
         continue;
       }
-      owners.set(absolute, target);
+      owners.set(key, { target, absolute });
     }
   }
   if (collisions.length > 0) {

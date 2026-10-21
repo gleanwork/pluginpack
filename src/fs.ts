@@ -82,6 +82,81 @@ function fold(value: string): string {
 }
 
 /**
+ * The key two paths share when they name the same file on this host: the
+ * physical path (symlinks resolved on the deepest existing ancestor), folded
+ * for case and Unicode normalization when that ancestor's volume compares
+ * names case-insensitively (APFS and NTFS by default).
+ *
+ * Every check that decides whether a delete or write is safe, or whether two
+ * targets claim the same file, compares these keys. Comparing `path.resolve`
+ * strings instead lets an alias walk past the check: `out` and `OUT` on APFS,
+ * or a symlink into a source tree, are different strings but one file.
+ *
+ * With `entry` set, only the parent is resolved and the final name is kept,
+ * which is the file `fs.rm` removes when the final entry is itself a symlink.
+ * Use it for deletions and ownership; leave it off for a root being protected.
+ */
+export async function physicalKey(
+  target: string,
+  options: { entry?: boolean } = {},
+): Promise<string> {
+  const absolute = path.resolve(target);
+  const parent = path.dirname(absolute);
+  const real =
+    options.entry && parent !== absolute
+      ? path.join(await realpathDeep(parent), path.basename(absolute))
+      : await realpathDeep(absolute);
+  return (await isCaseInsensitiveAt(real)) ? fold(real) : real;
+}
+
+const caseInsensitiveDirs = new Map<string, Promise<boolean>>();
+
+/**
+ * Whether names under `real`'s volume compare case-insensitively. Probes the
+ * deepest existing component of `real` that has a cased letter: if the
+ * case-swapped name is the same inode, the directory holding it folds case.
+ * Falls back to the platform default (folding on macOS and Windows) when no
+ * component can be probed, since over-matching is the safe direction for a
+ * check that decides whether to refuse.
+ */
+async function isCaseInsensitiveAt(real: string): Promise<boolean> {
+  let current = real;
+  for (;;) {
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return process.platform === "darwin" || process.platform === "win32";
+    }
+    const name = path.basename(current);
+    const swapped = swapCase(name);
+    // Skip names whose case swap does not round-trip ("ß" -> "SS"): the
+    // swapped name would be a different name, not a different case.
+    if (swapped !== name && swapCase(swapped) === name) {
+      const stats = await fs.lstat(current).catch(() => null);
+      if (stats) {
+        let cached = caseInsensitiveDirs.get(parent);
+        if (!cached) {
+          cached = fs.lstat(path.join(parent, swapped)).then(
+            (other) => other.ino === stats.ino && other.dev === stats.dev,
+            () => false,
+          );
+          caseInsensitiveDirs.set(parent, cached);
+        }
+        return cached;
+      }
+    }
+    current = parent;
+  }
+}
+
+function swapCase(value: string): string {
+  return [...value]
+    .map((char) =>
+      char === char.toLowerCase() ? char.toUpperCase() : char.toLowerCase(),
+    )
+    .join("");
+}
+
+/**
  * Resolves `target` with symlinks followed, or returns `null` if the result
  * escapes `root`.
  *

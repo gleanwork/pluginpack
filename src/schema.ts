@@ -162,6 +162,10 @@ export const CLIENT_ONLY_CONTENT_KINDS = [
 
 /** One target's output configuration: where it's written, and which plugins it emits. */
 const targetSchema = z.object({
+  // Deliberately not safeRelativePath: an outDir may be a sibling output
+  // repository ("../cursor-plugins"). The delete guard protects this
+  // project's source and the outDir's .git; it knows nothing else about an
+  // external repo, which the README calls out.
   outDir: z.string().min(1),
   // codex only: "agent-plugins" (default) emits Agent Plugins packages;
   // "legacy" emits the .codex-plugin layout. See docs/adr/0001.
