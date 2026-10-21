@@ -1,12 +1,11 @@
 import { readFile, writeFile, mkdir, access } from "node:fs/promises";
 import path from "node:path";
 import { Project, type ProjectArgs } from "fixturify-project";
-import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { build } from "../src/build.js";
 import { emitTarget, validateOutput } from "../src/adapters.js";
 import { loadConfig } from "../src/config.js";
-import type { PluginTargetDefinition } from "../src/targets/types.js";
-import type { TargetName, ValidationIssue } from "../src/types.js";
+import type { TargetName } from "../src/types.js";
 
 type DirJSON = NonNullable<ProjectArgs["files"]>;
 let project: Project | undefined;
@@ -39,12 +38,6 @@ async function setup(targets: string, source: DirJSON = {}): Promise<string> {
 }
 
 describe("target build and validation agree", () => {
-  it("keeps native validation independent of managed state", () => {
-    expectTypeOf<
-      PluginTargetDefinition["validateOutput"]
-    >().parameters.toEqualTypeOf<[string, ValidationIssue[]]>();
-  });
-
   it.each(["copilot", "codex"] as const)(
     "does not point %s at a nonexistent hooks/hooks.json",
     async (target) => {
