@@ -27,7 +27,7 @@ function createProgram(): Command {
   program
     .command("init")
     .description(
-      "Create a starter pluginpack.config.ts for all targets and source plugin layout. Refuse existing scaffold files.",
+      "Create a starter pluginpack.config.ts for every target and a shared/example source plugin. Refuses to overwrite existing files.",
     )
     .action(init);
 
@@ -334,21 +334,35 @@ async function init(): Promise<void> {
 
   // Check the whole scaffold before creating any directories or files.
   for (const filePath of files.keys()) {
-    if (await exists(path.resolve(filePath))) {
-      throw existingFileError(filePath);
+    const existingPath = await existingInitPath(path.resolve(filePath));
+    if (existingPath) {
+      throw existingFileError(path.relative(process.cwd(), existingPath));
     }
   }
+  const createdFiles: string[] = [];
   for (const [filePath, content] of files) {
     const destination = path.resolve(filePath);
-    await fs.mkdir(path.dirname(destination), { recursive: true });
     try {
+      await fs.mkdir(path.dirname(destination), { recursive: true });
       // Another process can create a destination after the preflight check.
       await fs.writeFile(destination, content, { flag: "wx" });
+      createdFiles.push(filePath);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-        throw existingFileError(filePath);
+      const code = (error as NodeJS.ErrnoException).code;
+      const existingPath =
+        code === "EEXIST" || code === "ENOTDIR"
+          ? await existingInitPath(destination)
+          : undefined;
+      const failure = existingPath
+        ? existingFileError(path.relative(process.cwd(), existingPath))
+        : (error as Error);
+      if (createdFiles.length === 0) {
+        throw failure;
       }
-      throw error;
+      throw new Error(
+        `${failure.message}\nFiles created by this run (left in place):\n${createdFiles.map((file) => `- ${file}`).join("\n")}\nReview these files before retrying.`,
+        { cause: error },
+      );
     }
   }
   console.log("Created pluginpack.config.ts and shared/example.");
@@ -524,14 +538,18 @@ function commandExitCodes(commandName: string): string[] {
   }
 }
 
-/** Whether an init destination exists, including directories and dangling symlinks. */
-async function exists(filePath: string): Promise<boolean> {
+/** Finds an existing init destination or blocking parent, including dangling symlinks. */
+async function existingInitPath(filePath: string): Promise<string | undefined> {
   try {
     await fs.lstat(filePath);
-    return true;
+    return filePath;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return false;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      return undefined;
+    }
+    if (code === "ENOTDIR") {
+      return existingInitPath(path.dirname(filePath));
     }
     throw error;
   }
@@ -549,6 +567,7 @@ export default defineConfig({
     author: { name: "Example" },
     license: "MIT"
   },
+  // Delete targets you do not ship to.
   targets: {
     cursor: {
       outDir: "dist/cursor",
@@ -574,6 +593,7 @@ export default defineConfig({
         example: { source: "shared/example" }
       }
     },
+    // Codex marketplace entries require policy and category.
     codex: {
       outDir: "dist/codex",
       plugins: {

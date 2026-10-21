@@ -693,7 +693,7 @@ A few things worth knowing about this surface before depending on it:
 
 ### `init`
 
-Create a starter pluginpack.config.ts for all targets and source plugin layout. Refuse existing scaffold files.
+Create a starter pluginpack.config.ts for every target and a shared/example source plugin. Refuses to overwrite existing files.
 
 ```bash
 pluginpack init [options]

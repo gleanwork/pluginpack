@@ -59,6 +59,31 @@ describe("init", () => {
     expect(new Set(outDirs).size).toBe(targetNames.length);
   });
 
+  it("explains target selection and Codex marketplace requirements in the generated config", async () => {
+    const result = await runBin("init");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+
+    const config = fs.readFileSync(
+      path.join(project.baseDir, "pluginpack.config.ts"),
+      "utf8",
+    );
+    expect(config).toContain("// Delete targets you do not ship to.");
+    expect(config).toContain(
+      "// Codex marketplace entries require policy and category.",
+    );
+  });
+
+  it("describes the starter files and overwrite protection in help", async () => {
+    const result = await runBin("init", "--help");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+    expect(String(result.stdout).replace(/\s+/g, " ")).toContain(
+      "Create a starter pluginpack.config.ts for every target and a shared/example source plugin. Refuses to overwrite existing files.",
+    );
+    expect(
+      fs.existsSync(path.join(project.baseDir, "pluginpack.config.ts")),
+    ).toBe(false);
+  });
+
   it("builds and validates every target from a fresh, unmodified scaffold", async () => {
     linkPackage();
     const initialized = await runBin("init");
@@ -113,6 +138,35 @@ describe("init", () => {
     },
   );
 
+  it.each([
+    "shared",
+    "shared/example",
+    "shared/example/skills",
+    "shared/example/skills/example",
+  ])(
+    "names the blocking parent file %s before creating any scaffold files",
+    async (blockingPath) => {
+      const destination = path.join(project.baseDir, blockingPath);
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      fs.writeFileSync(destination, authoredContent);
+      const unmanaged = path.join(project.baseDir, "notes.txt");
+      fs.writeFileSync(unmanaged, authoredContent);
+
+      const result = await runBin("init");
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(`${blockingPath} already exists`);
+      expect(result.stderr).toContain(
+        "Move it or run pluginpack init in an empty directory.",
+      );
+      expect(result.stderr).not.toContain("ENOTDIR");
+      expect(fs.readFileSync(destination)).toEqual(authoredContent);
+      expect(fs.readFileSync(unmanaged)).toEqual(authoredContent);
+      for (const filePath of scaffoldPaths) {
+        expect(fs.existsSync(path.join(project.baseDir, filePath))).toBe(false);
+      }
+    },
+  );
+
   it("refuses a dangling destination symlink before creating any scaffold files", async () => {
     const skillPath = path.join(project.baseDir, scaffoldPaths[2]!);
     const missingPath = path.join(project.baseDir, "authored-skill.md");
@@ -137,6 +191,8 @@ describe("init", () => {
     "does not overwrite %s if it appears after the preflight check",
     async (existingPath) => {
       const destination = path.join(project.baseDir, existingPath);
+      const unmanaged = path.join(project.baseDir, "notes.txt");
+      fs.writeFileSync(unmanaged, authoredContent);
       const preloadPath = path.join(project.baseDir, "race.mjs");
       // Inject a competing writer at the write boundary, after init's preflight.
       // The real write then proves that each destination uses exclusive creation.
@@ -160,6 +216,32 @@ fs.writeFile = async (file, data, options) => {
       expect(result.stderr).toContain(existingPath);
       expect(result.stderr).toContain("already exists");
       expect(fs.readFileSync(destination)).toEqual(authoredContent);
+      expect(fs.readFileSync(unmanaged)).toEqual(authoredContent);
+
+      const failedIndex = scaffoldPaths.indexOf(existingPath);
+      const createdPaths = scaffoldPaths.slice(0, failedIndex);
+      const createdFilesHeading =
+        "Files created by this run (left in place):\n";
+      if (createdPaths.length > 0) {
+        expect(
+          String(result.stderr).split(createdFilesHeading)[1]?.trim(),
+        ).toBe(
+          [
+            ...createdPaths.map((filePath) => `- ${filePath}`),
+            "Review these files before retrying.",
+          ].join("\n"),
+        );
+      } else {
+        expect(result.stderr).not.toContain(createdFilesHeading);
+      }
+      for (const filePath of createdPaths) {
+        expect(
+          fs.readFileSync(path.join(project.baseDir, filePath)).length,
+        ).toBeGreaterThan(0);
+      }
+      for (const filePath of scaffoldPaths.slice(failedIndex + 1)) {
+        expect(fs.existsSync(path.join(project.baseDir, filePath))).toBe(false);
+      }
     },
   );
 });
