@@ -567,7 +567,7 @@ rest of the artifact.
 
 `pluginpack.config.ts` exports a config object (wrap it in `defineConfig` for types). `src/schema.ts` is the source of truth; this table enumerates every field. Paths marked _safe relative_ reject absolute paths and `..` escapes.
 
-Keys stripped by config parsing produce a warning that names the config file and the dotted field path. Fix the spelling or remove the key. The `manifest` and `entry` passthrough objects preserve arbitrary keys without warnings. Unknown package client names still fail validation.
+Keys stripped by config parsing produce a warning that names the config file and the dotted field path, once per file and key per process. Unknown keys in `plugin.pluginpack.json` (both canonical and legacy sources) and `mcp/pluginpack.json` produce manifest warnings. Fix the spelling or remove the key. The `manifest` and `entry` passthrough objects preserve arbitrary keys without warnings. Unknown package client names still fail validation.
 
 **Top level**
 
@@ -683,7 +683,7 @@ Option objects:
 
 The result and config types (`Artifact`, `DiffResult`/`DiffEntry`, `ValidationResult`/`ValidationIssue`, `CleanupResult`/`CleanupEntry`, `ResolvedProject`, `PluginpackConfig`, `TargetConfig`, `TargetName`, `Citation`, `InstallSnippet`, …) are all exported for use in TypeScript.
 
-`PluginpackConfig` describes authoring input. `defineConfig` is an identity helper; it does not parse or apply defaults. `loadConfig` returns `ResolvedProject.config` as `ResolvedPluginpackConfig`, the validated schema output. The declaration build derives structural types from those same schemas, so consumers do not need Zod types or ambient Node types. `Artifact.files` accepts strings and `Uint8Array` values, including Node buffers.
+`PluginpackConfig` describes authoring input. `defineConfig` is an identity helper; it does not parse or apply defaults. `loadConfig` returns `ResolvedProject.config` as `ResolvedPluginpackConfig`, the validated schema output. The declaration build derives structural types from those same schemas, so consumers do not need Zod types or ambient Node types. `Artifact.files` values are `string | Uint8Array`, including Node buffers. Decode byte values with `Buffer.from(value).toString("utf8")` or `new TextDecoder().decode(value)`.
 
 A few things worth knowing about this surface before depending on it:
 

@@ -89,6 +89,14 @@ describe("public API contract", () => {
     expect(file[0]).toBe(65);
   });
 
+  it("documents Artifact file values and explicit UTF-8 decoding", async () => {
+    const readme = await readFile("README.md", "utf8");
+    expect(readme).toContain(
+      "`Artifact.files` values are `string | Uint8Array`",
+    );
+    expect(readme).toContain('`Buffer.from(value).toString("utf8")`');
+  });
+
   it("marks the reachable source-provider state as unstable", async () => {
     const declaration = await readFile("dist/index.d.ts", "utf8");
     expect(declaration).not.toContain("Deliberately not exported");
