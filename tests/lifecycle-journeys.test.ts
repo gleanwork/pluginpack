@@ -521,7 +521,9 @@ describe.each(Object.entries(layouts))(
       expect(
         warnings.filter((warning) => /edited|changed since/i.test(warning)),
       ).toEqual([]);
-    });
+      // Six targets through seven steps, each followed by six validations,
+      // takes 3-4s locally and more than vitest's 5s default on CI.
+    }, 60_000);
   },
 );
 
