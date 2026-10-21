@@ -2,7 +2,12 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { exists } from "./fs.js";
-import { AGENT_PLUGINS_MCP_SCHEMA, renderMcpConfig } from "./mcp.js";
+import {
+  AGENT_PLUGINS_MCP_SCHEMA,
+  pluginCommandFiles,
+  renderMcpConfig,
+  type McpDialect,
+} from "./mcp.js";
 import { deepMerge, stripUndefined } from "./targets/shared.js";
 import { error, parseMatter, readJson } from "./targets/validation-shared.js";
 import type { ManifestBuildContext } from "./targets/types.js";
@@ -171,11 +176,14 @@ export async function hasPackageManifest(pluginDir: string): Promise<boolean> {
  * manifest, the `mcp.json` shape, and each discovered skill — every check
  * here is something a conforming client would reject or silently skip.
  * Returns the parsed manifest, or `undefined` when it couldn't be read.
+ * `mcpDialect` is `"codex"` only for Codex-only output, which may carry
+ * Codex's per-server `extensions`.
  */
 export async function validatePackage(
   pluginDir: string,
   pluginName: string,
   issues: ValidationIssue[],
+  mcpDialect: PackageMcpDialect = "agent-plugins",
 ): Promise<Record<string, unknown> | undefined> {
   const manifest = await readJson(
     path.join(pluginDir, packageLayout.manifest),
@@ -186,10 +194,13 @@ export async function validatePackage(
     return undefined;
   }
   validateManifest(manifest, pluginName, issues);
-  await validateMcp(pluginDir, pluginName, issues);
+  await validateMcp(pluginDir, pluginName, mcpDialect, issues);
   await validateSkills(pluginDir, pluginName, issues);
   return manifest;
 }
+
+/** The MCP dialects a package's `mcp.json` can be written in. */
+export type PackageMcpDialect = Extract<McpDialect, "agent-plugins" | "codex">;
 
 function validateManifest(
   manifest: Record<string, unknown>,
@@ -275,6 +286,7 @@ function validateManifest(
 async function validateMcp(
   pluginDir: string,
   pluginName: string,
+  dialect: PackageMcpDialect,
   issues: ValidationIssue[],
 ): Promise<void> {
   const file = path.join(pluginDir, packageLayout.mcp);
@@ -308,7 +320,7 @@ async function validateMcp(
     let rendered: unknown;
     try {
       rendered = (
-        renderMcpConfig({ [name]: server }, "agent-plugins", pluginName)
+        renderMcpConfig({ [name]: server }, dialect, pluginName)
           .mcpServers as Record<string, unknown>
       )[name];
     } catch (err) {
@@ -334,6 +346,24 @@ async function validateMcp(
         }; expected ${JSON.stringify(rendered)}.`,
       );
     }
+    // A ./ command is a file inside the package (spec §7.2.1); if it isn't
+    // there, the client can't start the server.
+    for (const { command, file } of pluginCommandFiles({ [name]: rendered })) {
+      if (!(await isFile(path.join(pluginDir, file)))) {
+        error(
+          issues,
+          `${pluginName}: mcp.json server "${name}" "command" is ${JSON.stringify(command)}, but the package has no file "${file}" — the client can't start the server.`,
+        );
+      }
+    }
+  }
+}
+
+async function isFile(file: string): Promise<boolean> {
+  try {
+    return (await fs.stat(file)).isFile();
+  } catch {
+    return false;
   }
 }
 

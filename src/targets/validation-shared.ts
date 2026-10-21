@@ -1,6 +1,7 @@
 import { promises as fs, statSync } from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
+import { componentDirs, staticFiles } from "../components.js";
 import {
   exists,
   isNotFoundError,
@@ -15,6 +16,7 @@ import {
   substitutionRunsOn,
 } from "../partials.js";
 import type { TargetName, ValidationIssue } from "../types.js";
+import type { OutputValidationContext } from "./types.js";
 
 export const marketplaceNamePattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
@@ -70,16 +72,18 @@ export function warning(issues: ValidationIssue[], message: string): void {
 }
 
 /**
- * Flags `{{> name}}` partial references left in generated output, where a tag
- * should never survive — it means whatever reads the file gets a template
- * marker instead of the text meant to be inlined.
+ * Flags `{{> name}}` partial references left in generated output in a file
+ * type substitution never runs on (a `.yaml` reference file, a `.py`
+ * script). Whatever reads such a file gets a template marker instead of the
+ * text meant to be inlined, so it's an error.
  *
- * Where substitution never runs (a `.yaml` reference file, a `.py` script)
- * this is unambiguously a mistake, so it's an error. In a file substitution
- * *does* run on, the only way a tag reaches output is the documented `\{{>`
- * escape — which is legitimate — so a build by a current pluginpack cannot
- * produce one accidentally, and this is a warning covering output generated
- * before unresolved tags were caught at build time.
+ * Files substitution does run on are not scanned. At build time
+ * `resolvePartials` resolves every tag in them, or fails the build on an
+ * unknown, malformed, or assembled one, so the only tag a current build
+ * leaves there is the documented `\{{>` escape, which is meant to reach
+ * output. Validate cannot tell an escape from a stale or hand-edited tag
+ * after the fact, and flagging every escape would make the documented
+ * syntax permanent noise.
  */
 export async function validateNoSurvivingPartialTags(
   root: string,
@@ -104,23 +108,51 @@ export async function validateNoSurvivingPartialTags(
   ).flat();
   for (const file of [...new Set(files)]) {
     const relative = toPosix(path.relative(root, file));
-    const tag = findPartialTag(await fs.readFile(file));
-    if (!tag) {
+    if (substitutionRunsOn(relative)) {
       continue;
     }
-    const message = `${relative} contains an unsubstituted partial reference ${tag}.`;
-    if (substitutionRunsOn(relative)) {
-      warning(
-        issues,
-        `${message} If it is not an intentional \`\\{{>\` escape, rebuild with a current pluginpack.`,
-      );
-    } else {
+    const tag = findPartialTag(await fs.readFile(file));
+    if (tag) {
       error(
         issues,
-        `${message} Partial substitution does not run on this file type (${substitutedExtensions()}).`,
+        `${relative} contains an unsubstituted partial reference ${tag}. Partial substitution does not run on this file type (${substitutedExtensions()}).`,
       );
     }
   }
+}
+
+/**
+ * The paths `validateNoSurvivingPartialTags` should scan for one plugin
+ * directory a target's validator found. A plugin in its own directory is
+ * scanned whole.
+ *
+ * A plugin emitted at the output root (`path: "."`) shares that root with
+ * authored sources, dependencies, and other files pluginpack does not own,
+ * so the root is never walked. Instead:
+ *
+ * - `nativeFiles` (plugin-relative manifest, MCP, hooks, and extension
+ *   paths) are always scanned, because the host reads them from a root
+ *   plugin whoever wrote them.
+ * - With managed state, the managed manifest's file list covers the rest of
+ *   the output (the engine adds it), so nothing else is scanned.
+ * - Without managed state, the recognized component directories and static
+ *   files are scanned as the best available guess at the plugin's output.
+ */
+export function pluginScanPaths(
+  root: string,
+  pluginDir: string,
+  nativeFiles: readonly string[],
+  context: OutputValidationContext,
+): string[] {
+  if (path.resolve(pluginDir) !== path.resolve(root)) {
+    return [pluginDir];
+  }
+  const fallback = context.hasManagedState
+    ? []
+    : [...componentDirs, ...staticFiles];
+  return [...nativeFiles, ...fallback].map((entry) =>
+    path.join(pluginDir, entry),
+  );
 }
 
 /** Reads and parses a JSON file, pushing an issue and returning `null` on failure. */
