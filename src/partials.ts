@@ -131,7 +131,8 @@ export function resolvePartials(
   if (!substitutionRunsOn(relativePath)) {
     return value;
   }
-  const text = typeof value === "string" ? value : value.toString("utf8");
+  const text =
+    typeof value === "string" ? value : Buffer.from(value).toString("utf8");
   if (!text.includes(PARTIAL_OPENER)) {
     return value;
   }
@@ -316,6 +317,7 @@ export function findPartialTag(value: FileValue): string | undefined {
   if (typeof value !== "string" && value.includes(0)) {
     return undefined;
   }
-  const text = typeof value === "string" ? value : value.toString("utf8");
+  const text =
+    typeof value === "string" ? value : Buffer.from(value).toString("utf8");
   return PARTIAL_TAG.exec(text)?.[0];
 }
