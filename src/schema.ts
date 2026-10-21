@@ -1,14 +1,16 @@
 import { z } from "zod";
-import { isSafeRelativePath } from "./fs.js";
+import { isSafeRelativeFilePath } from "./fs.js";
 
 /**
  * A path written to or read from disk relative to a root — rejects absolute
- * paths and `..` escapes so a config can't write or read outside it.
+ * paths and `..` escapes so a config can't write or read outside it. Every
+ * field using it is a filesystem path, so a URL-shaped value gets no
+ * exemption: `path.resolve` would read `https://../x` as `../x`.
  */
 const safeRelativePath = z
   .string()
   .refine(
-    isSafeRelativePath,
+    isSafeRelativeFilePath,
     'must be a safe relative path (no absolute paths or ".." segments)',
   );
 

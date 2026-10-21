@@ -729,6 +729,35 @@ describe("config path fields stay inside the project", () => {
       /Invalid pluginpack config in .*: source\.partials: must be a safe relative path/,
     );
   });
+
+  it.each([
+    ["source.partials", `source: { partials: "https://../../outside" },`, ""],
+    [
+      "targets.antigravity.plugins.acme.source",
+      "",
+      `source: "https://../../outside"`,
+    ],
+  ])(
+    "rejects a URL-shaped %s that resolves outside the project",
+    async (field, sourceBlock, pluginSource) => {
+      const root = await makeProject(
+        `    antigravity: {
+      outDir: "out",
+      plugins: { acme: { ${pluginSource || `source: "shared/acme"`} } }
+    }`,
+        {},
+        sourceBlock,
+      );
+      // path.resolve reads the value as a plain path with ".." segments.
+      expect(path.resolve(root, "https://../../outside")).toBe(
+        path.resolve(root, "../outside"),
+      );
+
+      await expect(loadConfig(root)).rejects.toThrow(
+        `${field}: must be a safe relative path`,
+      );
+    },
+  );
 });
 
 describe("walkFiles distinguishes a missing directory from a file", () => {

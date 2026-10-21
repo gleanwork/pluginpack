@@ -236,7 +236,12 @@ export function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-/** Whether `value` is a URL, or a relative path that can't escape its base directory. */
+/**
+ * Whether `value` is a URL, or a relative path that can't escape its base
+ * directory. For a value that may be either, such as a marketplace entry's
+ * `source`. A value that is only ever read from or written to disk must use
+ * `isSafeRelativeFilePath` instead.
+ */
 export function isSafeRelativePath(value: string): boolean {
   if (!value) {
     return false;
@@ -244,11 +249,27 @@ export function isSafeRelativePath(value: string): boolean {
   if (value.startsWith("http://") || value.startsWith("https://")) {
     return true;
   }
-  if (path.isAbsolute(value)) {
+  return isSafeRelativeFilePath(value);
+}
+
+/**
+ * Whether `value` is a relative filesystem path that can't escape its base
+ * directory. Unlike `isSafeRelativePath`, a URL gets no exemption: passed to
+ * `path.resolve`, `https://../../outside` is just a path with a `..` in it,
+ * and lands outside the base.
+ */
+export function isSafeRelativeFilePath(value: string): boolean {
+  if (!value || path.isAbsolute(value)) {
     return false;
   }
   const normalized = path.posix.normalize(value.replace(/\\/g, "/"));
-  return normalized !== ".." && !normalized.startsWith("../");
+  return (
+    normalized !== ".." &&
+    !normalized.startsWith("../") &&
+    !path.posix.isAbsolute(normalized) &&
+    // A Windows drive-letter path resolves as absolute on Windows.
+    !/^[a-zA-Z]:/.test(normalized)
+  );
 }
 
 /** Whether the file at `filePath` exists. */
