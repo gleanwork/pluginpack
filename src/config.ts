@@ -169,7 +169,10 @@ export type SourcePath = {
  * README's layouts also write generated output — only the legacy source
  * plugins a target actually reads through `from`, and directories carrying a
  * `plugin.pluginpack.json` (which generated output never contains), count as
- * source. Guessing from component directories misreads a generated package
+ * source here. Other directories legacy discovery would read as source plugins
+ * are listed by `listUnreferencedSourcePluginDirs`; the delete guard protects
+ * them unless pluginpack recorded writing every file in them, since guessing
+ * from component directories alone misreads a generated package
  * (`plugins/acme/skills/`) as source and blocks its own prune.
  */
 export async function listSourcePaths(
@@ -189,20 +192,7 @@ export async function listSourcePaths(
     add(config.source.plugins, "source.plugins");
   } else {
     const defaultRoot = path.resolve(rootDir, "plugins");
-    const rootPluginId = config.source?.skills
-      ? (config.source.rootPlugin?.id ?? "core")
-      : undefined;
-    const legacyIds = new Set<string>();
-    for (const target of Object.values(config.targets)) {
-      for (const plugin of Object.values(target?.plugins ?? {})) {
-        for (const id of plugin.from ?? []) {
-          // The root skills plugin reads only source.skills, protected above.
-          if (id !== rootPluginId) {
-            legacyIds.add(id);
-          }
-        }
-      }
-    }
+    const legacyIds = referencedLegacyIds(project);
     for (const id of legacyIds) {
       paths.push({
         path: path.join(defaultRoot, id),
@@ -238,6 +228,57 @@ export async function listSourcePaths(
     }
   }
   return paths;
+}
+
+/**
+ * Legacy source plugin ids a target reads through `from`, except the root
+ * skills plugin, which reads only `source.skills`.
+ */
+function referencedLegacyIds(project: ResolvedProjectConfig): Set<string> {
+  const { config } = project;
+  const rootPluginId = config.source?.skills
+    ? (config.source.rootPlugin?.id ?? "core")
+    : undefined;
+  const ids = new Set<string>();
+  for (const target of Object.values(config.targets)) {
+    for (const plugin of Object.values(target?.plugins ?? {})) {
+      for (const id of plugin.from ?? []) {
+        if (id !== rootPluginId) {
+          ids.add(id);
+        }
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Directories under the default `plugins/` root that legacy discovery reads
+ * as source plugins (a component directory, no `plugin.pluginpack.json`) but
+ * that `listSourcePaths` does not already protect, because no target reads
+ * them through `from`. Such a directory is either authored source nobody
+ * references yet or a generated package (`plugins/acme/skills/` under
+ * `outDir: "."`); the delete guard tells them apart by provenance. Empty when
+ * the config sets `source.plugins`, which is then protected whole.
+ */
+export async function listUnreferencedSourcePluginDirs(
+  project: ResolvedProjectConfig,
+): Promise<string[]> {
+  if (project.config.source?.plugins) {
+    return [];
+  }
+  const defaultRoot = path.resolve(project.rootDir, "plugins");
+  const legacyIds = referencedLegacyIds(project);
+  const dirs: string[] = [];
+  for (const dir of await listSourcePluginDirs(defaultRoot)) {
+    if (
+      !legacyIds.has(path.basename(dir)) &&
+      !(await exists(path.join(dir, "plugin.pluginpack.json")))
+    ) {
+      dirs.push(dir);
+    }
+  }
+  return dirs;
 }
 
 /**

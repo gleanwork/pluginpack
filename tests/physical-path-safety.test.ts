@@ -224,6 +224,56 @@ describe("the delete guard protects source, not generated packages under plugins
   });
 });
 
+describe("the delete guard protects discovered legacy sources nothing references", () => {
+  const generatedElsewhere = `    antigravity: {
+      outDir: ".",
+      plugins: { acme: { source: "shared/acme", path: "generated" } }
+    }`;
+  const authored = {
+    plugins: {
+      authored: {
+        skills: {
+          alpha: { "SKILL.md": skill("alpha") },
+          beta: { "SKILL.md": skill("beta") },
+        },
+      },
+    },
+  };
+
+  it("refuses to clean one that a version 1 manifest names", async () => {
+    const root = await makeProject(generatedElsewhere, authored);
+    await writeManifest(root, ".", "antigravity", [
+      "plugins/authored/skills/alpha/SKILL.md",
+    ]);
+
+    await expect(clean({ cwd: root })).rejects.toThrow(
+      /Refusing to clean 1 path\(s\)[\s\S]*plugins\/authored\/skills\/alpha\/SKILL\.md -> resolves inside .*plugins\/authored/,
+    );
+    await access(path.join(root, "plugins/authored/skills/alpha/SKILL.md"));
+  });
+
+  it("refuses to clean one holding a file no manifest records writing", async () => {
+    const root = await makeProject(generatedElsewhere, authored);
+    const manifestPath = path.join(root, managedManifestPath("antigravity"));
+    await mkdir(path.dirname(manifestPath), { recursive: true });
+    await writeFile(
+      manifestPath,
+      json({
+        version: 2,
+        target: "antigravity",
+        files: ["plugins/authored/skills/alpha/SKILL.md"],
+        sha256: { "plugins/authored/skills/alpha/SKILL.md": "0".repeat(64) },
+      }),
+    );
+
+    await expect(clean({ cwd: root })).rejects.toThrow(
+      /Refusing to clean 1 path\(s\)[\s\S]*resolves inside .*plugins\/authored/,
+    );
+    await access(path.join(root, "plugins/authored/skills/alpha/SKILL.md"));
+    await access(path.join(root, "plugins/authored/skills/beta/SKILL.md"));
+  });
+});
+
 describe("source protection compares physical paths", () => {
   async function aliasedSource(): Promise<string> {
     const root = await makeProject(`    "agent-plugins": {

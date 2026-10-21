@@ -9,9 +9,10 @@ import {
   physicalKey,
   resolveInside,
   toPosix,
+  walkFiles,
   writeArtifact,
 } from "./fs.js";
-import { listSourcePaths } from "./config.js";
+import { listSourcePaths, listUnreferencedSourcePluginDirs } from "./config.js";
 import type {
   Artifact,
   CleanupEntry,
@@ -465,6 +466,7 @@ export async function buildDeleteGuard(
   const protectedRoots = (await listSourcePaths(project)).map(
     (source) => source.path,
   );
+  protectedRoots.push(...(await listDiscoveredSourceDirs(project)));
   // An outDir can sit outside the source repo (a sibling output repo), where
   // none of the source paths above apply. Its version-control data is the one
   // thing there no manifest should ever name.
@@ -478,6 +480,51 @@ export async function buildDeleteGuard(
     configPath: path.resolve(project.configPath),
     force,
   };
+}
+
+/**
+ * The directories legacy discovery reads as source plugins that nothing else
+ * protects, minus the ones pluginpack provably generated.
+ *
+ * A directory counts as generated only when every file in it (managed
+ * manifests aside) is listed, with a recorded hash, in a configured target's
+ * managed manifest: pluginpack wrote each of those files. Anything else is
+ * treated as authored and protected, including a directory a version 1
+ * manifest names (it records paths, not what wrote them) and one holding any
+ * file no manifest lists. Absence of a `from` reference is not evidence:
+ * authored legacy source does not need one to exist.
+ */
+async function listDiscoveredSourceDirs(
+  project: ResolvedProjectConfig,
+): Promise<string[]> {
+  const dirs = await listUnreferencedSourcePluginDirs(project);
+  if (dirs.length === 0) {
+    return [];
+  }
+  const written = new Set<string>();
+  for (const [name, target] of Object.entries(project.config.targets)) {
+    if (!target) {
+      continue;
+    }
+    const outDir = path.resolve(project.rootDir, target.outDir);
+    const manifest = await readManagedManifest(
+      outDir,
+      name as TargetName,
+    ).catch(() => null);
+    for (const file of Object.keys(manifest?.sha256 ?? {})) {
+      written.add(path.resolve(outDir, file));
+    }
+  }
+  const protectedDirs: string[] = [];
+  for (const dir of dirs) {
+    const files = (await walkFiles(dir).catch(() => null))?.filter(
+      (file) => !isInside(path.join(dir, ".pluginpack"), file),
+    );
+    if (!files?.length || !files.every((file) => written.has(file))) {
+      protectedDirs.push(dir);
+    }
+  }
+  return protectedDirs;
 }
 
 async function assertNoProtectedDeletions(
@@ -511,6 +558,8 @@ async function assertNoProtectedDeletions(
     `Refusing to ${command} ${blocked.length} path(s) that resolve inside your source tree or config:\n` +
       `${blocked.map(({ file, root }) => `  ${file} -> resolves inside ${root}`).join("\n")}\n` +
       `This usually means a target outDir overlaps source, overrides, repositoryFiles, or legacy source config. ` +
+      `A plugins/<name> directory with a component directory counts as legacy source unless pluginpack recorded writing every file in it ` +
+      `(a version 2 managed manifest lists each file with a hash). ` +
       `Fix the config, or re-run with --force to delete anyway.`,
   );
 }
