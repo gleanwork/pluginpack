@@ -150,10 +150,14 @@ verified 2026-10-02).
 ## Evidence refresh cadence
 
 Re-verify every citation and vendored schema at least every 90 days.
-`tests/evidence-freshness.test.ts` runs in `npm test` and CI. It checks every
-literal `verifiedAt` in `src/` and the `Verified-at` date in each vendored
-schema directory's `SOURCE.md`. It fails when a date is more than 90 days old,
-is in the future, or is invalid. Tests do not fetch the network.
+The `Evidence freshness` workflow runs `tests/evidence-freshness.test.ts` every
+Monday and on demand. It checks every literal `verifiedAt` in `src/` and the
+`Verified-at` date in each vendored schema directory's `SOURCE.md`. It fails
+when a date is more than 90 days old, is in the future, or is invalid. The date
+checks do not run in `npm test`, because their result depends on the day rather
+than the change. Run them locally with
+`env PLUGINPACK_CHECK_FRESHNESS=1 npx vitest run tests/evidence-freshness.test.ts`.
+The tests do not fetch the network.
 
 To refresh a citation, open its `documentationUrl`, check the claim against the
 current product docs, and run the affected target's conformance tests. Update
@@ -162,7 +166,7 @@ format conflict here if the upstream behavior changed.
 
 To refresh a vendored schema, follow the fetch commands in its `SOURCE.md`,
 diff the fetched bytes against the pinned copy, and run
-`npx vitest run tests/conformance.test.ts tests/evidence-freshness.test.ts`.
+`npx vitest run tests/conformance.test.ts` and the freshness command above.
 Record the checked commit and update `Verified-at: YYYY-MM-DD` in `SOURCE.md`,
 even when the bytes are unchanged. Do not advance dates just to pass CI.
 
