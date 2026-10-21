@@ -144,17 +144,17 @@ export const antigravity: PluginTargetDefinition = {
       claim:
         "plugin.json schema (name required, description optional, additionalProperties: false)",
       documentationUrl: "https://antigravity.google/docs/cli/plugins",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
     {
       claim: "hooks.json lives at the plugin root, not in a hooks/ directory",
       documentationUrl: "https://antigravity.google/docs/ide/plugins",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
     {
       claim: "agents/ is a supported component (subagent definition templates)",
       documentationUrl: "https://antigravity.google/docs/cli/plugins",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
   ],
 };

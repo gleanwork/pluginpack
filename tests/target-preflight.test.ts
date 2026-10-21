@@ -3,7 +3,8 @@ import path from "node:path";
 import { Project, type ProjectArgs } from "fixturify-project";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { build } from "../src/build.js";
-import { validateOutput } from "../src/adapters.js";
+import { emitTarget, validateOutput } from "../src/adapters.js";
+import { loadConfig } from "../src/config.js";
 import type { TargetName } from "../src/types.js";
 
 type DirJSON = NonNullable<ProjectArgs["files"]>;
@@ -37,30 +38,62 @@ async function setup(targets: string, source: DirJSON = {}): Promise<string> {
 }
 
 describe("target build and validation agree", () => {
-  it("does not point Copilot at a nonexistent hooks/hooks.json", async () => {
-    const root = await setup(
-      'copilot: { outDir: "out", plugins: { acme: { source: "shared/acme" } } }',
-      {
-        hooks: { "before-run.sh": "#!/bin/sh\necho ready\n" },
-      },
-    );
-    await build({ cwd: root });
-    const manifest = JSON.parse(
-      await readFile(path.join(root, "out/plugins/acme/plugin.json"), "utf8"),
-    ) as Record<string, unknown>;
-    expect(manifest).not.toHaveProperty("hooks");
-    await expect(
-      validateOutput("copilot", path.join(root, "out")),
-    ).resolves.toEqual({ ok: true, issues: [] });
-  });
+  it.each(["copilot", "codex"] as const)(
+    "does not point %s at a nonexistent hooks/hooks.json",
+    async (target) => {
+      const root = await setup(
+        `${target}: { outDir: "out", ${target === "codex" ? 'format: "legacy",' : ""} plugins: { acme: { source: "shared/acme", ${target === "codex" ? ENTRY : ""} } } }`,
+        {
+          hooks: { "before-run.sh": "#!/bin/sh\necho ready\n" },
+        },
+      );
+      await build({ cwd: root });
+      const manifest = JSON.parse(
+        await readFile(
+          path.join(
+            root,
+            target === "codex"
+              ? "out/plugins/acme/.codex-plugin/plugin.json"
+              : "out/plugins/acme/plugin.json",
+          ),
+          "utf8",
+        ),
+      ) as Record<string, unknown>;
+      expect(manifest).not.toHaveProperty("hooks");
+      await expect(
+        validateOutput(target, path.join(root, "out")),
+      ).resolves.toEqual({ ok: true, issues: [] });
+    },
+  );
 
   it.each<TargetName>(["claude", "cursor"])(
-    "validates %s output with a custom marketplaceDir",
+    "rejects a custom %s marketplaceDir before writing anything",
     async (target) => {
       const root = await setup(
         `${target}: { outDir: "out", marketplaceDir: "catalog/native", plugins: { acme: { source: "shared/acme" } } }`,
       );
+      const defaultDir =
+        target === "claude" ? ".claude-plugin" : ".cursor-plugin";
+      await expect(build({ cwd: root })).rejects.toThrow(
+        new RegExp(
+          `pluginpack.config.ts[\\s\\S]*targets\\.${target}\\.marketplaceDir[\\s\\S]*${defaultDir}/`,
+        ),
+      );
+      await expect(access(path.join(root, "out"))).rejects.toThrow();
+    },
+  );
+
+  it.each(["claude", "cursor"] as const)(
+    "accepts the fixed %s marketplaceDir and validates without managed state",
+    async (target) => {
+      const defaultDir =
+        target === "claude" ? ".claude-plugin" : ".cursor-plugin";
+      const root = await setup(
+        `${target}: { outDir: "out", marketplaceDir: "${defaultDir}", plugins: { acme: { source: "shared/acme" } } }`,
+      );
       await build({ cwd: root });
+      const { rm } = await import("node:fs/promises");
+      await rm(path.join(root, "out/.pluginpack"), { recursive: true });
       await expect(
         validateOutput(target, path.join(root, "out")),
       ).resolves.toEqual({ ok: true, issues: [] });
@@ -68,18 +101,16 @@ describe("target build and validation agree", () => {
   );
 
   it.each(["claude", "cursor"] as const)(
-    "uses the managed %s marketplace pair rather than an unrelated root file",
+    "rejects a custom %s marketplaceDir at the emit seam too",
     async (target) => {
-      const defaultDir =
-        target === "claude" ? ".claude-plugin" : ".cursor-plugin";
       const root = await setup(
-        `${target}: { outDir: "out", marketplaceDir: "catalog/native", rootFiles: { "${defaultDir}/marketplace.json": "unrelated.json" }, plugins: { acme: { source: "shared/acme" } } }`,
+        `${target}: { outDir: "out", plugins: { acme: { source: "shared/acme" } } }`,
       );
-      await writeFile(path.join(root, "unrelated.json"), "{}\n");
-      await build({ cwd: root });
+      const loaded = await loadConfig(root);
+      loaded.config.targets[target]!.marketplaceDir = "catalog/native";
       await expect(
-        validateOutput(target, path.join(root, "out")),
-      ).resolves.toEqual({ ok: true, issues: [] });
+        emitTarget(loaded, target, path.join(root, "out")),
+      ).rejects.toThrow(/marketplaceDir.*requires/);
     },
   );
 
@@ -176,11 +207,77 @@ describe("target build and validation agree", () => {
         },
       );
       await build({ cwd: root });
-      expect(warn.mock.calls.flat().join("\n")).toMatch(
-        /skills\/snake_case\/SKILL.md.*name.*hyphens/,
+      const message = warn.mock.calls.flat().join("\n");
+      expect(message).toMatch(/skills\/snake_case\/SKILL.md.*name.*hyphens/);
+      expect(message).toContain(
+        `Warning: Target "${target}" shared/acme/skills/snake_case/SKILL.md:`,
       );
+      expect(message).not.toContain('Plugin "acme"');
+      expect(message).not.toContain("acme: skill");
     },
   );
+
+  it("points skill warnings at the canonical override that supplied the file", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const root = await setup(
+      `codex: { outDir: "out", plugins: { acme: { source: "shared/acme", overrides: "overrides/acme", ${ENTRY} } } }`,
+    );
+    await mkdir(path.join(root, "overrides/acme/skills/search"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "overrides/acme/skills/search/SKILL.md"),
+      SKILL.replace("name: search", "name: snake_case"),
+    );
+    await build({ cwd: root });
+    const messages = warn.mock.calls.flat().join("\n");
+    expect(messages).toContain(
+      'Target "codex" overrides/acme/skills/search/SKILL.md: Skill',
+    );
+    expect(messages).not.toContain("shared/acme/skills/search/SKILL.md");
+  });
+
+  it("points skill warnings at an additionalFiles source rather than its output name", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const root = await setup(
+      `codex: { outDir: "out", plugins: { acme: { source: "shared/acme", ${ENTRY} } } }`,
+      {
+        "plugin.pluginpack.json": JSON.stringify({
+          additionalFiles: { "skills/snake_case/SKILL.md": "instructions.md" },
+        }),
+        "instructions.md": SKILL.replace("name: search", "name: snake_case"),
+      },
+    );
+    await build({ cwd: root });
+    expect(warn.mock.calls.flat().join("\n")).toContain(
+      'Target "codex" shared/acme/instructions.md: Skill',
+    );
+  });
+
+  it("points legacy skill warnings at their target-specific source override", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const root = await setup(
+      `codex: { outDir: "out", plugins: { acme: { from: ["acme"], ${ENTRY} } } }`,
+    );
+    await mkdir(path.join(root, "plugins/acme/skills/search"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "plugins/acme/targets/codex/skills/search"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "plugins/acme/skills/search/SKILL.md"),
+      SKILL,
+    );
+    await writeFile(
+      path.join(root, "plugins/acme/targets/codex/skills/search/SKILL.md"),
+      SKILL.replace("name: search", "name: snake_case"),
+    );
+    await build({ cwd: root });
+    expect(warn.mock.calls.flat().join("\n")).toContain(
+      'Target "codex" plugins/acme/targets/codex/skills/search/SKILL.md: Skill',
+    );
+  });
 
   it("does not warn when merged Codex entry fields are supplied", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

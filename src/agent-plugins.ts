@@ -66,6 +66,8 @@ export const packageLayout = {
  * discovered from fixed locations, so the manifest never points at them.
  */
 export function buildPackageManifest({
+  target,
+  sourceFile,
   metadata,
   version,
   pluginName,
@@ -84,10 +86,16 @@ export function buildPackageManifest({
       continue;
     }
     const issues: ValidationIssue[] = [];
-    validateSkillContents(contents.toString(), skill[1], pluginName, issues);
+    validateSkillContents(
+      contents.toString(),
+      skill[1],
+      pluginName,
+      issues,
+      "Skill",
+    );
     for (const issue of issues) {
       console.warn(
-        `Warning: Plugin "${pluginName}" ${file}: ${issue.message} Fix the YAML "name" and "description" fields and make the name match its directory before publishing.`,
+        `Warning: Target "${target}" ${sourceFile(file)}: ${issue.message} Fix the YAML "name" and "description" fields and make the name match its directory before publishing.`,
       );
     }
   }
@@ -388,8 +396,8 @@ function validateSkillContents(
   directoryName: string,
   pluginName: string,
   issues: ValidationIssue[],
+  where = `${pluginName}: skill "skills/${directoryName}"`,
 ): void {
-  const where = `${pluginName}: skill "skills/${directoryName}"`;
   let frontmatter: Record<string, unknown>;
   try {
     frontmatter = parseMatter(contents).data;

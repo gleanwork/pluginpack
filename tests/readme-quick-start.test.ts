@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   mkdtemp,
   mkdir,
@@ -72,11 +72,20 @@ it("materializes the README Quick Start and runs build and validate for every co
   for (const command of commands!.split("\n")) {
     expect(command).toMatch(/^npx pluginpack /);
     const args = command.slice("npx pluginpack ".length).split(" ");
-    execFileSync(process.execPath, [path.join(root, "dist/cli.js"), ...args], {
-      cwd: fixture,
-      encoding: "utf8",
-      stdio: "pipe",
-    });
+    const result = spawnSync(
+      process.execPath,
+      [path.join(root, "dist/cli.js"), ...args],
+      {
+        cwd: fixture,
+        encoding: "utf8",
+        stdio: "pipe",
+      },
+    );
+    expect(
+      result.status,
+      `${command}\n${result.stdout}\n${result.stderr}`,
+    ).toBe(0);
+    expect(result.stderr, command).toBe("");
     if (args[0] === "validate")
       validated.push(args[args.indexOf("--target") + 1]);
   }
@@ -92,6 +101,23 @@ it("documents oracle strength and the current CLI and target names", async () =>
     ?.split("\n## Agent Plugins")[0];
   expect(targets).toContain("CONFORMANCE.md#oracles-the-harness-uses");
   expect(readme).toMatch(/alt="[^"]*Codex[^"]*Agent Plugins/);
+  const hero = await readFile(
+    path.join(root, "assets/pluginpack-flow.svg"),
+    "utf8",
+  );
+  for (const label of [
+    "Claude",
+    "Cursor",
+    "Antigravity",
+    "Copilot",
+    "Codex",
+    "Agent Plugins",
+  ]) {
+    expect(hero).toContain(`>${label}</text>`);
+  }
+  expect(readme).toContain("assets/Logo.png");
+  expect(readme).toContain("assets/logo.png");
+  expect(readme).not.toContain("With a custom `marketplaceDir`, retain");
   expect(readme).not.toContain("Files are emitted verbatim at the plugin root");
   expect(readme).toMatch(/clean --target codex`[\s\S]*?before removing it/);
   expect(readme).toContain("clean --target agent-plugins");

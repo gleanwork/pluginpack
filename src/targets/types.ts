@@ -11,6 +11,9 @@ import type {
 
 /** Inputs available when building a single plugin's own manifest file. */
 export type ManifestBuildContext = {
+  target: TargetName;
+  /** Resolve an authored file for a diagnostic, relative to the config root. */
+  sourceFile: (file: string) => string;
   metadata: Metadata | undefined;
   version: string;
   pluginName: string;

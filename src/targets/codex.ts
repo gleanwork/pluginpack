@@ -303,7 +303,7 @@ export const codexMarketplace = {
     citation: {
       claim: "codex plugin marketplace add syntax",
       documentationUrl: "https://learn.chatgpt.com/codex/developer-commands",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
   },
 
@@ -369,6 +369,7 @@ const codexLegacy: PluginTargetDefinition = {
     pluginName,
     pluginConfig,
     componentDirs,
+    pluginFiles,
     mcpServers,
   }) => {
     const manifest: Record<string, unknown> = {
@@ -384,7 +385,7 @@ const codexLegacy: PluginTargetDefinition = {
     if (componentDirs.has("skills")) {
       manifest.skills = "./skills/";
     }
-    if (componentDirs.has("hooks")) {
+    if (pluginFiles.has("hooks/hooks.json")) {
       manifest.hooks = "./hooks/hooks.json";
     }
     if (mcpServers) {

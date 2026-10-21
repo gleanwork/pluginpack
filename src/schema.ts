@@ -1,3 +1,4 @@
+import path from "node:path";
 import { z } from "zod";
 import { isSafeRelativePath } from "./fs.js";
 
@@ -188,6 +189,29 @@ const targetSchema = z.object({
   repositoryFiles: safeRelativePath.optional(),
 });
 
+/** The native Claude and Cursor discovery paths are not configurable. */
+export function marketplaceDirProblem(
+  target: string,
+  directory: string | undefined,
+): string | undefined {
+  const required =
+    target === "claude"
+      ? ".claude-plugin"
+      : target === "cursor"
+        ? ".cursor-plugin"
+        : undefined;
+  if (
+    !required ||
+    directory === undefined ||
+    path.posix.normalize(directory).replace(/\/$/, "") === required
+  ) {
+    return undefined;
+  }
+  return target === "claude"
+    ? 'Claude Code requires ".claude-plugin/". Remove marketplaceDir or set it to ".claude-plugin". Its validator reports: "No manifest found in directory. Expected .claude-plugin/marketplace.json or .claude-plugin/plugin.json". See https://code.claude.com/docs/en/plugins-reference.'
+    : 'Cursor requires ".cursor-plugin/". Remove marketplaceDir or set it to ".cursor-plugin". The host docs say "Place it at .cursor-plugin/marketplace.json". See https://cursor.com/docs/reference/plugins.';
+}
+
 /**
  * The root `pluginpack.config.ts` schema.
  *
@@ -216,6 +240,19 @@ const configSchema = z
     }),
   })
   .superRefine((config, ctx) => {
+    for (const [target, targetConfig] of Object.entries(config.targets)) {
+      const problem = marketplaceDirProblem(
+        target,
+        targetConfig?.marketplaceDir,
+      );
+      if (problem) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["targets", target, "marketplaceDir"],
+          message: problem,
+        });
+      }
+    }
     // updateCheck emits a session-start hook; only claude and cursor run hooks.
     for (const target of [
       "copilot",

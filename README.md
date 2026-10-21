@@ -294,7 +294,7 @@ Each target compiles the same source into one app's native plugin layout:
 | `codex`         | [OpenAI Codex / ChatGPT plugins](https://developers.openai.com/codex/plugins/build) | `.agents/plugins/marketplace.json`; an [Agent Plugins](#agent-plugins) package per plugin (`plugin.json` + optional `mcp.json`)                                     |
 | `agent-plugins` | [Agent Plugins 1.0](https://agent-plugins.org/specification)                        | a portable package per plugin under `plugins/<name>/`; no marketplace unless `clients` is set ([one package for several clients](#one-package-for-several-clients)) |
 
-> **Heads up:** targets that write the same marketplace file need distinct `outDir`s (or separate repos): `claude` and `copilot` both write `.claude-plugin/marketplace.json`; `agent-plugins` with `clients.codex` writes the `codex` target's `.agents/plugins/marketplace.json`; and with `clients.copilot` it writes the `copilot` target's `.github/plugin/marketplace.json`. `build` errors on overlapping output paths.
+> **Heads up:** targets that write the same marketplace file need distinct `outDir`s (or separate repos): `claude` and `copilot` both write `.claude-plugin/marketplace.json`; `agent-plugins` with `clients.codex` writes the `codex` target's `.agents/plugins/marketplace.json`; and with `clients.copilot` it writes the `copilot` target's `.github/plugin/marketplace.json`. `build` errors on overlapping output paths. Collision checks normalize Unicode to NFC and ignore case on every filesystem: `assets/Logo.png` and `assets/logo.png` collide even on a case-sensitive volume. Rename one file so the output stays portable.
 
 Oracle strength differs by target. See [the conformance oracles](./CONFORMANCE.md#oracles-the-harness-uses): Claude uses its CLI validator, Cursor uses Glean-authored schemas, and Codex and Agent Plugins use official package schemas. Codex and Copilot marketplace checks and Antigravity layout checks use structural assertions against product docs or published examples.
 
@@ -656,26 +656,28 @@ rest of the artifact.
 
 **`targets.<name>`** — `<name>` is one of `cursor`, `claude`, `antigravity`, `copilot`, `codex`, `agent-plugins`.
 
-| Field              | Type                            | Required | Meaning                                                                                                                                                |
-| ------------------ | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `outDir`           | string                          | yes      | Output directory for this target, relative to the config root.                                                                                         |
-| `format`           | `"agent-plugins"` \| `"legacy"` | no       | `codex` only. `"legacy"` keeps the `.codex-plugin/plugin.json` layout; default `"agent-plugins"`.                                                      |
-| `plugins`          | record                          | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).                                                               |
-| `marketplaceDir`   | string (safe relative)          | no       | Override the marketplace and plugin-manifest dir for `cursor` / `claude` (defaults: `.cursor-plugin` / `.claude-plugin`).                              |
-| `pluginRoot`       | string (safe relative)          | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                                                                                        |
-| `version`          | string                          | no       | Override the version for this target (defaults to top-level `version`).                                                                                |
-| `manifest`         | object                          | no       | Deep-merged into the generated marketplace manifest. An error on `agent-plugins`; use `clients.<client>.manifest`.                                     |
-| `clients`          | `{ codex?, copilot? }`          | no       | `agent-plugins` only. Clients each package serves; each gets a marketplace. `clients.<client>.manifest` is deep-merged into that client's marketplace. |
-| `ignoredDiffPaths` | string[]                        | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).                                                                        |
-| `repositoryFiles`  | string (safe relative)          | no       | Directory copied recursively into the generated repository root.                                                                                       |
-| `rootFiles`        | record (safe relative)          | no       | Legacy 0.10 output path → source path map; migrate to `repositoryFiles`.                                                                               |
-| `updateCheck`      | `{ repository? }`               | no       | Generate a session-start update-check hook (`claude`/`cursor` only; see **Update Check**).                                                             |
-| `repository`       | string                          | no       | Repo this target's output lives in, for `install-info` (defaults to `metadata.repository`).                                                            |
+| Field              | Type                            | Required | Meaning                                                                                                                                                    |
+| ------------------ | ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `outDir`           | string                          | yes      | Output directory for this target, relative to the config root.                                                                                             |
+| `format`           | `"agent-plugins"` \| `"legacy"` | no       | `codex` only. `"legacy"` keeps the `.codex-plugin/plugin.json` layout; default `"agent-plugins"`.                                                          |
+| `plugins`          | record                          | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).                                                                   |
+| `marketplaceDir`   | string (safe relative)          | no       | Compatibility field for `cursor` / `claude`: only the fixed host directory (`.cursor-plugin` / `.claude-plugin`) is accepted. Other targets do not use it. |
+| `pluginRoot`       | string (safe relative)          | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                                                                                            |
+| `version`          | string                          | no       | Override the version for this target (defaults to top-level `version`).                                                                                    |
+| `manifest`         | object                          | no       | Deep-merged into the generated marketplace manifest. An error on `agent-plugins`; use `clients.<client>.manifest`.                                         |
+| `clients`          | `{ codex?, copilot? }`          | no       | `agent-plugins` only. Clients each package serves; each gets a marketplace. `clients.<client>.manifest` is deep-merged into that client's marketplace.     |
+| `ignoredDiffPaths` | string[]                        | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).                                                                            |
+| `repositoryFiles`  | string (safe relative)          | no       | Directory copied recursively into the generated repository root.                                                                                           |
+| `rootFiles`        | record (safe relative)          | no       | Legacy 0.10 output path → source path map; migrate to `repositoryFiles`.                                                                                   |
+| `updateCheck`      | `{ repository? }`               | no       | Generate a session-start update-check hook (`claude`/`cursor` only; see **Update Check**).                                                                 |
+| `repository`       | string                          | no       | Repo this target's output lives in, for `install-info` (defaults to `metadata.repository`).                                                                |
 
-With a custom `marketplaceDir`, retain `.pluginpack/` alongside the output.
-Validation uses that target's managed paths to locate both the marketplace and
-plugin manifests without scanning unrelated repository files. Without a managed
-manifest, validation uses the target's standard directory.
+Claude Code and Cursor require their native manifest paths: `.claude-plugin/`
+and `.cursor-plugin/`, respectively. Remove a custom `marketplaceDir`; use
+`outDir` to move the generated repository instead. Claude's validator reports
+`No manifest found in directory. Expected .claude-plugin/marketplace.json or .claude-plugin/plugin.json`
+for a relocated manifest. [Cursor's reference](https://cursor.com/docs/reference/plugins)
+says to place the marketplace at `.cursor-plugin/marketplace.json`.
 
 **`targets.<name>.plugins.<name>`**
 

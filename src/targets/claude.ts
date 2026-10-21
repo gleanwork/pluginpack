@@ -1,5 +1,5 @@
 import path from "node:path";
-import { marketplaceDirectory, stripUndefined } from "./shared.js";
+import { stripUndefined } from "./shared.js";
 import {
   error,
   readJson,
@@ -39,12 +39,8 @@ export const claude: PluginTargetDefinition = {
       license: metadata?.license,
       keywords: metadata?.keywords,
     }),
-  manifestPaths: (pluginPath, targetConfig) => [
-    path.join(
-      pluginPath,
-      targetConfig.marketplaceDir ?? ".claude-plugin",
-      "plugin.json",
-    ),
+  manifestPaths: (pluginPath) => [
+    path.join(pluginPath, ".claude-plugin", "plugin.json"),
   ],
 
   buildMarketplaceEntry: ({ pluginName, pluginPath, pluginConfig, manifest }) =>
@@ -65,12 +61,7 @@ export const claude: PluginTargetDefinition = {
       owner: project.config.metadata?.owner ?? project.config.metadata?.author,
       plugins,
     }),
-  marketplacePaths: (targetConfig) => [
-    path.join(
-      targetConfig.marketplaceDir ?? ".claude-plugin",
-      "marketplace.json",
-    ),
-  ],
+  marketplacePaths: () => [path.join(".claude-plugin", "marketplace.json")],
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, ".mcp.json"),
   mcpDialect: "claude",
@@ -99,12 +90,8 @@ export const claude: PluginTargetDefinition = {
       pluginNamePattern,
     ),
 
-  validateOutput: async (root, issues, managedPaths = []) => {
-    const marketplaceDir = marketplaceDirectory(
-      root,
-      ".claude-plugin",
-      managedPaths,
-    );
+  validateOutput: async (root, issues) => {
+    const marketplaceDir = ".claude-plugin";
     const marketplacePath = path.join(root, marketplaceDir, "marketplace.json");
     const ownedPaths = [marketplacePath];
     const marketplace = await readJson(
@@ -180,9 +167,15 @@ export const claude: PluginTargetDefinition = {
   citations: [
     {
       claim:
+        "native validation requires .claude-plugin/marketplace.json or .claude-plugin/plugin.json; marketplaceDir cannot relocate them",
+      documentationUrl: "https://code.claude.com/docs/en/plugins-reference",
+      verifiedAt: "2026-10-21",
+    },
+    {
+      claim:
         "claude plugin validate --strict treats missing version/description/author.name as errors",
       documentationUrl: "https://code.claude.com/docs/en/plugins-reference",
-      verifiedAt: "2026-07-26",
+      verifiedAt: "2026-10-21",
     },
   ],
 };

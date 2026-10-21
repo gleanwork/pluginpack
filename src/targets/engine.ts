@@ -1,10 +1,11 @@
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "../render.js";
 import { readAuthoredPlugin } from "../source.js";
 import { isSafeRelativePath, json, toPosix, walkFiles } from "../fs.js";
 import { renderMcpConfig } from "../mcp.js";
 import { resolvePartials } from "../partials.js";
+import { marketplaceDirProblem } from "../schema.js";
 import { validateNoSurvivingPartialTags } from "./validation-shared.js";
 import { deepMerge, stripUndefined } from "./shared.js";
 import { applyUpdateCheck, pluginAllowsUpdateCheck } from "../update-check.js";
@@ -19,6 +20,53 @@ import type {
   ValidationIssue,
 } from "../types.js";
 import type { PluginTargetDefinition } from "./types.js";
+
+/** Resolve a warning's authored file lazily; valid skills need no extra I/O. */
+function skillSourcePath(
+  project: ResolvedProject,
+  target: TargetName,
+  pluginConfig: EmittedPluginConfig,
+  metadata: Record<string, unknown> | undefined,
+  file: string,
+): string {
+  const candidates: string[] = [];
+  if (pluginConfig.source) {
+    const additional = metadata?.additionalFiles as
+      Record<string, string> | undefined;
+    const source = additional?.[file] ?? file;
+    if (pluginConfig.overrides)
+      candidates.push(
+        path.resolve(project.rootDir, pluginConfig.overrides, source),
+      );
+    candidates.push(path.resolve(project.rootDir, pluginConfig.source, source));
+  } else {
+    for (const id of pluginConfig.from ?? []) {
+      const plugin = project.plugins.get(id);
+      if (!plugin) continue;
+      const source = plugin.manifest.additionalFiles?.[file];
+      const base = source
+        ? path.resolve(plugin.dir, source)
+        : plugin.componentRoots?.skills
+          ? path.join(
+              plugin.componentRoots.skills,
+              file.slice("skills/".length),
+            )
+          : path.join(plugin.dir, file);
+      candidates.push(
+        path.join(path.dirname(base), "targets", target, path.basename(base)),
+        path.join(
+          plugin.dir,
+          "targets",
+          target,
+          path.relative(plugin.dir, base),
+        ),
+        base,
+      );
+    }
+  }
+  const source = candidates.find((candidate) => existsSync(candidate));
+  return source ? toPosix(path.relative(project.rootDir, source)) : file;
+}
 
 /**
  * Resolves a plugin's component set from its own `components` override, or
@@ -98,6 +146,15 @@ export async function emitFromDefinition(
   outDir: string,
   targetDefinition: PluginTargetDefinition,
 ): Promise<Artifact> {
+  const marketplaceProblem = marketplaceDirProblem(
+    target,
+    targetConfig.marketplaceDir,
+  );
+  if (marketplaceProblem) {
+    throw new Error(
+      `${project.configPath}: targets.${target}.marketplaceDir: ${marketplaceProblem}`,
+    );
+  }
   const definition =
     targetDefinition.forConfig?.(targetConfig) ?? targetDefinition;
   const version = targetConfig.version ?? project.config.version;
@@ -257,6 +314,9 @@ export async function emitFromDefinition(
       sourceMetadata,
     );
     const manifest = definition.buildPluginManifest({
+      target,
+      sourceFile: (file) =>
+        skillSourcePath(project, target, pluginConfig, sourceMetadata, file),
       metadata,
       version,
       pluginName,

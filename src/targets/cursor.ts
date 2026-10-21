@@ -1,5 +1,5 @@
 import path from "node:path";
-import { marketplaceDirectory, stripUndefined, titleCase } from "./shared.js";
+import { stripUndefined, titleCase } from "./shared.js";
 import {
   error,
   readJson,
@@ -101,12 +101,8 @@ export const cursor: PluginTargetDefinition = {
     }
     return stripUndefined(manifest);
   },
-  manifestPaths: (pluginPath, targetConfig) => [
-    path.join(
-      pluginPath,
-      targetConfig.marketplaceDir ?? ".cursor-plugin",
-      "plugin.json",
-    ),
+  manifestPaths: (pluginPath) => [
+    path.join(pluginPath, ".cursor-plugin", "plugin.json"),
   ],
 
   buildMarketplaceEntry: ({ pluginName, pluginPath, pluginConfig, manifest }) =>
@@ -129,12 +125,7 @@ export const cursor: PluginTargetDefinition = {
       plugins,
       version,
     }),
-  marketplacePaths: (targetConfig) => [
-    path.join(
-      targetConfig.marketplaceDir ?? ".cursor-plugin",
-      "marketplace.json",
-    ),
-  ],
+  marketplacePaths: () => [path.join(".cursor-plugin", "marketplace.json")],
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, ".mcp.json"),
   mcpDialect: "cursor",
@@ -165,12 +156,8 @@ export const cursor: PluginTargetDefinition = {
       pluginNamePattern,
     ),
 
-  validateOutput: async (root, issues, managedPaths = []) => {
-    const marketplaceDir = marketplaceDirectory(
-      root,
-      ".cursor-plugin",
-      managedPaths,
-    );
+  validateOutput: async (root, issues) => {
+    const marketplaceDir = ".cursor-plugin";
     const marketplacePath = path.join(root, marketplaceDir, "marketplace.json");
     const ownedPaths = [marketplacePath];
     const marketplace = await readJson(
@@ -245,15 +232,21 @@ export const cursor: PluginTargetDefinition = {
       claim:
         "no CLI marketplace-add command exists; Import from Repo is GUI-only",
       documentationUrl: "https://cursor.com/docs/plugins",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
   },
 
   citations: [
     {
+      claim:
+        "marketplace discovery requires .cursor-plugin/marketplace.json in the repository root; per-plugin manifests live in .cursor-plugin/plugin.json",
+      documentationUrl: "https://cursor.com/docs/reference/plugins",
+      verifiedAt: "2026-10-21",
+    },
+    {
       claim: "plugin.json and marketplace.json field shapes",
       documentationUrl: "https://cursor.com/docs/reference/plugins.md",
-      verifiedAt: "2026-07-26",
+      verifiedAt: "2026-10-21",
     },
   ],
 };

@@ -226,7 +226,7 @@ export const copilot: PluginTargetDefinition = {
       claim: "copilot plugin marketplace add / copilot plugin install syntax",
       documentationUrl:
         "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
   },
 
@@ -235,27 +235,27 @@ export const copilot: PluginTargetDefinition = {
       claim: "plugin.json is a required manifest file for every plugin",
       documentationUrl:
         "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
     {
       claim:
         "real published plugins locate plugin.json at .github/plugin/plugin.json, not the plugin root",
       documentationUrl:
         "https://github.com/github/copilot-advanced-security-plugin/blob/main/.github/plugin/plugin.json",
-      verifiedAt: "2026-07-26",
+      verifiedAt: "2026-10-21",
     },
     {
       claim: "agent files must be named NAME.agent.md",
       documentationUrl:
         "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-creating",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
     {
       claim:
         "manifest field paths (agents/skills/hooks/mcpServers) and marketplace.json shape",
       documentationUrl:
         "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
   ],
 };

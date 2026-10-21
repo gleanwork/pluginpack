@@ -1,28 +1,3 @@
-import path from "node:path";
-
-/**
- * Recovers a configured marketplaceDir from this target's managed files.
- * A custom directory holds both the marketplace and each plugin manifest.
- * With no managed manifest, validate the host's standard layout as before.
- */
-export function marketplaceDirectory(
-  root: string,
-  defaultDir: string,
-  managedPaths: string[],
-): string {
-  const candidates = managedPaths
-    .filter((file) => path.basename(file) === "marketplace.json")
-    .map((file) => path.relative(root, path.dirname(file)))
-    .filter((dir) =>
-      managedPaths.some((file) => file.endsWith(path.join(dir, "plugin.json"))),
-    );
-  return candidates.includes(defaultDir)
-    ? defaultDir
-    : candidates.length === 1
-      ? candidates[0]
-      : defaultDir;
-}
-
 /** Deletes keys whose value is `undefined`, mutating and returning `value`. */
 export function stripUndefined<T extends Record<string, unknown>>(value: T): T {
   for (const key of Object.keys(value)) {
