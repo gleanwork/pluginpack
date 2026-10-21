@@ -328,10 +328,7 @@ describe("a stale path another target now owns is left in place", () => {
     }`;
   const marketplace = "out/.agents/plugins/marketplace.json";
 
-  /**
-   * Writes a later revision of the project config under its own name. A new
-   * file per revision, because the config loader caches modules by path.
-   */
+  /** Writes a later revision of the project config under its own name. */
   async function revision(
     root: string,
     name: string,
@@ -756,6 +753,35 @@ describe("config path fields stay inside the project", () => {
       await expect(loadConfig(root)).rejects.toThrow(
         `${field}: must be a safe relative path`,
       );
+    },
+  );
+});
+
+describe("the config loader reads the config file fresh each time", () => {
+  it.each(["pluginpack.config.ts", "pluginpack.config.mjs"])(
+    "builds the edited %s on a second build() in the same process",
+    async (name) => {
+      const antigravity = `    antigravity: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme" } }
+    }`;
+      const root = await makeProject(antigravity, {
+        "pluginpack.config.ts": null as never,
+        [name]: configText(antigravity),
+      });
+      expect(existsSync(path.join(root, "pluginpack.config.ts"))).toBe(
+        name === "pluginpack.config.ts",
+      );
+      const [first] = await build({ cwd: root });
+      expect(first.target).toBe("antigravity");
+
+      await writeFile(
+        path.join(root, name),
+        configText(antigravity.replace("antigravity", "cursor")),
+      );
+      const [second] = await build({ cwd: root });
+
+      expect(second.target).toBe("cursor");
     },
   );
 });

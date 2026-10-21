@@ -69,8 +69,12 @@ export async function loadProjectConfig(
   const resolvedConfigPath = configPath
     ? path.resolve(cwd, configPath)
     : await findConfig(cwd);
+  // No module cache: a long-lived process (a watcher, a test harness) that
+  // calls build() again after the config file changed must get the new
+  // config, not the module jiti evaluated the first time.
   const jiti = createJiti(pathToFileURL(resolvedConfigPath).href, {
     interopDefault: true,
+    moduleCache: false,
   });
   const loaded = await jiti.import(resolvedConfigPath, { default: true });
   const config = parseWithContext(
