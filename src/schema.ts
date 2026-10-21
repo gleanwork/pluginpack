@@ -1,15 +1,17 @@
 import path from "node:path";
 import { z } from "zod";
-import { isSafeRelativePath } from "./fs.js";
+import { isSafeRelativeFilePath } from "./fs.js";
 
 /**
  * A path written to or read from disk relative to a root — rejects absolute
- * paths and `..` escapes so a config can't write or read outside it.
+ * paths and `..` escapes so a config can't write or read outside it. Every
+ * field using it is a filesystem path, so a URL-shaped value gets no
+ * exemption: `path.resolve` would read `https://../x` as `../x`.
  */
 const safeRelativePath = z
   .string()
   .refine(
-    isSafeRelativePath,
+    isSafeRelativeFilePath,
     'must be a safe relative path (no absolute paths or ".." segments)',
   );
 
@@ -42,7 +44,9 @@ const rootPluginSchema = metadataSchema.extend({
 const sourceSchema = z.object({
   plugins: z.string().optional(),
   skills: z.string().optional(),
-  partials: z.string().optional(),
+  // Partials are inlined into shipped output, so reading them from outside the
+  // project would publish files that are not part of it.
+  partials: safeRelativePath.optional(),
   rootPlugin: rootPluginSchema.optional(),
 });
 
@@ -161,6 +165,10 @@ export const CLIENT_ONLY_CONTENT_KINDS = [
 
 /** One target's output configuration: where it's written, and which plugins it emits. */
 const targetSchema = z.object({
+  // Deliberately not safeRelativePath: an outDir may be a sibling output
+  // repository ("../cursor-plugins"). The delete guard protects this
+  // project's source and the outDir's .git; it knows nothing else about an
+  // external repo, which the README calls out.
   outDir: z.string().min(1),
   // codex only: "agent-plugins" (default) emits Agent Plugins packages;
   // "legacy" emits the .codex-plugin layout. See docs/adr/0001.
@@ -215,14 +223,9 @@ export function marketplaceDirProblem(
 /**
  * The root `pluginpack.config.ts` schema.
  *
- * Deliberately not `.strict()`: zod's default `z.object()` silently drops
- * unknown keys rather than erroring, which is the right tradeoff pre-1.0 — it
- * lets a future minor version add an optional config field without that
- * being a breaking change for existing configs. The cost is a typo'd key
- * failing silently instead of loudly; that's an accepted tradeoff, not an
- * oversight. Adding `.strict()` later would itself be a breaking change for
- * anyone currently typo-ing successfully, so this needs to be a deliberate
- * decision made once, not toggled casually.
+ * Keep non-strict parsing: unknown keys are stripped, not rejected. The
+ * config loader warns with their paths so typos do not fail silently.
+ * Manifest and entry records intentionally preserve arbitrary keys.
  */
 const configSchema = z
   .object({
@@ -388,12 +391,16 @@ const mcpManifestSchema = z.object({
 
 export { configSchema, mcpManifestSchema, sourcePluginManifestSchema };
 
-export type Author = z.infer<typeof authorSchema>;
-export type Metadata = z.infer<typeof metadataSchema>;
-export type SourceConfig = z.infer<typeof sourceSchema>;
-export type EmittedPluginConfig = z.infer<typeof emittedPluginSchema>;
-export type UpdateCheckConfig = z.infer<typeof updateCheckSchema>;
-export type TargetConfig = z.infer<typeof targetSchema>;
-export type PluginpackConfig = z.infer<typeof configSchema>;
+// Authoring types describe schema input, so adding a default does not make
+// that field required in existing configs. Parsed project state uses output.
+export type Author = z.input<typeof authorSchema>;
+export type Metadata = z.input<typeof metadataSchema>;
+export type SourceConfig = z.input<typeof sourceSchema>;
+export type EmittedPluginConfig = z.input<typeof emittedPluginSchema>;
+export type UpdateCheckConfig = z.input<typeof updateCheckSchema>;
+export type TargetConfig = z.input<typeof targetSchema>;
+export type PluginpackConfig = z.input<typeof configSchema>;
+/** The validated config, with schema defaults and transforms applied. */
+export type ResolvedPluginpackConfig = z.infer<typeof configSchema>;
 export type SourcePluginManifest = z.infer<typeof sourcePluginManifestSchema>;
 export type McpManifest = z.infer<typeof mcpManifestSchema>;

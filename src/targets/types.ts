@@ -9,6 +9,16 @@ import type {
   ValidationIssue,
 } from "../types.js";
 
+/** What validation knows about the output beyond its files. */
+export type OutputValidationContext = {
+  /**
+   * Whether the output directory has a managed-file manifest for this
+   * target. When it does, validation scans the files it lists; without one,
+   * a target falls back to the paths its layout implies.
+   */
+  hasManagedState: boolean;
+};
+
 /** Inputs available when building a single plugin's own manifest file. */
 export type ManifestBuildContext = {
   target: TargetName;
@@ -190,6 +200,7 @@ export type PluginTargetDefinition = {
   validateOutput: (
     root: string,
     issues: ValidationIssue[],
+    context: OutputValidationContext,
   ) => Promise<string[]>;
 
   installSnippet: InstallSnippetDefinition;

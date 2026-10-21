@@ -3633,14 +3633,11 @@ export default defineConfig({
         },
       ]),
     );
-    // A substituted file type can only reach output with a tag via the
-    // documented escape, so it warns rather than failing.
+    // Build resolves or rejects every tag in a substituted file type, so the
+    // only tag left there is the documented escape, which validate ignores.
     expect(
-      result.issues.filter(
-        (issue) =>
-          issue.level === "warning" && issue.message.includes("NOTES.md"),
-      ),
-    ).toHaveLength(1);
+      result.issues.filter((issue) => issue.message.includes("NOTES.md")),
+    ).toEqual([]);
   });
 
   it("rejects a target that references an unknown source plugin in from:", async () => {

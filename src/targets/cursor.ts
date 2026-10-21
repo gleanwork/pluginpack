@@ -2,6 +2,7 @@ import path from "node:path";
 import { stripUndefined, titleCase } from "./shared.js";
 import {
   error,
+  pluginScanPaths,
   readJson,
   validateBareStringSourceEntry,
   validateFrontmatter,
@@ -12,6 +13,13 @@ import {
 import type { PluginTargetDefinition } from "./types.js";
 
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
+
+/** Plugin-relative files Cursor reads from a plugin, whoever wrote them. */
+const NATIVE_FILES = [
+  ".cursor-plugin/plugin.json",
+  ".mcp.json",
+  "hooks/hooks.json",
+];
 
 /**
  * Top-level `plugin.json` keys per the vendored Cursor plugin schema
@@ -156,7 +164,7 @@ export const cursor: PluginTargetDefinition = {
       pluginNamePattern,
     ),
 
-  validateOutput: async (root, issues) => {
+  validateOutput: async (root, issues, context) => {
     const marketplaceDir = ".cursor-plugin";
     const marketplacePath = path.join(root, marketplaceDir, "marketplace.json");
     const ownedPaths = [marketplacePath];
@@ -187,7 +195,9 @@ export const cursor: PluginTargetDefinition = {
         continue;
       }
       const pluginDir = path.join(root, entry.source);
-      ownedPaths.push(pluginDir);
+      ownedPaths.push(
+        ...pluginScanPaths(root, pluginDir, NATIVE_FILES, context),
+      );
       const manifest = await readJson(
         path.join(pluginDir, marketplaceDir, "plugin.json"),
         `${pluginName} plugin manifest`,

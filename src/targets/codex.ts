@@ -11,6 +11,7 @@ import { stripUndefined } from "./shared.js";
 import {
   error,
   pathExistsSync,
+  pluginScanPaths,
   readJson,
   validateFrontmatter,
   validateHooksShape,
@@ -25,6 +26,19 @@ import type {
 
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 const sourceKinds = new Set(["local", "url", "git-subdir", "npm"]);
+
+/**
+ * Plugin-relative files Codex reads from a plugin, whoever wrote them, in
+ * either layout: the legacy `.codex-plugin/` manifest and `.mcp.json`, or
+ * the Agent Plugins package's `plugin.json` and `mcp.json`.
+ */
+const NATIVE_FILES = [
+  ".codex-plugin/plugin.json",
+  ".mcp.json",
+  packageLayout.manifest,
+  packageLayout.mcp,
+  "hooks/hooks.json",
+];
 
 /**
  * Resolves a marketplace entry's local plugin directory, or `null` when the
@@ -143,7 +157,7 @@ async function validateCodexPlugin(
     ((await exists(path.join(pluginDir, packageLayout.manifest))) &&
       !(await exists(path.join(pluginDir, ".codex-plugin", "plugin.json"))))
   ) {
-    return validatePackage(pluginDir, pluginName, issues);
+    return validatePackage(pluginDir, pluginName, issues, "codex");
   }
   const manifest = await readJson(
     path.join(pluginDir, ".codex-plugin", "plugin.json"),
@@ -242,7 +256,7 @@ export const codexMarketplace = {
   validateManifest: requireName,
   validateMarketplaceEntry: validateCodexEntry,
 
-  validateOutput: async (root, issues) => {
+  validateOutput: async (root, issues, context) => {
     const marketplacePath = path.join(
       root,
       ".agents",
@@ -275,7 +289,9 @@ export const codexMarketplace = {
       if (!pluginDir) {
         continue;
       }
-      ownedPaths.push(pluginDir);
+      ownedPaths.push(
+        ...pluginScanPaths(root, pluginDir, NATIVE_FILES, context),
+      );
       const manifest = await validateCodexPlugin(pluginDir, pluginName, issues);
       if (!manifest) {
         continue;
@@ -425,5 +441,6 @@ export const codex: PluginTargetDefinition = {
   ],
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, packageLayout.mcp),
-  mcpDialect: "agent-plugins",
+  // Agent Plugins plus Codex's per-server extensions["com.openai"] (MCP auth).
+  mcpDialect: "codex",
 };

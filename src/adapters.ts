@@ -49,7 +49,7 @@ export async function validateOutput(
   const root = path.resolve(dir);
   const issues: ValidationIssue[] = [];
   const managed = await readManagedManifest(root, target);
-  const managedPaths = (managed?.files ?? []).map((file) =>
+  const managedPaths = managed?.files.map((file) =>
     path.resolve(root, normalizeManagedPath(file)),
   );
   await validateFromDefinition(root, issues, registry[target], managedPaths);

@@ -28,10 +28,21 @@ const ESCAPE = "\\";
 /**
  * Stands in for a `{{` that is not a partial tag while Mustache renders, so
  * Mustache never treats it as a tag of its own. A private-use code point:
- * never legitimately present in an authored skill file, and
- * `assertNoSentinel` rejects the file outright if it somehow is.
+ * never legitimately present in an authored skill file, and `prepare`
+ * rejects the file outright if it somehow is.
  */
-const SENTINEL = "";
+const SENTINEL = "\uE000";
+
+/**
+ * Stands in for the `{{` of an escaped `\{{> name}}` tag. It is kept apart
+ * from `SENTINEL` so that, after rendering, every `{{>` tag still in the text
+ * is known not to come from an escape (see `substitute`).
+ */
+const ESCAPED_SENTINEL = "\uE001";
+
+const RESERVED_CODE_POINTS = [SENTINEL, ESCAPED_SENTINEL];
+
+const BYTE_ORDER_MARK = "\uFEFF";
 
 /**
  * Loads every file under `partialsDir` into a name -> content map, keyed by
@@ -53,10 +64,35 @@ export async function loadPartials(
     if (partials.has(key)) {
       throw new Error(`Duplicate partial name "${key}" (from "${relative}").`);
     }
-    partials.set(key, await fs.readFile(file, "utf8"));
+    const bytes = await fs.readFile(file);
+    const text = decodeUtf8(bytes);
+    if (text === undefined) {
+      throw new Error(
+        `Partial "${key}" (${relative}) is not valid UTF-8, so inlining it would replace its invalid bytes with U+FFFD. Re-save it as UTF-8.`,
+      );
+    }
+    partials.set(key, normalizePartial(text));
   }
   assertNoPartialCycles(partials);
   return partials;
+}
+
+/**
+ * A partial is inlined mid-file, so a leading byte-order mark would become a
+ * stray U+FEFF in the middle of the including file; it is dropped. Line
+ * endings are stored as LF and converted to the including file's line ending
+ * at substitution time (see `substitute`), so a CRLF partial does not leave
+ * mixed line endings in an LF file, or the reverse.
+ */
+function normalizePartial(text: string): string {
+  const body = text.startsWith(BYTE_ORDER_MARK) ? text.slice(1) : text;
+  return body.replaceAll("\r\n", "\n");
+}
+
+/** Decodes UTF-8, or returns `undefined` if the bytes do not survive a decode/encode round trip. */
+function decodeUtf8(bytes: Uint8Array): string | undefined {
+  const text = Buffer.from(bytes).toString("utf8");
+  return Buffer.from(text, "utf8").equals(bytes) ? text : undefined;
 }
 
 /**
@@ -120,8 +156,10 @@ class UnknownPartialError extends Error {
  *
  * Non-textual paths, and files that never mention a partial tag at all, are
  * returned completely untouched (the original `FileValue`, byte-identical) —
- * so a file that does not use partials cannot be changed by this at all, and
- * pays no lossy UTF-8 round-trip.
+ * so a file that does not use partials cannot be changed by this at all.
+ * A file that does use partials must be valid UTF-8: substituting means
+ * decoding and re-encoding it, which would silently turn every invalid byte
+ * into U+FFFD, so such a file fails the build instead.
  */
 export function resolvePartials(
   relativePath: string,
@@ -131,9 +169,15 @@ export function resolvePartials(
   if (!substitutionRunsOn(relativePath)) {
     return value;
   }
-  const text = typeof value === "string" ? value : value.toString("utf8");
+  const text =
+    typeof value === "string" ? value : Buffer.from(value).toString("utf8");
   if (!text.includes(PARTIAL_OPENER)) {
     return value;
+  }
+  if (typeof value !== "string" && decodeUtf8(value) === undefined) {
+    throw new Error(
+      `Partial substitution failed in "${relativePath}": the file is not valid UTF-8, so substituting its partial tags would replace the invalid bytes with U+FFFD. Re-save it as UTF-8, or remove the partial tags from it.`,
+    );
   }
   try {
     return substitute(text, partials);
@@ -145,9 +189,9 @@ export function resolvePartials(
   }
 }
 
-/** Whether partial substitution runs on files at this path (by extension). */
+/** Whether partial substitution runs on files at this path (by extension, ignoring case). */
 export function substitutionRunsOn(relativePath: string): boolean {
-  return TEXTUAL_EXTENSIONS.includes(path.extname(relativePath));
+  return TEXTUAL_EXTENSIONS.includes(path.extname(relativePath).toLowerCase());
 }
 
 /** The extensions substitution runs on, for error messages (`.md, .mdc, ...`). */
@@ -168,25 +212,48 @@ export function substitutedExtensions(): string {
  *
  * An empty view (`{}`) is always passed, so no config or environment data is
  * ever exposed to interpolation.
+ *
+ * Rendering can still assemble a tag out of pieces: a partial ending in `{`
+ * followed by `{> name}}`, a partial ending in `{{` followed by `> name}}`,
+ * or an extra `{` in front of a tag (`{{{> name}}}`). None of those pieces is
+ * a tag on its own, so a tag built from them would ship unsubstituted. After
+ * rendering, every non-partial `{{` is restored but escaped tags stay behind
+ * `ESCAPED_SENTINEL`, so any `{{> name}}` left in the text is such an
+ * assembled tag, and it fails the build.
+ *
+ * Partials are stored with LF line endings (`normalizePartial`) and written
+ * with the including file's line ending, taken from its first line break.
  */
 function substitute(text: string, partials: Map<string, string>): string {
-  const rendered = mustache.render(prepare(text), {}, (name: string) => {
-    const partial = partials.get(name);
-    if (partial === undefined) {
-      throw new UnknownPartialError(name);
-    }
-    // A partial's own body goes through Mustache too, so it needs the same
-    // treatment as the file including it — otherwise a `{{ var }}` written
-    // inside a partial would still be rendered away.
-    return prepare(partial);
-  });
-  return rendered.replaceAll(SENTINEL, "{{");
+  const lineEnding = /^[^\n]*\r\n/.test(text) ? "\r\n" : "\n";
+  const rendered = mustache
+    .render(prepare(text), {}, (name: string) => {
+      const partial = partials.get(name);
+      if (partial === undefined) {
+        throw new UnknownPartialError(name);
+      }
+      // A partial's own body goes through Mustache too, so it needs the same
+      // treatment as the file including it — otherwise a `{{ var }}` written
+      // inside a partial would still be rendered away.
+      return prepare(
+        lineEnding === "\n" ? partial : partial.replaceAll("\n", lineEnding),
+      );
+    })
+    .replaceAll(SENTINEL, "{{");
+  const assembled = PARTIAL_TAG.exec(rendered)?.[0];
+  if (assembled) {
+    throw new Error(
+      `substituting partials produced the tag "${assembled}", which would ship unsubstituted. It was built from neighboring text, such as a partial ending in "{" or "{{" followed by the rest of a tag, or an extra "{" before a tag. Separate the pieces, or write \\${assembled} to emit the tag literally.`,
+    );
+  }
+  return rendered.replaceAll(ESCAPED_SENTINEL, "{{");
 }
 
 function prepare(text: string): string {
-  if (text.includes(SENTINEL)) {
+  const reserved = RESERVED_CODE_POINTS.find((point) => text.includes(point));
+  if (reserved) {
     throw new Error(
-      "content contains the reserved code point U+E000, which pluginpack uses internally while substituting partials",
+      `content contains the reserved code point U+${reserved.codePointAt(0)?.toString(16).toUpperCase()}, which pluginpack uses internally while substituting partials`,
     );
   }
   return neutralize(text);
@@ -221,7 +288,7 @@ function neutralize(text: string): string {
       );
     }
     out += text.slice(index, isPartialTag ? open - ESCAPE.length : open);
-    out += SENTINEL;
+    out += isPartialTag ? ESCAPED_SENTINEL : SENTINEL;
     index = open + 2;
   }
   return out;
@@ -286,14 +353,17 @@ export type UnsubstitutedPartialTag = {
 };
 
 /**
- * Finds `{{> name}}` tags in emitted files that substitution never ran on.
- * Substitution resolves — or rejects — every tag in the file types it covers
- * (`TEXTUAL_EXTENSIONS`), so the tags left to find are ones authored in (say)
- * a `.yaml` reference file or a `.py` script, which ship through verbatim and
- * silently break whatever reads them. Files substitution *did* run on are
- * excluded deliberately: a tag there can only be the documented `\{{>`
- * escape, which is meant to reach output. Binary files are skipped — a NUL
- * byte is the standard "not text" signal.
+ * Finds `{{> name}}` tags in emitted files that substitution never ran on:
+ * ones authored in (say) a `.yaml` reference file or a `.py` script, which
+ * ship through verbatim and silently break whatever reads them.
+ *
+ * Files substitution ran on are skipped. That is safe only because
+ * `substitute` checks its own output: it fails on any tag left after
+ * rendering that did not come from a `\{{>` escape, including one assembled
+ * from neighboring text. A file with a `.md`-style extension that reaches
+ * the artifact without passing through `resolvePartials` is not covered by
+ * either check. Binary files are skipped — a NUL byte is the standard "not
+ * text" signal.
  */
 export function findUnsubstitutedPartialTags(
   files: Iterable<readonly [string, FileValue]>,
@@ -316,6 +386,7 @@ export function findPartialTag(value: FileValue): string | undefined {
   if (typeof value !== "string" && value.includes(0)) {
     return undefined;
   }
-  const text = typeof value === "string" ? value : value.toString("utf8");
+  const text =
+    typeof value === "string" ? value : Buffer.from(value).toString("utf8");
   return PARTIAL_TAG.exec(text)?.[0];
 }
