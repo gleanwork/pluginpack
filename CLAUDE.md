@@ -34,7 +34,7 @@ Data flows: **config → discover source → collect/render files → emit per t
 diff, prune, and validate all derive from it.
 
 - `src/cli.ts` — commander CLI: `init`, `build`, `validate`, `diff`, `prune`,
-  `clean`, `docs`.
+  `clean`, `install-info`, `docs`.
 - `src/schema.ts` — **zod schemas are the source of truth for config types**;
   the public types are derived with `z.infer`. Edit schemas here, not `types.ts`.
 - `src/types.ts` — non-config types; re-exports the config types from `schema.ts`.

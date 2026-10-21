@@ -14,7 +14,6 @@ export default defineConfig({
       plugins: {
         acme: {
           source: "shared/acme",
-          overrides: "overrides/cursor/acme",
           path: "plugins/cursor/acme",
         },
       },
@@ -41,7 +40,13 @@ export default defineConfig({
     codex: {
       outDir: "plugins/codex",
       plugins: {
-        acme: { source: "shared/acme" },
+        acme: {
+          source: "shared/acme",
+          entry: {
+            policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
+            category: "Productivity",
+          },
+        },
       },
     },
   },
