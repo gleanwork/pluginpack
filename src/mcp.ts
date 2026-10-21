@@ -77,8 +77,10 @@ export function getMcpDialectCitations(dialect: McpDialect): Citation[] {
       ];
     case "verbatim":
       return [];
-    default:
-      return Object.values(nativeDialects[dialect].citations);
+    default: {
+      const { citations, ignoresCwd } = nativeDialects[dialect];
+      return [...Object.values(citations), ...(ignoresCwd ? [ignoresCwd] : [])];
+    }
   }
 }
 
@@ -112,6 +114,7 @@ export function renderMcpConfig(
   for (const [name, server] of Object.entries(servers)) {
     mcpServers[name] = toNativeServer(
       server,
+      dialect,
       rules,
       `${context}: MCP server "${name}"`,
     );
@@ -175,6 +178,13 @@ type NativeDialectRules = {
   types: Record<string, string | null>;
   /** The documentation behind each of the three rules above. */
   citations: Record<"root" | "data" | "types", Citation>;
+  /**
+   * Set when the client ignores a stdio server's `cwd`, with the
+   * documentation behind it: a server with `cwd` is then a build error,
+   * because the server would start in the wrong directory. Unset, `cwd` is
+   * kept, with a `./` path spelled out from the plugin root.
+   */
+  ignoresCwd?: Citation;
 };
 
 const CLAUDE_PLUGINS_REFERENCE =
@@ -212,6 +222,12 @@ const nativeDialects: Record<
         documentationUrl: "https://code.claude.com/docs/en/mcp",
         verifiedAt: "2026-10-21",
       },
+    },
+    ignoresCwd: {
+      claim:
+        'Claude Code resolves ${...} in a plugin MCP stdio server\'s command, args, and env only; "cwd" is not a documented field, and Claude Code 2.1.284 starts the server in the session\'s working directory whatever "cwd" says',
+      documentationUrl: CLAUDE_PLUGINS_REFERENCE,
+      verifiedAt: "2026-10-21",
     },
   },
   cursor: {
@@ -276,11 +292,17 @@ const nativeDialects: Record<
 
 function toNativeServer(
   server: unknown,
+  dialect: string,
   rules: NativeDialectRules,
   context: string,
 ): unknown {
   if (!isObject(server)) {
     return server;
+  }
+  if (rules.ignoresCwd && server.cwd !== undefined) {
+    throw new Error(
+      `${context} has "cwd", but ${rules.client} ignores "cwd" for plugin MCP servers and starts them in the user's working directory. Remove "cwd" and resolve paths in "args" with \${${rules.root.canonical}} instead (for example "args": ["\${${rules.root.canonical}}/server/index.js"]), or put a ${dialect}-only config.json without "cwd" in the ${dialect} plugin's overrides directory (mcp/config.json).`,
+    );
   }
   const rewrite = (value: string) => rewriteNative(value, rules, context);
   const result: Record<string, unknown> = {};

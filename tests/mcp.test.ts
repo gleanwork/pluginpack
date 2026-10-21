@@ -105,19 +105,26 @@ describe("renderMcpConfig: native dialects", () => {
     });
   });
 
+  it("rejects any cwd for claude, because Claude Code ignores it for plugin servers", () => {
+    for (const cwd of [
+      "./server",
+      "./",
+      "${CLAUDE_PLUGIN_ROOT}/server",
+      "/srv",
+    ]) {
+      expect(() =>
+        render({ s: { type: "stdio", command: "node", cwd } }, "claude"),
+      ).toThrow(
+        'Target "t" plugin "p": MCP server "s" has "cwd", but Claude Code ignores "cwd" for plugin MCP servers and starts them in the user\'s working directory. Remove "cwd" and resolve paths in "args" with ${CLAUDE_PLUGIN_ROOT} instead (for example "args": ["${CLAUDE_PLUGIN_ROOT}/server/index.js"]), or put a claude-only config.json without "cwd" in the claude plugin\'s overrides directory (mcp/config.json).',
+      );
+    }
+  });
+
   it("spells out the plugin root for a ./ cwd", () => {
     const servers = {
       s: { type: "stdio", command: "node", cwd: "./server" },
       root: { type: "stdio", command: "node", cwd: "./" },
     };
-    expect(render(servers, "claude").mcpServers).toEqual({
-      s: {
-        type: "stdio",
-        command: "node",
-        cwd: "${CLAUDE_PLUGIN_ROOT}/server",
-      },
-      root: { type: "stdio", command: "node", cwd: "${CLAUDE_PLUGIN_ROOT}" },
-    });
     expect(render(servers, "cursor").mcpServers).toEqual({
       s: { command: "node", cwd: "${CURSOR_PLUGIN_ROOT}/server" },
       root: { command: "node", cwd: "${CURSOR_PLUGIN_ROOT}" },

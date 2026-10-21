@@ -493,6 +493,17 @@ must name a file the plugin ships. If the build output has no such file, the
 build prints a warning, because you can still add the file after the build.
 `validate` fails an Agent Plugins package whose command file is missing.
 
+The `claude` target rejects a stdio server that sets `cwd`. Claude Code
+ignores `cwd` for plugin MCP servers and starts them in the user's working
+directory; it resolves `${CLAUDE_PLUGIN_ROOT}` only in `command`, `args`, and
+`env` ([plugins reference](https://code.claude.com/docs/en/plugins-reference#environment-variables),
+[MCP docs](https://code.claude.com/docs/en/mcp)). Remove `cwd` and write
+plugin paths in `args` with the root variable, for example
+`"args": ["${PLUGIN_ROOT}/server/index.js"]`. If other targets need the
+`cwd`, keep it in the shared `config.json`, set
+`overrides: "overrides/claude/<plugin>"` on the claude plugin, and put a copy
+without `cwd` in `overrides/claude/<plugin>/mcp/config.json`.
+
 A `./bin/server` command or `./server` `cwd` becomes
 `${<root variable>}/bin/server` for targets whose clients don't resolve
 plugin-relative paths. Config already written in

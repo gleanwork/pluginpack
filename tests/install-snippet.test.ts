@@ -98,10 +98,17 @@ describe("install snippet", () => {
       citations.push(...dialectCitations);
     }
     // Each native dialect cites its root-variable, data-variable, and
-    // transport-label rules separately.
-    for (const dialect of ["claude", "cursor", "copilot"] as const) {
+    // transport-label rules separately; claude also cites why it rejects
+    // "cwd".
+    for (const dialect of ["cursor", "copilot"] as const) {
       expect(getMcpDialectCitations(dialect), dialect).toHaveLength(3);
     }
+    expect(getMcpDialectCitations("claude")).toHaveLength(4);
+    expect(getMcpDialectCitations("claude")).toContainEqual(
+      expect.objectContaining({
+        claim: expect.stringContaining('"cwd" is not a documented field'),
+      }),
+    );
     for (const citation of citations) {
       expect(citation.claim).not.toBe("");
       expect(citation.documentationUrl).toMatch(/^https:\/\//);
