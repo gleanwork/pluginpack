@@ -100,7 +100,7 @@ async function planBuildChecked(
     await assertManagedManifestContained(artifact.outDir, artifact.target);
   }
   const owners = new Map<string, TargetName>(claimedElsewhere);
-  for (const [key, claim] of incoming) {
+  for (const [key, claim] of incoming.byEntry) {
     owners.set(key, claim.target);
   }
   const prunes: PrunePlan[] = [];
@@ -175,37 +175,57 @@ async function assertNoSelfReferentialRootFiles(
 type Claim = { target: TargetName; absolute: string };
 
 /**
+ * Every path this build writes, keyed two ways. `byWrite` keys the file a
+ * write lands on, with every symlink resolved, the final entry included:
+ * writing through a symlinked `SKILL.md` changes the file it points at. Write
+ * collisions compare these. `byEntry` keys the entry itself (parent resolved,
+ * final name kept), which is what a prune unlinks; ownership compares these.
+ */
+type IncomingPaths = {
+  byWrite: Map<string, Claim>;
+  byEntry: Map<string, Claim>;
+};
+
+/**
  * Two targets pointed at overlapping output paths would silently overwrite each
  * other (and one target's prune could delete the other's files). Catch it.
  * Keys on physical paths, so `out` and `OUT` on a case-insensitive filesystem,
- * or an outDir reached through a symlink, are one path, as they are on disk.
- * Returns the physical-key -> claim map so later checks can reuse it.
+ * an outDir reached through a symlink, or a generated file that is itself a
+ * symlink to another target's file, are one path, as they are on disk.
+ * Returns the keyed claims so later checks can reuse them.
  */
 async function assertNoCrossTargetCollisions(
   artifacts: Artifact[],
-): Promise<Map<string, Claim>> {
-  const owner = new Map<string, Claim>();
+): Promise<IncomingPaths> {
+  const byWrite = new Map<string, Claim>();
+  const byEntry = new Map<string, Claim>();
   const collisions: string[] = [];
   for (const artifact of artifacts) {
     for (const managedPath of artifact.managedPaths) {
       const absolute = path.resolve(artifact.outDir, managedPath);
-      const key = await physicalKey(absolute, { entry: true });
-      const previous = owner.get(key);
+      const claim = { target: artifact.target, absolute };
+      const writeKey = await physicalKey(absolute);
+      const previous = byWrite.get(writeKey);
       if (previous && previous.target !== artifact.target) {
         collisions.push(
           `  ${previous.target} and ${artifact.target}: ${describeAlias(previous.absolute, absolute)}`,
         );
-      } else {
-        owner.set(key, { target: artifact.target, absolute });
+        continue;
+      }
+      byWrite.set(writeKey, claim);
+      const entryKey = await physicalKey(absolute, { entry: true });
+      if (!byEntry.has(entryKey)) {
+        byEntry.set(entryKey, claim);
       }
     }
   }
   if (collisions.length > 0) {
     throw new Error(
-      `Targets write overlapping output paths; give them distinct outDirs:\n${collisions.join("\n")}`,
+      `Targets write overlapping output paths; give them distinct outDirs:\n${collisions.join("\n")}\n` +
+        `If an output path is a symlink to another target's file, replace it with a regular file or remove it.`,
     );
   }
-  return owner;
+  return { byWrite, byEntry };
 }
 
 /**
@@ -224,7 +244,7 @@ async function assertNoCrossTargetCollisions(
 async function assertNoCollisionsWithBuiltTargets(
   project: ResolvedProject,
   targets: TargetName[],
-  incoming: Map<string, Claim>,
+  incoming: IncomingPaths,
 ): Promise<Map<string, TargetName>> {
   const building = new Set(targets);
   const claimed = new Map<string, TargetName>();
@@ -246,7 +266,9 @@ async function assertNoCollisionsWithBuiltTargets(
       const absolute = path.resolve(otherOutDir, normalizeManagedPath(file));
       const key = await physicalKey(absolute, { entry: true });
       claimed.set(key, other);
-      const conflicting = incoming.get(key);
+      const conflicting =
+        incoming.byEntry.get(key) ??
+        incoming.byWrite.get(await physicalKey(absolute));
       if (conflicting) {
         collisions.push(
           `  ${other} (previously built) and ${conflicting.target}: ${describeAlias(absolute, conflicting.absolute)}`,

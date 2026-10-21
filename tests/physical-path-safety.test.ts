@@ -409,6 +409,46 @@ describe("cross-target collision checks compare physical paths", () => {
     },
   );
 
+  it("rejects a generated file that is a symlink to another target's generated file", async () => {
+    const root = await makeProject(
+      `    antigravity: {
+      outDir: "out",
+      plugins: { first: { source: "shared/acme", path: "first" } }
+    },
+    cursor: {
+      outDir: "out",
+      plugins: { second: { source: "shared/other", path: "second" } }
+    }`,
+      {
+        out: {
+          second: { skills: { alpha: { "SKILL.md": "OLD\n" } } },
+          first: { skills: { alpha: {} } },
+        },
+      },
+    );
+    await mkdir(path.join(root, "shared/other/skills/alpha"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "shared/other/skills/alpha/SKILL.md"),
+      skill("alpha").replace("body", "OTHER"),
+    );
+    await symlink(
+      "../../../second/skills/alpha/SKILL.md",
+      path.join(root, "out/first/skills/alpha/SKILL.md"),
+    );
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      /Targets write overlapping output paths[\s\S]*antigravity and cursor: .*out\/first\/skills\/alpha\/SKILL\.md \(same file as .*out\/second\/skills\/alpha\/SKILL\.md\)/,
+    );
+    expect(
+      await readFile(
+        path.join(root, "out/second/skills/alpha/SKILL.md"),
+        "utf8",
+      ),
+    ).toBe("OLD\n");
+  });
+
   it("refuses to clean one target's manifest entries that alias another's through a symlink", async () => {
     const root = await makeProject(codexAndAgentPlugins("out", "alias-out"));
     await mkdir(path.join(root, "out"));
