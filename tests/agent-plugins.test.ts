@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Project, type ProjectArgs } from "fixturify-project";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { build } from "../src/build.js";
 import { validateOutput } from "../src/adapters.js";
 import { loadConfig } from "../src/config.js";
@@ -1055,6 +1055,119 @@ describe("agent-plugins target with clients", () => {
       'other: the Codex marketplace entry name does not match plugin.json name ("acme").',
       'acme: the Copilot marketplace entry\'s source "./plugins" is not an Agent Plugins package in this output.',
       'acme: agent file "com.github.copilot/agents/stray.md" must be named NAME.agent.md for Copilot to load it.',
+    ]);
+  });
+});
+
+describe("MCP config in packages", () => {
+  const openaiAuth = {
+    "com.openai": {
+      auth: { type: "oauth", client: { mode: "dcr" } },
+    },
+  };
+  const remoteWithAuth = {
+    "config.json": `${JSON.stringify({
+      mcpServers: {
+        docs: {
+          type: "streamable-http",
+          url: "https://mcp.acme.example/mcp",
+          extensions: openaiAuth,
+        },
+      },
+    })}\n`,
+  };
+
+  it("carries Codex MCP auth under extensions on the codex target and validates it", async () => {
+    const root = await setup(
+      `
+    codex: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme", ${CODEX_ENTRY} } }
+    }`,
+      { mcp: remoteWithAuth },
+    );
+
+    await build({ cwd: root });
+
+    expect(await readJsonFile(root, "out/plugins/acme/mcp.json")).toEqual({
+      $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+      mcpServers: {
+        docs: {
+          type: "streamable-http",
+          url: "https://mcp.acme.example/mcp",
+          extensions: openaiAuth,
+        },
+      },
+    });
+    await expect(
+      validateOutput("codex", path.join(root, "out")),
+    ).resolves.toMatchObject({ ok: true, issues: [] });
+  });
+
+  it("keeps the strict server shape on the agent-plugins target, even with clients.codex", async () => {
+    for (const clients of ["", "clients: { codex: {} },"]) {
+      const root = await setup(
+        `
+    "agent-plugins": {
+      outDir: "out",
+      ${clients}
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+        { mcp: remoteWithAuth },
+      );
+      await expect(build({ cwd: root })).rejects.toThrow(
+        'MCP server "docs" has field "extensions"',
+      );
+      await project?.dispose();
+      project = undefined;
+    }
+  });
+
+  it("warns at build time when a ./ command names a file the plugin doesn't ship, and validate fails", async () => {
+    const root = await setup(
+      `
+    codex: {
+      outDir: "codex",
+      plugins: { acme: { source: "shared/acme", ${CODEX_ENTRY} } }
+    },
+    claude: {
+      outDir: "claude",
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {
+        scripts: { "server.sh": "#!/bin/sh\n" },
+        mcp: {
+          "config.json": `${JSON.stringify({
+            mcpServers: {
+              shipped: { command: "./scripts/server.sh" },
+              missing: { command: "./bin/missing" },
+              rooted: { command: "${CLAUDE_PLUGIN_ROOT}/bin/also-missing" },
+            },
+          })}\n`,
+        },
+      },
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await build({ cwd: root });
+      const warnings = warn.mock.calls.map((call) => String(call[0]));
+      const fix =
+        'Add the file to the plugin source (an MCP server file goes in mcp/pluginpack.json "files"), or fix the command.';
+      expect(warnings).toEqual(
+        ["claude", "codex"].flatMap((target) => [
+          `Target "${target}" plugin "acme": MCP server "missing" "command" is "./bin/missing", but the plugin does not ship "bin/missing". ${fix}`,
+          `Target "${target}" plugin "acme": MCP server "rooted" "command" is "\${CLAUDE_PLUGIN_ROOT}/bin/also-missing", but the plugin does not ship "bin/also-missing". ${fix}`,
+        ]),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+
+    const result = await validateOutput("codex", path.join(root, "codex"));
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.message)).toEqual([
+      'acme: mcp.json server "missing" "command" is "./bin/missing", but the package has no file "bin/missing" — the client can\'t start the server.',
+      'acme: mcp.json server "rooted" "command" is "./bin/also-missing", but the package has no file "bin/also-missing" — the client can\'t start the server.',
     ]);
   });
 });

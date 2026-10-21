@@ -1,4 +1,6 @@
+import path from "node:path";
 import { isSafeRelativePath } from "./fs.js";
+import type { Citation } from "./targets/types.js";
 
 /**
  * MCP configuration rendering.
@@ -23,15 +25,62 @@ import { isSafeRelativePath } from "./fs.js";
  * - `agent-plugins` — the portable Agent Plugins 1.0 `mcp.json`: `$schema`,
  *   an explicit `type` per server, and full validation against the spec,
  *   because a non-conforming server is silently skipped by clients.
+ * - `codex` — the Agent Plugins dialect plus the per-server
+ *   `extensions["com.openai"]` object Codex reads MCP auth from. The spec's
+ *   closed server shape has no such field, so only Codex-only output may
+ *   carry it (see CONFORMANCE.md, "MCP dialect facts").
  * - `claude`, `cursor`, `copilot` — the client's native dialect.
  * - `verbatim` — emitted exactly as authored, for a client whose dialect
  *   isn't documented.
  */
-export type McpDialect =
-  "agent-plugins" | "claude" | "cursor" | "copilot" | "verbatim";
+export const MCP_DIALECTS = [
+  "agent-plugins",
+  "codex",
+  "claude",
+  "cursor",
+  "copilot",
+  "verbatim",
+] as const;
+
+export type McpDialect = (typeof MCP_DIALECTS)[number];
 
 export const AGENT_PLUGINS_MCP_SCHEMA =
   "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json";
+
+const AGENT_PLUGINS_SPEC_CITATION: Citation = {
+  claim:
+    'mcp.json is closed: each server declares "type" and matches exactly one variant, and an unknown field makes the entry invalid; "command" is one bare or ./ executable token with no placeholder expansion; "args", "env", and "cwd" expand ${PLUGIN_ROOT} and ${PLUGIN_DATA}',
+  documentationUrl: "https://agent-plugins.org/specification",
+  verifiedAt: "2026-10-21",
+};
+
+/** The namespace Codex reads per-server MCP settings from. */
+const CODEX_SERVER_NAMESPACE = "com.openai";
+
+/**
+ * The documentation each dialect's rules are based on. `verbatim` has none:
+ * it exists for clients whose dialect isn't documented.
+ */
+export function getMcpDialectCitations(dialect: McpDialect): Citation[] {
+  switch (dialect) {
+    case "agent-plugins":
+      return [AGENT_PLUGINS_SPEC_CITATION];
+    case "codex":
+      return [
+        AGENT_PLUGINS_SPEC_CITATION,
+        {
+          claim:
+            'Codex reads per-server MCP authentication from extensions["com.openai"].auth on each server in mcp.json, not from plugin.json',
+          documentationUrl: "https://developers.openai.com/codex/plugins/build",
+          verifiedAt: "2026-10-21",
+        },
+      ];
+    case "verbatim":
+      return [];
+    default:
+      return Object.values(nativeDialects[dialect].citations);
+  }
+}
 
 /**
  * Renders authored MCP servers into one dialect's complete config file
@@ -47,12 +96,13 @@ export function renderMcpConfig(
   if (dialect === "verbatim") {
     return { mcpServers: servers };
   }
-  if (dialect === "agent-plugins") {
+  if (dialect === "agent-plugins" || dialect === "codex") {
     const mcpServers: Record<string, unknown> = {};
     for (const [name, server] of Object.entries(servers)) {
       mcpServers[name] = toAgentPluginsServer(
         server,
         `${context}: MCP server "${name}"`,
+        dialect === "codex",
       );
     }
     return { $schema: AGENT_PLUGINS_MCP_SCHEMA, mcpServers };
@@ -67,6 +117,33 @@ export function renderMcpConfig(
     );
   }
   return { mcpServers };
+}
+
+/**
+ * The plugin file each server's `command` names, for commands written as a
+ * `./` path or rooted at a plugin-root variable. `file` is relative to the
+ * plugin root. Commands that aren't a plain path inside the plugin (a bare
+ * name, a data-variable path, an escape) are left to `renderMcpConfig`.
+ */
+export function pluginCommandFiles(
+  servers: Record<string, unknown>,
+): { server: string; command: string; file: string }[] {
+  const result: { server: string; command: string; file: string }[] = [];
+  for (const [server, config] of Object.entries(servers)) {
+    const command = isObject(config) ? config.command : undefined;
+    if (typeof command !== "string") {
+      continue;
+    }
+    const prefix = ["./", ...ROOT_VARIABLES.map((name) => `\${${name}}/`)].find(
+      (candidate) => command.startsWith(candidate),
+    );
+    const rest = prefix === undefined ? "" : command.slice(prefix.length);
+    if (!rest || /\s|\$\{/.test(rest) || !isSafeRelativePath(rest)) {
+      continue;
+    }
+    result.push({ server, command, file: path.posix.normalize(rest) });
+  }
+  return result;
 }
 
 const ROOT_VARIABLES = [
@@ -96,23 +173,47 @@ type NativeDialectRules = {
    * pass through unchanged, and a server without a `type` never gains one.
    */
   types: Record<string, string | null>;
+  /** The documentation behind each of the three rules above. */
+  citations: Record<"root" | "data" | "types", Citation>;
 };
 
+const CLAUDE_PLUGINS_REFERENCE =
+  "https://code.claude.com/docs/en/plugins-reference#environment-variables";
+const CURSOR_PLUGINS_REFERENCE =
+  "https://cursor.com/docs/reference/plugins#mcp-servers";
+const COPILOT_PLUGINS_REFERENCE =
+  "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference";
+
 const nativeDialects: Record<
-  Exclude<McpDialect, "agent-plugins" | "verbatim">,
+  Exclude<McpDialect, "agent-plugins" | "codex" | "verbatim">,
   NativeDialectRules
 > = {
-  // Claude Code: ${CLAUDE_PLUGIN_ROOT} / ${CLAUDE_PLUGIN_DATA}; a missing
-  // `type` means stdio; remote Streamable HTTP is labelled "http".
   claude: {
     client: "Claude Code",
     root: { canonical: "CLAUDE_PLUGIN_ROOT", native: ["CLAUDE_PLUGIN_ROOT"] },
     data: { canonical: "CLAUDE_PLUGIN_DATA", native: ["CLAUDE_PLUGIN_DATA"] },
     types: { "streamable-http": "http" },
+    citations: {
+      root: {
+        claim:
+          "Claude Code expands ${CLAUDE_PLUGIN_ROOT} to the plugin's installed path in an MCP stdio server's command, args, and env",
+        documentationUrl: CLAUDE_PLUGINS_REFERENCE,
+        verifiedAt: "2026-10-21",
+      },
+      data: {
+        claim:
+          "Claude Code expands ${CLAUDE_PLUGIN_DATA} to a persistent per-plugin directory in the same fields",
+        documentationUrl: CLAUDE_PLUGINS_REFERENCE,
+        verifiedAt: "2026-10-21",
+      },
+      types: {
+        claim:
+          'an entry with no "type" is a stdio server; Streamable HTTP is "http", with "streamable-http" accepted as an alias',
+        documentationUrl: "https://code.claude.com/docs/en/mcp",
+        verifiedAt: "2026-10-21",
+      },
+    },
   },
-  // Cursor expands ${CURSOR_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_ROOT}, not the
-  // standard ${PLUGIN_ROOT}; it has no plugin-data variable; it infers the
-  // transport from `command`/`url`.
   cursor: {
     client: "Cursor",
     root: {
@@ -121,9 +222,27 @@ const nativeDialects: Record<
     },
     data: "unsupported",
     types: { stdio: null, http: null, "streamable-http": null },
+    citations: {
+      root: {
+        claim:
+          "Cursor expands ${CURSOR_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_ROOT} in command, args, env values, and cwd, and does not expand the standard ${PLUGIN_ROOT}",
+        documentationUrl: CURSOR_PLUGINS_REFERENCE,
+        verifiedAt: "2026-10-21",
+      },
+      data: {
+        claim:
+          "Cursor does not expand ${PLUGIN_DATA} and documents no plugin-data variable of its own",
+        documentationUrl: CURSOR_PLUGINS_REFERENCE,
+        verifiedAt: "2026-10-21",
+      },
+      types: {
+        claim:
+          "Cursor plugins can infer the transport from command or url instead of declaring it",
+        documentationUrl: CURSOR_PLUGINS_REFERENCE,
+        verifiedAt: "2026-10-21",
+      },
+    },
   },
-  // Copilot-format plugins expand ${PLUGIN_ROOT} and ${CLAUDE_PLUGIN_ROOT};
-  // its plugin-data behaviour isn't documented for this format.
   copilot: {
     client: "Copilot",
     root: {
@@ -132,6 +251,26 @@ const nativeDialects: Record<
     },
     data: "passthrough",
     types: { "streamable-http": "http" },
+    citations: {
+      root: {
+        claim:
+          "Copilot CLI names the plugin root ${PLUGIN_ROOT}, with ${CLAUDE_PLUGIN_ROOT} as an alias (documented for plugin agents' MCP servers and LSP config; the legacy .mcp.json format has no separate list)",
+        documentationUrl: COPILOT_PLUGINS_REFERENCE,
+        verifiedAt: "2026-10-21",
+      },
+      data: {
+        claim:
+          "${PLUGIN_DATA} (aliases ${COPILOT_PLUGIN_DATA}, ${CLAUDE_PLUGIN_DATA}) is documented only for Agent Plugins 1.0 MCP servers, so legacy-format config keeps data variables as authored",
+        documentationUrl: COPILOT_PLUGINS_REFERENCE,
+        verifiedAt: "2026-10-21",
+      },
+      types: {
+        claim:
+          'Copilot CLI reads remote servers labelled "http", "sse", or "streamable-http"',
+        documentationUrl: COPILOT_PLUGINS_REFERENCE,
+        verifiedAt: "2026-10-21",
+      },
+    },
   },
 };
 
@@ -247,11 +386,13 @@ const REMOTE_FIELDS = new Set(["type", "url", "headers"]);
 /**
  * Converts one authored server to the Agent Plugins 1.0 shape and enforces
  * spec §7.2.1 and §9 — each violation would make a conforming client skip
- * the server, so it fails the build here instead.
+ * the server, so it fails the build here instead. With `codexExtensions`,
+ * the server may also carry Codex's `extensions["com.openai"]` object.
  */
 function toAgentPluginsServer(
   server: unknown,
   context: string,
+  codexExtensions: boolean,
 ): Record<string, unknown> {
   if (!isObject(server)) {
     throw new Error(`${context} must be an object.`);
@@ -259,15 +400,55 @@ function toAgentPluginsServer(
   const type = agentPluginsTransport(server, context);
   const allowed = type === "stdio" ? STDIO_FIELDS : REMOTE_FIELDS;
   for (const key of Object.keys(server)) {
+    if (key === "extensions" && codexExtensions) {
+      continue;
+    }
     if (!allowed.has(key)) {
+      const hint =
+        key === "extensions"
+          ? ` Only the codex target emits per-server "extensions" (Codex reads MCP auth from extensions["${CODEX_SERVER_NAMESPACE}"].auth); other Agent Plugins clients skip a server that has them. Remove it here, and put a copy of config.json with it in the codex plugin's overrides directory (mcp/config.json).`
+          : "";
       throw new Error(
-        `${context} has field "${key}", which the Agent Plugins ${type} server shape does not allow (allowed: ${[...allowed].join(", ")}).`,
+        `${context} has field "${key}", which the Agent Plugins ${type} server shape does not allow (allowed: ${[...allowed].join(", ")}).${hint}`,
       );
     }
   }
-  return type === "stdio"
-    ? toAgentPluginsStdio(server, context)
-    : toAgentPluginsRemote(type, server, context);
+  const result =
+    type === "stdio"
+      ? toAgentPluginsStdio(server, context)
+      : toAgentPluginsRemote(type, server, context);
+  if (codexExtensions && server.extensions !== undefined) {
+    result.extensions = codexServerExtensions(server.extensions, context);
+  }
+  return result;
+}
+
+/**
+ * Codex documents only `extensions["com.openai"]` on an MCP server; any
+ * other namespace means nothing in Codex-only output, so it is an error.
+ */
+function codexServerExtensions(
+  value: unknown,
+  context: string,
+): Record<string, unknown> {
+  if (!isObject(value)) {
+    throw new Error(
+      `${context} "extensions" must be an object keyed by extension namespace, such as { "${CODEX_SERVER_NAMESPACE}": { "auth": { ... } } }.`,
+    );
+  }
+  for (const [namespace, data] of Object.entries(value)) {
+    if (namespace !== CODEX_SERVER_NAMESPACE) {
+      throw new Error(
+        `${context} has extensions["${namespace}"]; Codex reads only extensions["${CODEX_SERVER_NAMESPACE}"] on an MCP server. Remove it.`,
+      );
+    }
+    if (!isObject(data)) {
+      throw new Error(
+        `${context} extensions["${CODEX_SERVER_NAMESPACE}"] must be an object.`,
+      );
+    }
+  }
+  return value;
 }
 
 function agentPluginsTransport(
@@ -347,6 +528,13 @@ function agentPluginsCommand(value: unknown, context: string): string {
     );
   }
   if (command.startsWith("./")) {
+    // A space means the author wrote a shell string: clients run the whole
+    // value as one file name.
+    if (/\s/.test(command)) {
+      throw new Error(
+        `${context} "command" is ${JSON.stringify(value)}; Agent Plugins requires a single executable token and runs the whole value as one file name. Move arguments into "args".`,
+      );
+    }
     if (!isSafeRelativePath(command.slice(2)) || command === "./") {
       throw new Error(
         `${context} "command" ${JSON.stringify(value)} must stay inside the plugin root.`,

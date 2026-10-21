@@ -3,7 +3,7 @@ import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "../render.js";
 import { readAuthoredPlugin } from "../source.js";
 import { isSafeRelativePath, json, toPosix } from "../fs.js";
-import { renderMcpConfig } from "../mcp.js";
+import { pluginCommandFiles, renderMcpConfig } from "../mcp.js";
 import { resolvePartials } from "../partials.js";
 import { validateNoSurvivingPartialTags } from "./validation-shared.js";
 import { deepMerge, stripUndefined } from "./shared.js";
@@ -217,6 +217,15 @@ export async function emitFromDefinition(
           ),
         ),
       );
+      // A warning, not an error: the file may be added to the output after
+      // the build (e.g. a compiled binary). `validate` checks the result.
+      for (const { server, command, file } of pluginCommandFiles(mcpServers)) {
+        if (!files.has(toPosix(path.join(pluginPath, file)))) {
+          console.warn(
+            `Target "${target}" plugin "${pluginName}": MCP server "${server}" "command" is ${JSON.stringify(command)}, but the plugin does not ship "${file}". Add the file to the plugin source (an MCP server file goes in mcp/pluginpack.json "files"), or fix the command.`,
+          );
+        }
+      }
     }
 
     const metadata = emittedPluginMetadata(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AGENT_PLUGINS_MCP_SCHEMA,
+  pluginCommandFiles,
   renderMcpConfig,
   type McpDialect,
 } from "../src/mcp.js";
@@ -225,6 +226,16 @@ describe("renderMcpConfig: agent-plugins dialect", () => {
       "must stay inside the plugin root",
     ],
     [
+      "a root-variable command with arguments",
+      { command: "${CLAUDE_PLUGIN_ROOT}/bin/server --stdio" },
+      'Target "t" plugin "p": MCP server "s" "command" is "${CLAUDE_PLUGIN_ROOT}/bin/server --stdio"; Agent Plugins requires a single executable token',
+    ],
+    [
+      "a ./ command with arguments",
+      { command: "./scripts/server.sh --stdio" },
+      'Move arguments into "args"',
+    ],
+    [
       "a field outside the variant",
       { command: "x", url: "https://example.com" },
       'has field "url", which the Agent Plugins stdio server shape does not allow',
@@ -292,5 +303,112 @@ describe("renderMcpConfig: agent-plugins dialect", () => {
     expect(() =>
       render({ broken: { command: "a b" } }, "agent-plugins"),
     ).toThrow('Target "t" plugin "p": MCP server "broken" "command"');
+  });
+
+  it("rejects per-server extensions and says only the codex target emits them", () => {
+    expect(() =>
+      render(
+        {
+          s: {
+            type: "streamable-http",
+            url: "https://example.com/mcp",
+            extensions: { "com.openai": { auth: { type: "none" } } },
+          },
+        },
+        "agent-plugins",
+      ),
+    ).toThrow(
+      'has field "extensions", which the Agent Plugins streamable-http server shape does not allow (allowed: type, url, headers). Only the codex target emits per-server "extensions"',
+    );
+  });
+});
+
+describe("renderMcpConfig: codex dialect", () => {
+  const auth = {
+    type: "oauth",
+    client: { mode: "provided", clientId: "docs-client" },
+    baseScopes: ["docs:read"],
+  };
+
+  it('passes extensions["com.openai"] through on remote and stdio servers', () => {
+    const config = render(
+      {
+        docs: {
+          extensions: { "com.openai": { auth } },
+          type: "http",
+          url: "https://example.com/mcp",
+        },
+        local: {
+          command: "${CLAUDE_PLUGIN_ROOT}/bin/server",
+          extensions: { "com.openai": { auth: { type: "none" } } },
+        },
+      },
+      "codex",
+    );
+    expect(JSON.stringify(config)).toBe(
+      JSON.stringify({
+        $schema: AGENT_PLUGINS_MCP_SCHEMA,
+        mcpServers: {
+          docs: {
+            type: "streamable-http",
+            url: "https://example.com/mcp",
+            extensions: { "com.openai": { auth } },
+          },
+          local: {
+            type: "stdio",
+            command: "./bin/server",
+            extensions: { "com.openai": { auth: { type: "none" } } },
+          },
+        },
+      }),
+    );
+  });
+
+  it("applies every Agent Plugins rule to the rest of the server", () => {
+    expect(() => render({ s: { command: "node server.js" } }, "codex")).toThrow(
+      "requires a single executable token",
+    );
+  });
+
+  it.each([
+    [
+      "a non-object extensions field",
+      "oauth",
+      '"extensions" must be an object',
+    ],
+    [
+      "a namespace Codex doesn't read",
+      { "com.example": {} },
+      'has extensions["com.example"]; Codex reads only extensions["com.openai"]',
+    ],
+    [
+      "a non-object com.openai value",
+      { "com.openai": "oauth" },
+      'extensions["com.openai"] must be an object',
+    ],
+  ])("rejects %s", (_label, extensions, message) => {
+    expect(() =>
+      render({ s: { url: "https://example.com/mcp", extensions } }, "codex"),
+    ).toThrow(message);
+  });
+});
+
+describe("pluginCommandFiles", () => {
+  it("lists the plugin file each ./ or root-variable command names", () => {
+    expect(
+      pluginCommandFiles({
+        a: { command: "./bin/a" },
+        b: { command: "${CLAUDE_PLUGIN_ROOT}/bin/b" },
+        c: { command: "${PLUGIN_ROOT}/bin/../bin/c" },
+        d: { command: "node" },
+        e: { command: "${CLAUDE_PLUGIN_DATA}/bin/e" },
+        f: { url: "https://example.com" },
+        g: { command: "./../outside" },
+      }),
+    ).toEqual([
+      { server: "a", command: "./bin/a", file: "bin/a" },
+      { server: "b", command: "${CLAUDE_PLUGIN_ROOT}/bin/b", file: "bin/b" },
+      { server: "c", command: "${PLUGIN_ROOT}/bin/../bin/c", file: "bin/c" },
+    ]);
   });
 });

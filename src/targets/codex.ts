@@ -139,7 +139,7 @@ async function validateCodexPlugin(
     ((await exists(path.join(pluginDir, packageLayout.manifest))) &&
       !(await exists(path.join(pluginDir, ".codex-plugin", "plugin.json"))))
   ) {
-    return validatePackage(pluginDir, pluginName, issues);
+    return validatePackage(pluginDir, pluginName, issues, "codex");
   }
   const manifest = await readJson(
     path.join(pluginDir, ".codex-plugin", "plugin.json"),
@@ -400,5 +400,6 @@ export const codex: PluginTargetDefinition = {
   ],
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, packageLayout.mcp),
-  mcpDialect: "agent-plugins",
+  // Agent Plugins plus Codex's per-server extensions["com.openai"] (MCP auth).
+  mcpDialect: "codex",
 };

@@ -86,6 +86,71 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   `agent-plugins` target with `clients.codex` writes the same
   `.agents/plugins/marketplace.json`, so the two need separate output roots.
 
+## MCP dialect facts
+
+`src/mcp.ts` renders one authored MCP config into each client's dialect. Each
+dialect rule carries a citation (`getMcpDialectCitations`), and the citation
+test in `tests/install-snippet.test.ts` fails if a rule has no documentation
+URL or date. All were verified on 2026-10-21:
+
+| Dialect         | Rule                                                                                                                                           | Source                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `claude`        | `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PLUGIN_DATA}` expand in a stdio server's `command`, `args`, and `env`                                    | <https://code.claude.com/docs/en/plugins-reference#environment-variables>                 |
+| `claude`        | no `type` means stdio; Streamable HTTP is `http` (`streamable-http` is an alias)                                                               | <https://code.claude.com/docs/en/mcp>                                                     |
+| `cursor`        | `${CURSOR_PLUGIN_ROOT}` and `${CLAUDE_PLUGIN_ROOT}` expand in `command`, `args`, `env`, and `cwd`; `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` don't | <https://cursor.com/docs/reference/plugins#mcp-servers>                                   |
+| `cursor`        | no plugin-data variable is documented, so a data variable is a build error                                                                     | <https://cursor.com/docs/reference/plugins#mcp-servers>                                   |
+| `cursor`        | Cursor plugins can infer the transport from `command` or `url`, so `type` is dropped                                                           | <https://cursor.com/docs/reference/plugins#mcp-servers>                                   |
+| `copilot`       | `${PLUGIN_ROOT}`, with `${CLAUDE_PLUGIN_ROOT}` as an alias                                                                                     | <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference> |
+| `copilot`       | `${PLUGIN_DATA}` is documented only for Agent Plugins packages, so legacy-format data variables stay as authored                               | <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference> |
+| `copilot`       | remote servers may be labelled `http`, `sse`, or `streamable-http`                                                                             | <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference> |
+| `agent-plugins` | closed server variants; one-token `command`; `args`, `env`, `cwd` expand `${PLUGIN_ROOT}` and `${PLUGIN_DATA}`                                 | <https://agent-plugins.org/specification> (§7.2.1, §9)                                    |
+| `codex`         | the `agent-plugins` rules, plus per-server auth in `extensions["com.openai"].auth`                                                             | <https://developers.openai.com/codex/plugins/build>                                       |
+
+The docs leave two points open, and pluginpack's current behavior is not
+backed by them. Claude Code's list of fields where `${...}` resolves for a
+stdio server does not include `cwd`, but pluginpack writes a `./` `cwd` as
+`${CLAUDE_PLUGIN_ROOT}/...` for `claude`. Copilot CLI documents expansion in
+`args`, `env` and `cwd` (not `command`) for packages, and documents nothing
+for the legacy `.mcp.json`. pluginpack still writes a `./` `command` as
+`${PLUGIN_ROOT}/...` for `copilot`.
+
+### Conflict: Codex per-server `extensions`
+
+The Agent Plugins 1.0 specification (§7.2.1) closes each MCP server variant:
+an unknown field makes the server entry invalid, and the client skips it. The
+vendored `tests/fixtures/agent-plugins/mcp.schema.json` agrees
+(`additionalProperties: false`). OpenAI's
+[plugin packaging docs](https://developers.openai.com/codex/plugins/build)
+(verified 2026-10-21) put per-server MCP auth in the same file, under
+`extensions["com.openai"].auth` on each server. A server written that way is
+not valid Agent Plugins 1.0.
+
+pluginpack resolves the conflict per target:
+
+- `codex` writes Codex-only output, so it passes a per-server `extensions`
+  object through. That object may hold only `com.openai`, whose value must be
+  an object. `validate` accepts the same shape. A server with this object
+  does not validate against the vendored schema, so the schema oracle covers
+  only codex servers without it.
+- `agent-plugins` keeps the strict 1.0 shape, with or without
+  `clients.codex`. Its package is meant for every conforming client, and
+  Copilot CLI skips an invalid server entry. The error says this and names
+  the workaround.
+
+Workaround for a project that builds both targets: keep the portable config
+in `shared/<plugin>/mcp/config.json`. Set `overrides: "overrides/codex/<plugin>"`
+on the codex plugin, and put a full copy of `config.json` with
+`extensions["com.openai"]` in `overrides/codex/<plugin>/mcp/config.json`. An
+override replaces the whole file; it is not merged.
+
+### Command files
+
+A `./` or `${<root variable>}/` `command` names a file inside the plugin. If
+the artifact has no such file, the build prints a warning on every target.
+The build does not fail, because a file such as a compiled binary can be
+added after the build. `validate` reports an error for an Agent Plugins
+package (`codex`, `agent-plugins`) whose command file is missing on disk.
+
 ## Update-check hook facts
 
 The generated update-check hook (`updateCheck` config, claude/cursor targets)
