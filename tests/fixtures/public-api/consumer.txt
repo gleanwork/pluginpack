@@ -1,0 +1,38 @@
+import { defineConfig } from "@gleanwork/pluginpack";
+import type {
+  Artifact,
+  Author,
+  BuildOptions,
+  Citation,
+  CleanupEntry,
+  CleanupResult,
+  DiffEntry,
+  DiffResult,
+  EmittedPluginConfig,
+  FileValue,
+  InstallParams,
+  InstallSnippet,
+  Metadata,
+  PluginpackConfig,
+  ResolvedPluginpackConfig,
+  ResolvedProject,
+  SourcePlugin,
+  TargetConfig,
+  TargetName,
+  ValidationIssue,
+  ValidationResult,
+} from "@gleanwork/pluginpack";
+
+// A tuple keeps every imported type in the checked consumer surface.
+export type PublicTypes = [
+  Artifact, Author, BuildOptions, Citation, CleanupEntry, CleanupResult,
+  DiffEntry, DiffResult, EmittedPluginConfig, FileValue, InstallParams,
+  InstallSnippet, Metadata, PluginpackConfig, ResolvedPluginpackConfig,
+  ResolvedProject, SourcePlugin, TargetConfig, TargetName, ValidationIssue,
+  ValidationResult,
+];
+
+const config: PluginpackConfig = { name: "consumer", version: "1.0.0", targets: {} };
+defineConfig(config);
+export const binaryFile: FileValue = new Uint8Array([65, 66]);
+export const files: Artifact["files"] = new Map([["asset.bin", binaryFile]]);

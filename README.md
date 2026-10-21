@@ -567,6 +567,8 @@ rest of the artifact.
 
 `pluginpack.config.ts` exports a config object (wrap it in `defineConfig` for types). `src/schema.ts` is the source of truth; this table enumerates every field. Paths marked _safe relative_ reject absolute paths and `..` escapes.
 
+Keys stripped by config parsing produce a warning that names the config file and the dotted field path. Fix the spelling or remove the key. The `manifest` and `entry` passthrough objects preserve arbitrary keys without warnings. Unknown package client names still fail validation.
+
 **Top level**
 
 | Field      | Type   | Required | Meaning                                                                            |
@@ -681,8 +683,11 @@ Option objects:
 
 The result and config types (`Artifact`, `DiffResult`/`DiffEntry`, `ValidationResult`/`ValidationIssue`, `CleanupResult`/`CleanupEntry`, `ResolvedProject`, `PluginpackConfig`, `TargetConfig`, `TargetName`, `Citation`, `InstallSnippet`, …) are all exported for use in TypeScript.
 
+`PluginpackConfig` describes authoring input. `defineConfig` is an identity helper; it does not parse or apply defaults. `loadConfig` returns `ResolvedProject.config` as `ResolvedPluginpackConfig`, the validated schema output. The declaration build derives structural types from those same schemas, so consumers do not need Zod types or ambient Node types. `Artifact.files` accepts strings and `Uint8Array` values, including Node buffers.
+
 A few things worth knowing about this surface before depending on it:
 
+- **Source-discovery state is unstable.** `ResolvedProject.sourceRoot`, `plugins`, `partials`, and `source` expose internal build state. They are not supported extension points, and their shapes may change.
 - **The target set is closed.** `TargetName` is `"claude" | "cursor" | "antigravity" | "copilot" | "codex" | "agent-plugins"` today, with no public API for registering another target — adding one means a PR to this repo (see `PluginTargetDefinition` in `src/targets/types.ts`, not exported). There is no supported third-party target-extension mechanism.
 - **The package is ESM-only.** `package.json`'s `exports` map has no `require` condition; a CommonJS consumer needs dynamic `import()`. This is a deliberate choice, not a tsup default left unexamined.
 - **`Artifact.files` and `ResolvedProject.plugins` are `Map`s, not plain objects.** `JSON.stringify()` on either silently produces `{}` — iterate with `for...of`/`Object.fromEntries()` instead of serializing directly if you need to log or transport a result.

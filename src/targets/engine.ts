@@ -352,12 +352,14 @@ function artifact(
   outDir: string,
   files: Map<string, FileValue>,
 ): Artifact {
-  const managedPaths = [...files.keys()].sort();
+  const orderedFiles = new Map(
+    [...files.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  );
   return {
     target,
     outDir,
-    files: new Map([...files.entries()].sort(([a], [b]) => a.localeCompare(b))),
-    managedPaths,
+    files: orderedFiles,
+    managedPaths: [...orderedFiles.keys()],
   };
 }
 

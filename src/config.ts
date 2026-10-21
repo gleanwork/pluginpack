@@ -11,6 +11,7 @@ import { createFilesystemSourceProvider } from "./source.js";
 import type {
   ResolvedProject,
   PluginpackConfig,
+  ResolvedPluginpackConfig,
   ResolvedProjectConfig,
   SourcePlugin,
   SourcePluginManifest,
@@ -48,7 +49,7 @@ export async function loadConfig(
  */
 async function loadPartialsIfConfigured(
   rootDir: string,
-  config: PluginpackConfig,
+  config: ResolvedPluginpackConfig,
 ): Promise<Map<string, string>> {
   if (!config.source?.partials) {
     return new Map();
@@ -72,11 +73,7 @@ export async function loadProjectConfig(
     interopDefault: true,
   });
   const loaded = await jiti.import(resolvedConfigPath, { default: true });
-  const config = parseWithContext(
-    configSchema,
-    loaded,
-    resolvedConfigPath,
-  ) as PluginpackConfig;
+  const config = parseWithContext(configSchema, loaded, resolvedConfigPath);
   const rootDir = path.dirname(resolvedConfigPath);
   return {
     rootDir,
@@ -87,7 +84,7 @@ export async function loadProjectConfig(
 
 async function addRootSkillsPlugin(
   rootDir: string,
-  config: PluginpackConfig,
+  config: ResolvedPluginpackConfig,
   plugins: Map<string, SourcePlugin>,
 ): Promise<void> {
   if (!config.source?.skills) {
@@ -218,17 +215,39 @@ async function readSourceManifest(
   }
 }
 
-function parseWithContext(
-  schema: z.ZodType,
+function parseWithContext<S extends z.ZodType>(
+  schema: S,
   value: unknown,
   context: string,
-): unknown {
+): z.output<S> {
   const parsed = schema.safeParse(value);
   if (parsed.success) {
+    for (const key of strippedKeys(value, parsed.data)) {
+      console.warn(
+        `Unknown config key "${key}" in ${context} was ignored. Remove it or use a supported config field.`,
+      );
+    }
     return parsed.data;
   }
   const details = parsed.error.issues
     .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
     .join("; ");
   throw new Error(`Invalid pluginpack config in ${context}: ${details}`);
+}
+
+/** Compare parsed data, not a second schema: record passthroughs retain keys. */
+function strippedKeys(input: unknown, output: unknown, prefix = ""): string[] {
+  if (input === output || !isObject(input) || !isObject(output)) {
+    return [];
+  }
+  return Object.keys(input).flatMap((key) => {
+    const dotted = prefix ? `${prefix}.${key}` : key;
+    return Object.hasOwn(output, key)
+      ? strippedKeys(input[key], output[key], dotted)
+      : [dotted];
+  });
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
