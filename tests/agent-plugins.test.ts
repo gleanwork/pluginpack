@@ -27,8 +27,19 @@ function skill(name: string): string {
   return `---\nname: ${name}\ndescription: The ${name} skill.\n---\n\n# ${name}\n`;
 }
 
+const METADATA = `{
+    description: "Acme plugins.",
+    author: { name: "Acme", url: "https://acme.example" },
+    license: "MIT",
+    keywords: ["acme"]
+  }`;
+
 /** A project with one shared source and a config whose `targets` block is supplied. */
-async function setup(targets: string, source: DirJSON = {}): Promise<string> {
+async function setup(
+  targets: string,
+  source: DirJSON = {},
+  metadata: string = METADATA,
+): Promise<string> {
   project = new Project("agent-plugins-fixture", "1.0.0", {
     files: {
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
@@ -36,12 +47,7 @@ async function setup(targets: string, source: DirJSON = {}): Promise<string> {
 export default defineConfig({
   name: "acme-plugins",
   version: "1.2.0",
-  metadata: {
-    description: "Acme plugins.",
-    author: { name: "Acme", url: "https://acme.example" },
-    license: "MIT",
-    keywords: ["acme"]
-  },
+  metadata: ${metadata},
   targets: {
 ${targets}
   }
@@ -493,5 +499,562 @@ describe("standalone agent-plugins target", () => {
     await expect(loadConfig(root)).rejects.toThrow(
       "targets.claude.format: format is only supported for the codex target",
     );
+  });
+});
+
+const AGENT = `---
+name: reviewer
+description: Reviews code.
+---
+
+Review the change.
+`;
+
+const CLIENTS_TARGET = `
+    "agent-plugins": {
+      outDir: "out",
+      clients: {
+        codex: { manifest: { interface: { displayName: "Acme for Codex" } } },
+        copilot: {}
+      },
+      plugins: {
+        acme: {
+          source: "shared/acme",
+          manifest: { extensions: { "com.openai": { interface: { displayName: "Acme" } } } },
+          clients: { codex: { ${CODEX_ENTRY} } }
+        }
+      }
+    }`;
+
+describe("agent-plugins target with clients", () => {
+  it("builds one package with each client's files and a marketplace per client", async () => {
+    const root = await setup(CLIENTS_TARGET, {
+      agents: { "reviewer.md": AGENT },
+    });
+
+    const [artifact] = await build({ cwd: root });
+
+    expect(artifact.managedPaths).toEqual([
+      ".agents/plugins/marketplace.json",
+      ".github/plugin/marketplace.json",
+      "plugins/acme/com.github.copilot/agents/reviewer.agent.md",
+      "plugins/acme/mcp.json",
+      "plugins/acme/plugin.json",
+      "plugins/acme/skills/search/SKILL.md",
+    ]);
+    expect(
+      await readFile(
+        path.join(
+          root,
+          "out/plugins/acme/com.github.copilot/agents/reviewer.agent.md",
+        ),
+        "utf8",
+      ),
+    ).toBe(AGENT);
+    expect(
+      (await readJsonFile(root, "out/plugins/acme/plugin.json")).extensions,
+    ).toEqual({ "com.openai": { interface: { displayName: "Acme" } } });
+    expect(
+      await readJsonFile(root, "out/.agents/plugins/marketplace.json"),
+    ).toEqual({
+      name: "acme-plugins",
+      interface: { displayName: "Acme for Codex" },
+      plugins: [
+        {
+          name: "acme",
+          source: "./plugins/acme",
+          description: "Acme plugins.",
+          version: "1.2.0",
+          policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
+          category: "Productivity",
+        },
+      ],
+    });
+    expect(
+      await readJsonFile(root, "out/.github/plugin/marketplace.json"),
+    ).toEqual({
+      name: "acme-plugins",
+      owner: { name: "Acme" },
+      metadata: { description: "Acme plugins.", version: "1.2.0" },
+      plugins: [
+        {
+          name: "acme",
+          source: "./plugins/acme",
+          description: "Acme plugins.",
+          version: "1.2.0",
+        },
+      ],
+    });
+    await expect(
+      validateOutput("agent-plugins", path.join(root, "out")),
+    ).resolves.toMatchObject({ ok: true, issues: [] });
+  });
+
+  it("keeps an agent file already named NAME.agent.md", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      { agents: { "reviewer.agent.md": AGENT } },
+    );
+
+    const [artifact] = await build({ cwd: root });
+
+    expect(artifact.managedPaths).toContain(
+      "plugins/acme/com.github.copilot/agents/reviewer.agent.md",
+    );
+    expect(artifact.managedPaths).not.toContain(
+      ".agents/plugins/marketplace.json",
+    );
+  });
+
+  it("fails the build when Copilot's marketplace has no owner", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {},
+      `{ description: "Acme plugins." }`,
+    );
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      "Copilot's marketplace requires an owner. Set metadata.owner (or metadata.author)",
+    );
+  });
+
+  it("rejects a client-only kind that no listed client loads, naming the client that does", async () => {
+    const root = await setup(`
+    "agent-plugins": {
+      outDir: "out",
+      clients: { codex: {} },
+      plugins: { acme: { source: "shared/acme", include: ["skills", "agents"] } }
+    }`);
+
+    await expect(loadConfig(root)).rejects.toThrow(
+      `agents only exist inside a client extension namespace; the agent-plugins target can't include them unless targets["agent-plugins"].clients lists a client that loads them (copilot)`,
+    );
+  });
+
+  it("rejects per-plugin settings for a client the target doesn't list", async () => {
+    const root = await setup(`
+    "agent-plugins": {
+      outDir: "out",
+      clients: { codex: {} },
+      plugins: { acme: { source: "shared/acme", clients: { copilot: {} } } }
+    }`);
+
+    await expect(loadConfig(root)).rejects.toThrow(
+      `client "copilot" isn't listed in targets["agent-plugins"].clients`,
+    );
+  });
+
+  it("accepts agents in include when copilot is listed", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme", include: ["skills", "agents"] } }
+    }`,
+      { agents: { "reviewer.md": AGENT } },
+    );
+
+    const [artifact] = await build({ cwd: root });
+
+    expect(artifact.managedPaths).toContain(
+      "plugins/acme/com.github.copilot/agents/reviewer.agent.md",
+    );
+  });
+
+  it("treats a client set to undefined as not listed", async () => {
+    const root = await setup(`
+    "agent-plugins": {
+      outDir: "out",
+      clients: { codex: {}, copilot: undefined },
+      plugins: {
+        acme: { source: "shared/acme", include: ["skills", "agents"], clients: { copilot: {} } }
+      }
+    }`);
+
+    const rejection = loadConfig(root);
+
+    await expect(rejection).rejects.toThrow(
+      "agents only exist inside a client extension namespace",
+    );
+    await expect(rejection).rejects.toThrow(
+      `client "copilot" isn't listed in targets["agent-plugins"].clients`,
+    );
+  });
+
+  it("fails the build when two agent files would land on the same Copilot path", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      { agents: { "reviewer.md": AGENT, "reviewer.agent.md": AGENT } },
+    );
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      'Target "agent-plugins" plugin "acme": "agents/reviewer.agent.md" and "agents/reviewer.md" both write "com.github.copilot/agents/reviewer.agent.md". Rename or remove one of them.',
+    );
+  });
+
+  it("takes Copilot's marketplace owner from clients.copilot.manifest", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: { manifest: { owner: { name: "Acme Platform" } } } },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {},
+      `{ description: "Acme plugins." }`,
+    );
+
+    await build({ cwd: root });
+
+    expect(
+      (await readJsonFile(root, "out/.github/plugin/marketplace.json")).owner,
+    ).toEqual({ name: "Acme Platform" });
+  });
+
+  it("takes Copilot's marketplace owner from metadata.owner before metadata.author", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {},
+      `{
+    description: "Acme plugins.",
+    owner: { name: "Acme Platform", email: "platform@acme.example" },
+    author: { name: "Jane Doe" }
+  }`,
+    );
+
+    await build({ cwd: root });
+
+    expect(
+      (await readJsonFile(root, "out/.github/plugin/marketplace.json")).owner,
+    ).toEqual({ name: "Acme Platform", email: "platform@acme.example" });
+  });
+
+  it("rejects a misspelled client name", async () => {
+    const root = await setup(`
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copliot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`);
+
+    await expect(loadConfig(root)).rejects.toThrow(/copliot/);
+  });
+
+  it("rejects per-plugin clients on another target", async () => {
+    const root = await setup(`
+    codex: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme", ${CODEX_ENTRY}, clients: { codex: {} } } }
+    }`);
+
+    await expect(loadConfig(root)).rejects.toThrow(
+      "targets.codex.plugins.acme.clients: clients is only supported for the agent-plugins target",
+    );
+  });
+
+  it("renames .markdown and .mdc agents to NAME.agent.md for Copilot", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      { agents: { "one.markdown": AGENT, "two.mdc": AGENT } },
+    );
+
+    const [artifact] = await build({ cwd: root });
+
+    expect(
+      artifact.managedPaths.filter((file) => file.includes("/agents/")),
+    ).toEqual([
+      "plugins/acme/com.github.copilot/agents/one.agent.md",
+      "plugins/acme/com.github.copilot/agents/two.agent.md",
+    ]);
+  });
+
+  it("fails the build for a file in agents/ that Copilot can't load", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      { agents: { "reviewer.md": AGENT, "notes.txt": "notes\n" } },
+    );
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      'Target "agent-plugins" plugin "acme": "agents/notes.txt" isn\'t an agent file Copilot can load. Copilot loads only agents/NAME.agent.md; use a .md, .markdown or .mdc agent, or move the file out of agents/.',
+    );
+  });
+
+  it("rejects entry and the target manifest, which agent-plugins doesn't use", async () => {
+    const root = await setup(`
+    "agent-plugins": {
+      outDir: "out",
+      clients: { codex: {} },
+      manifest: { owner: { name: "Acme" } },
+      plugins: { acme: { source: "shared/acme", ${CODEX_ENTRY} } }
+    }`);
+
+    const rejection = loadConfig(root);
+
+    await expect(rejection).rejects.toThrow(
+      `manifest isn't used by the agent-plugins target; set it per client in targets["agent-plugins"].clients.<client>.manifest`,
+    );
+    await expect(rejection).rejects.toThrow(
+      `entry isn't used by the agent-plugins target; set it per client in targets["agent-plugins"].plugins.acme.clients.<client>.entry`,
+    );
+  });
+
+  it("builds only the listed clients when a client is set to undefined", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { codex: {}, copilot: undefined },
+      plugins: { acme: { source: "shared/acme", clients: { codex: { ${CODEX_ENTRY} } } } }
+    }`,
+      { agents: { "reviewer.md": AGENT } },
+    );
+
+    const [artifact] = await build({ cwd: root });
+
+    expect(artifact.managedPaths).toContain(".agents/plugins/marketplace.json");
+    expect(artifact.managedPaths).not.toContain(
+      ".github/plugin/marketplace.json",
+    );
+    expect(
+      artifact.managedPaths.filter((file) =>
+        file.includes("com.github.copilot"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("fails the build for a client-only file that no listed client loads", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {
+        "plugin.pluginpack.json": `${JSON.stringify({
+          additionalFiles: { "commands/run.md": "extra.md" },
+        })}\n`,
+        "extra.md": "# run\n",
+      },
+    );
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      'Target "agent-plugins" plugin "acme": "commands/run.md" is commands content, and pluginpack doesn\'t place commands for any of the listed clients (copilot). Remove it, or list a client pluginpack places commands for.',
+    );
+  });
+
+  it("fails the build for a hooks file that no listed client loads", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {
+        "plugin.pluginpack.json": `${JSON.stringify({
+          additionalFiles: { "hooks/hooks.json": "extra.json" },
+        })}\n`,
+        "extra.json": "{}\n",
+      },
+    );
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      'Target "agent-plugins" plugin "acme": "hooks/hooks.json" is hooks content, and pluginpack doesn\'t place hooks for any of the listed clients (copilot).',
+    );
+  });
+
+  it("fails the build when a ./ destination would replace a placed agent", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {
+        agents: { "reviewer.md": AGENT },
+        "plugin.pluginpack.json": `${JSON.stringify({
+          additionalFiles: {
+            "./com.github.copilot/agents/reviewer.agent.md": "extra.md",
+          },
+        })}\n`,
+        "extra.md": "# declared\n",
+      },
+    );
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      'both write "com.github.copilot/agents/reviewer.agent.md"',
+    );
+  });
+
+  it("places a ./ agents destination for Copilot", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {
+        "plugin.pluginpack.json": `${JSON.stringify({
+          additionalFiles: { "./agents/reviewer.md": "extra.md" },
+        })}\n`,
+        "extra.md": AGENT,
+      },
+    );
+
+    const [artifact] = await build({ cwd: root });
+
+    expect(artifact.managedPaths).toContain(
+      "plugins/acme/com.github.copilot/agents/reviewer.agent.md",
+    );
+    expect(artifact.managedPaths).not.toContain(
+      "plugins/acme/agents/reviewer.md",
+    );
+  });
+
+  it("reports a malformed Codex entry and accepts a remote Codex source", async () => {
+    const root = await setup(CLIENTS_TARGET);
+    await build({ cwd: root });
+    const out = path.join(root, "out");
+    const codexFile = path.join(out, ".agents/plugins/marketplace.json");
+    const codex = JSON.parse(await readFile(codexFile, "utf8")) as {
+      plugins: unknown[];
+    };
+    const [entry] = codex.plugins as Record<string, unknown>[];
+    codex.plugins = [
+      null,
+      {
+        ...entry,
+        source: { source: "url", url: "https://example.com/acme.git" },
+      },
+    ];
+    await writeFile(codexFile, JSON.stringify(codex));
+
+    const result = await validateOutput("agent-plugins", out);
+
+    expect(result.issues.map((issue) => issue.message)).toEqual([
+      "plugins[0] must be an object.",
+    ]);
+  });
+
+  it("reports a missing Copilot owner, a structured Codex source that isn't a package, and agent frontmatter Copilot rejects", async () => {
+    const root = await setup(CLIENTS_TARGET, {
+      agents: { "reviewer.md": AGENT },
+    });
+    await build({ cwd: root });
+    const out = path.join(root, "out");
+    const codexFile = path.join(out, ".agents/plugins/marketplace.json");
+    const codex = JSON.parse(await readFile(codexFile, "utf8")) as {
+      plugins: Record<string, unknown>[];
+    };
+    codex.plugins[0].source = { source: "local", path: "./plugins/missing" };
+    await writeFile(codexFile, JSON.stringify(codex));
+    const copilotFile = path.join(out, ".github/plugin/marketplace.json");
+    const copilot = JSON.parse(await readFile(copilotFile, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    delete copilot.owner;
+    await writeFile(copilotFile, JSON.stringify(copilot));
+    await writeFile(
+      path.join(
+        out,
+        "plugins/acme/com.github.copilot/agents/reviewer.agent.md",
+      ),
+      "---\nname: reviewer\n---\n\nReview.\n",
+    );
+    await writeFile(
+      path.join(out, "plugins/acme/com.github.copilot/agents/notes.txt"),
+      "notes\n",
+    );
+
+    const result = await validateOutput("agent-plugins", out);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.message)).toEqual([
+      'acme: the Codex marketplace entry\'s source "./plugins/missing" is not an Agent Plugins package in this output.',
+      'Marketplace is missing required field "owner".',
+      'acme (com.github.copilot): agent frontmatter error in agents/reviewer.agent.md: Missing required "description" field.',
+      'acme: agent file "com.github.copilot/agents/notes.txt" must be named NAME.agent.md for Copilot to load it.',
+    ]);
+  });
+
+  it("allows clients only on the agent-plugins target", async () => {
+    const root = await setup(`
+    codex: {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme", ${CODEX_ENTRY} } }
+    }`);
+
+    await expect(loadConfig(root)).rejects.toThrow(
+      "targets.codex.clients: clients is only supported for the agent-plugins target",
+    );
+  });
+
+  it("reports marketplace entries that don't match a package, and misnamed Copilot agents", async () => {
+    const root = await setup(CLIENTS_TARGET, {
+      agents: { "reviewer.md": AGENT },
+    });
+    await build({ cwd: root });
+    const out = path.join(root, "out");
+    const codexFile = path.join(out, ".agents/plugins/marketplace.json");
+    const codex = JSON.parse(await readFile(codexFile, "utf8")) as {
+      plugins: Record<string, unknown>[];
+    };
+    codex.plugins[0].name = "other";
+    await writeFile(codexFile, JSON.stringify(codex));
+    const copilotFile = path.join(out, ".github/plugin/marketplace.json");
+    const copilot = JSON.parse(await readFile(copilotFile, "utf8")) as {
+      plugins: Record<string, unknown>[];
+    };
+    copilot.plugins[0].source = "./plugins";
+    await writeFile(copilotFile, JSON.stringify(copilot));
+    await writeFile(
+      path.join(out, "plugins/acme/com.github.copilot/agents/stray.md"),
+      AGENT,
+    );
+
+    const result = await validateOutput("agent-plugins", out);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.message)).toEqual([
+      'other: the Codex marketplace entry name does not match plugin.json name ("acme").',
+      'acme: the Copilot marketplace entry\'s source "./plugins" is not an Agent Plugins package in this output.',
+      'acme: agent file "com.github.copilot/agents/stray.md" must be named NAME.agent.md for Copilot to load it.',
+    ]);
   });
 });

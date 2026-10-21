@@ -82,7 +82,9 @@ diff, prune, and validate all derive from it.
 
 `copilot`, `antigravity`, `cursor`, `claude`, `codex`, `agent-plugins`. `codex`
 and `agent-plugins` emit Agent Plugins packages through `src/agent-plugins.ts`
-(the package module; marketplaces stay on each target). Each target's MCP config
+(the package module). The `codex` target owns its marketplace. With `clients`,
+`agent-plugins` takes each client's marketplace, extension-directory placement
+and validation from `src/package-clients.ts`. Each target's MCP config
 is rendered by `src/mcp.ts` in the dialect its `mcpDialect` names. Adding a target means one
 new file implementing `PluginTargetDefinition` (`src/targets/<name>.ts`) plus one
 new entry in `src/targets/registry.ts` — `TargetName` (`types.ts`) is still a
@@ -105,8 +107,11 @@ schemas at runtime — vendor a pinned copy with recorded provenance.
 - **Recommended shape:** `shared/<plugin>/` canonical sources,
   `overrides/<target>/<plugin>/` target overrides, and
   `repositories/<target>/` generated-repository files.
-- **claude + copilot collide:** both write `.claude-plugin/marketplace.json`, so
-  they need distinct `outDir`s. `build()` errors on overlapping output paths.
+- **Shared marketplace paths collide:** `claude` and `copilot` both write
+  `.claude-plugin/marketplace.json`. `agent-plugins` with `clients.codex`
+  writes the `codex` target's `.agents/plugins/marketplace.json`, and with
+  `clients.copilot` it writes `.github/plugin/marketplace.json`. Such targets
+  need distinct `outDir`s. `build()` errors on overlapping output paths.
 - **MCP:** a canonical source keeps `mcp/config.json`, its implementation, tests,
   and `mcp/pluginpack.json` shipping-file map together. Target adapters translate
   the config into the native output. Legacy sources still read `.mcp.json`.

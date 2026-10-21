@@ -33,6 +33,10 @@ _Avoid_: portable plugin, AP plugin
 A client's additions to a package: its extension namespace, the manifest data under it, and the files in its extension directory.
 _Avoid_: overlay, flavor
 
+**Package client**:
+A client listed in the `agent-plugins` target's `clients`. One package serves every package client; each also gets its own marketplace file.
+_Avoid_: sub-target, flavor
+
 **Extension namespace**:
 The reverse-domain key a client owns inside a package, such as `com.openai`.
 _Avoid_: vendor key, client key

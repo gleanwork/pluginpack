@@ -247,16 +247,16 @@ export default defineConfig({
 
 Each target compiles the same source into one app's native plugin layout:
 
-| Target          | Native format                                                                       | Output it writes                                                                                                                |
-| --------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `cursor`        | Cursor plugin + marketplace                                                         | `.cursor-plugin/marketplace.json`; a `.cursor-plugin/plugin.json` per plugin                                                    |
-| `claude`        | Claude plugin + marketplace                                                         | `.claude-plugin/marketplace.json`; a `.claude-plugin/plugin.json` per plugin                                                    |
-| `antigravity`   | Antigravity CLI plugin                                                              | a `plugin.json` per plugin + optional `mcp_config.json` (no marketplace)                                                        |
-| `copilot`       | [GitHub Copilot plugins](https://github.com/github/copilot-plugins)                 | `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`; plugins under `plugins/<name>/`                |
-| `codex`         | [OpenAI Codex / ChatGPT plugins](https://developers.openai.com/codex/plugins/build) | `.agents/plugins/marketplace.json`; an [Agent Plugins](#agent-plugins) package per plugin (`plugin.json` + optional `mcp.json`) |
-| `agent-plugins` | [Agent Plugins 1.0](https://agent-plugins.org/specification)                        | a portable package per plugin under `plugins/<name>/` (no marketplace)                                                          |
+| Target          | Native format                                                                       | Output it writes                                                                                                                                                    |
+| --------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cursor`        | Cursor plugin + marketplace                                                         | `.cursor-plugin/marketplace.json`; a `.cursor-plugin/plugin.json` per plugin                                                                                        |
+| `claude`        | Claude plugin + marketplace                                                         | `.claude-plugin/marketplace.json`; a `.claude-plugin/plugin.json` per plugin                                                                                        |
+| `antigravity`   | Antigravity CLI plugin                                                              | a `plugin.json` per plugin + optional `mcp_config.json` (no marketplace)                                                                                            |
+| `copilot`       | [GitHub Copilot plugins](https://github.com/github/copilot-plugins)                 | `.claude-plugin/marketplace.json` mirrored to `.github/plugin/marketplace.json`; plugins under `plugins/<name>/`                                                    |
+| `codex`         | [OpenAI Codex / ChatGPT plugins](https://developers.openai.com/codex/plugins/build) | `.agents/plugins/marketplace.json`; an [Agent Plugins](#agent-plugins) package per plugin (`plugin.json` + optional `mcp.json`)                                     |
+| `agent-plugins` | [Agent Plugins 1.0](https://agent-plugins.org/specification)                        | a portable package per plugin under `plugins/<name>/`; no marketplace unless `clients` is set ([one package for several clients](#one-package-for-several-clients)) |
 
-> **Heads up:** `claude` and `copilot` both write `.claude-plugin/marketplace.json`, so they need distinct `outDir`s (or separate repos). `build` errors on overlapping output paths.
+> **Heads up:** targets that write the same marketplace file need distinct `outDir`s (or separate repos): `claude` and `copilot` both write `.claude-plugin/marketplace.json`; `agent-plugins` with `clients.codex` writes the `codex` target's `.agents/plugins/marketplace.json`; and with `clients.copilot` it writes the `copilot` target's `.github/plugin/marketplace.json`. `build` errors on overlapping output paths.
 
 New targets are added from official docs or real plugin examples — not guessed abstractions.
 
@@ -278,12 +278,73 @@ Pluginpack emits packages in two ways:
   `.codex-plugin/plugin.json` layout for Codex builds without Agent Plugins
   support, which landed across v0.146 and v0.147 (see
   [ADR 0001](./docs/adr/0001-codex-emits-agent-plugins-packages.md)).
-- **`agent-plugins`** emits portable packages only. It has no client profile,
-  so it ships `skills`, `scripts`, `assets`, static files, and `mcp`. Selecting `agents`,
-  `commands`, `rules`, or `hooks` is a config error, and a manifest field
-  outside the portable manifest is a build error. It writes no marketplace,
-  because the specification defines none; install each package with the
-  client's own flow.
+- **`agent-plugins`** emits portable packages. On its own it has no client
+  profile, so it ships `skills`, `scripts`, `assets`, static files, and `mcp`.
+  Selecting `agents`, `commands`, `rules`, or `hooks` is a config error, and a
+  manifest field outside the portable manifest is a build error. It writes no
+  marketplace, because the specification defines none. List `clients` to
+  build one package for several clients (see below).
+
+### One package for several clients
+
+Set `clients` on the `agent-plugins` target to build each plugin once and
+publish it to every listed client from one output repository. Each package
+keeps one `plugin.json`, `mcp.json` and `skills/`. Each client gets its own
+marketplace file, and its client-only files go in its extension directory
+([ADR 0002](./docs/adr/0002-one-package-for-several-clients.md)):
+
+| Client    | Marketplace                        | Client-only files                                                                                                                  |
+| --------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `codex`   | `.agents/plugins/marketplace.json` | none yet                                                                                                                           |
+| `copilot` | `.github/plugin/marketplace.json`  | `agents/NAME.md` (or `.markdown`, `.mdc`) → `com.github.copilot/agents/NAME.agent.md`; any other file in `agents/` fails the build |
+
+```ts
+targets: {
+  "agent-plugins": {
+    outDir: "dist/agent-plugins",
+    clients: {
+      codex: { manifest: { interface: { displayName: "Acme" } } },
+      copilot: {},
+    },
+    plugins: {
+      acme: {
+        source: "shared/acme",
+        manifest: { extensions: { "com.openai": { interface: { displayName: "Acme" } } } },
+        clients: {
+          codex: {
+            entry: {
+              policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
+              category: "Productivity",
+            },
+          },
+        },
+      },
+    },
+  },
+},
+```
+
+- `clients.<client>.manifest` is deep-merged into that client's marketplace
+  file. `plugins.<name>.clients.<client>.entry` is deep-merged into the
+  plugin's entry in it.
+- The target-level `manifest` and per-plugin `entry` are config errors on
+  `agent-plugins`, with or without `clients`, because the target writes no
+  shared marketplace for them to go into. Move them to
+  `clients.<client>.manifest` and `plugins.<name>.clients.<client>.entry`.
+- Client manifest data goes under `manifest.extensions["<namespace>"]`
+  explicitly. A package for several clients can't guess which client a
+  top-level field belongs to, so a non-portable top-level field is still a
+  build error.
+- A client-only content kind is selected by default, and allowed in
+  `include`, only when pluginpack places it for a listed client. Today that
+  is `agents` for `copilot`. pluginpack doesn't place `commands`, `rules`, or
+  `hooks` for any client yet.
+- Copilot's marketplace requires an owner, from `metadata.owner` or
+  `metadata.author`.
+- `validate` checks every package, then each client marketplace that's
+  present: every entry must point at a package whose `plugin.json` has the
+  same name. Each Copilot agent must be named `NAME.agent.md` and have the
+  `name` and `description` frontmatter Copilot requires.
 
 `validate` checks packages against the specification: the closed manifest, a
 valid plugin name, `mcp.json` servers, and skill names that follow the
@@ -543,38 +604,40 @@ rest of the artifact.
 
 **`targets.<name>`** — `<name>` is one of `cursor`, `claude`, `antigravity`, `copilot`, `codex`, `agent-plugins`.
 
-| Field              | Type                            | Required | Meaning                                                                                           |
-| ------------------ | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `outDir`           | string                          | yes      | Output directory for this target, relative to the config root.                                    |
-| `format`           | `"agent-plugins"` \| `"legacy"` | no       | `codex` only. `"legacy"` keeps the `.codex-plugin/plugin.json` layout; default `"agent-plugins"`. |
-| `plugins`          | record                          | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).          |
-| `marketplaceDir`   | string (safe relative)          | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).                     |
-| `pluginRoot`       | string (safe relative)          | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                                   |
-| `version`          | string                          | no       | Override the version for this target (defaults to top-level `version`).                           |
-| `manifest`         | object                          | no       | Deep-merged into the generated marketplace manifest.                                              |
-| `ignoredDiffPaths` | string[]                        | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).                   |
-| `repositoryFiles`  | string (safe relative)          | no       | Directory copied recursively into the generated repository root.                                  |
-| `rootFiles`        | record (safe relative)          | no       | Legacy 0.10 output path → source path map; migrate to `repositoryFiles`.                          |
-| `updateCheck`      | `{ repository? }`               | no       | Generate a session-start update-check hook (`claude`/`cursor` only; see **Update Check**).        |
-| `repository`       | string                          | no       | Repo this target's output lives in, for `install-info` (defaults to `metadata.repository`).       |
+| Field              | Type                            | Required | Meaning                                                                                                                                                |
+| ------------------ | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `outDir`           | string                          | yes      | Output directory for this target, relative to the config root.                                                                                         |
+| `format`           | `"agent-plugins"` \| `"legacy"` | no       | `codex` only. `"legacy"` keeps the `.codex-plugin/plugin.json` layout; default `"agent-plugins"`.                                                      |
+| `plugins`          | record                          | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).                                                               |
+| `marketplaceDir`   | string (safe relative)          | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).                                                                          |
+| `pluginRoot`       | string (safe relative)          | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                                                                                        |
+| `version`          | string                          | no       | Override the version for this target (defaults to top-level `version`).                                                                                |
+| `manifest`         | object                          | no       | Deep-merged into the generated marketplace manifest. An error on `agent-plugins`; use `clients.<client>.manifest`.                                     |
+| `clients`          | `{ codex?, copilot? }`          | no       | `agent-plugins` only. Clients each package serves; each gets a marketplace. `clients.<client>.manifest` is deep-merged into that client's marketplace. |
+| `ignoredDiffPaths` | string[]                        | no       | Output-relative paths `diff` ignores (a dir entry ignores everything below it).                                                                        |
+| `repositoryFiles`  | string (safe relative)          | no       | Directory copied recursively into the generated repository root.                                                                                       |
+| `rootFiles`        | record (safe relative)          | no       | Legacy 0.10 output path → source path map; migrate to `repositoryFiles`.                                                                               |
+| `updateCheck`      | `{ repository? }`               | no       | Generate a session-start update-check hook (`claude`/`cursor` only; see **Update Check**).                                                             |
+| `repository`       | string                          | no       | Repo this target's output lives in, for `install-info` (defaults to `metadata.repository`).                                                            |
 
 **`targets.<name>.plugins.<name>`**
 
-| Field         | Type                   | Required | Meaning                                                                                                                                                                                          |
-| ------------- | ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `source`      | string (safe relative) | yes      | Direct path to the plugin's shared authored source.                                                                                                                                              |
-| `overrides`   | string (safe relative) | no       | Target-specific directory applied after `source`; may add or replace files.                                                                                                                      |
-| `include`     | string[]               | no       | Exact content kinds to include (`skills`, `agents`, `rules`, `assets`, `static`, `mcp`, etc.).                                                                                                   |
-| `exclude`     | string[]               | no       | Content kinds removed from the target defaults.                                                                                                                                                  |
-| `from`        | string[] (min 1)       | legacy   | 0.10 source-plugin composition; cannot be combined with `source`.                                                                                                                                |
-| `path`        | string (safe relative) | no       | Output path for the plugin, relative to `outDir`. Defaults to the plugin name (or `pluginRoot/<name>` for `claude`).                                                                             |
-| `version`     | string                 | no       | Per-plugin version override.                                                                                                                                                                     |
-| `displayName` | string                 | no       | Per-plugin display name.                                                                                                                                                                         |
-| `description` | string                 | no       | Per-plugin description override.                                                                                                                                                                 |
-| `manifest`    | object                 | no       | Deep-merged into the generated plugin manifest.                                                                                                                                                  |
-| `entry`       | object                 | no       | Deep-merged into the generated marketplace entry (the object in the marketplace `plugins` array). Use for target-specific entry fields pluginpack can't derive — e.g. Codex `policy`/`category`. |
-| `components`  | string[]               | legacy   | 0.10 include-only name; migrate to `include`.                                                                                                                                                    |
-| `updateCheck` | `false`                | no       | Opt this plugin out of the target's update-check hook.                                                                                                                                           |
+| Field         | Type                   | Required | Meaning                                                                                                                                                                                                                                                     |
+| ------------- | ---------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source`      | string (safe relative) | yes      | Direct path to the plugin's shared authored source.                                                                                                                                                                                                         |
+| `overrides`   | string (safe relative) | no       | Target-specific directory applied after `source`; may add or replace files.                                                                                                                                                                                 |
+| `include`     | string[]               | no       | Exact content kinds to include (`skills`, `agents`, `rules`, `assets`, `static`, `mcp`, etc.).                                                                                                                                                              |
+| `exclude`     | string[]               | no       | Content kinds removed from the target defaults.                                                                                                                                                                                                             |
+| `from`        | string[] (min 1)       | legacy   | 0.10 source-plugin composition; cannot be combined with `source`.                                                                                                                                                                                           |
+| `path`        | string (safe relative) | no       | Output path for the plugin, relative to `outDir`. Defaults to the plugin name (or `pluginRoot/<name>` for `claude`).                                                                                                                                        |
+| `version`     | string                 | no       | Per-plugin version override.                                                                                                                                                                                                                                |
+| `displayName` | string                 | no       | Per-plugin display name.                                                                                                                                                                                                                                    |
+| `description` | string                 | no       | Per-plugin description override.                                                                                                                                                                                                                            |
+| `manifest`    | object                 | no       | Deep-merged into the generated plugin manifest.                                                                                                                                                                                                             |
+| `entry`       | object                 | no       | Deep-merged into the generated marketplace entry (the object in the marketplace `plugins` array). Use for target-specific entry fields pluginpack can't derive — e.g. Codex `policy`/`category`. An error on `agent-plugins`; use `clients.<client>.entry`. |
+| `clients`     | `{ codex?, copilot? }` | no       | `agent-plugins` only. `clients.<client>.entry` is deep-merged into this plugin's entry in that client's marketplace (e.g. `clients.codex.entry` for Codex `policy`/`category`). Each key must be listed in the target's `clients`.                          |
+| `components`  | string[]               | legacy   | 0.10 include-only name; migrate to `include`.                                                                                                                                                                                                               |
+| `updateCheck` | `false`                | no       | Opt this plugin out of the target's update-check hook.                                                                                                                                                                                                      |
 
 ## Programmatic API
 

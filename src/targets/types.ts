@@ -39,6 +39,20 @@ export type MarketplaceManifestContext = {
   plugins: Record<string, unknown>[];
 };
 
+/**
+ * A marketplace written for one client in addition to a target's own, with
+ * its own entry and manifest builders. Each plugin's entry is deep-merged
+ * with `plugins.<name>.clients.<client>.entry`, and the manifest with
+ * `clients.<client>.manifest`.
+ */
+export type ClientMarketplace = {
+  client: string;
+  /** Output-relative path of the marketplace file. */
+  path: string;
+  buildEntry: (ctx: MarketplaceEntryContext) => Record<string, unknown>;
+  buildManifest: (ctx: MarketplaceManifestContext) => Record<string, unknown>;
+};
+
 export type InstallSnippetKind = "command" | "url";
 
 export type InstallParams = {
@@ -127,6 +141,17 @@ export type PluginTargetDefinition = {
   ) => Record<string, unknown>;
   /** Output-relative paths the marketplace manifest is written to (may be more than one). */
   marketplacePaths: (targetConfig: TargetConfig) => string[];
+  /** Per-client marketplaces written alongside the target's own. */
+  clientMarketplaces?: (targetConfig: TargetConfig) => ClientMarketplace[];
+
+  /**
+   * Maps one plugin-relative source file to the plugin-relative paths it is
+   * written to — none to drop it, more than one to give several clients
+   * their own copy. Defaults to the same path. When set, it also places
+   * `hooks/hooks.json` and `hooksPath` is not used. Throws for a file the
+   * target can't place.
+   */
+  placeFile?: (relativePath: string, pluginName: string) => string[];
 
   /** Return `undefined` for a target with no bundled-MCP-config file convention. */
   mcpConfigPath: (pluginPath: string) => string | undefined;
