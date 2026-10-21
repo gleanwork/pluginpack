@@ -444,6 +444,110 @@ describe("emitted output conforms to external target schemas", () => {
     expect(validated.exitCode, String(validated.stdout)).toBe(0);
   });
 
+  it("agent-plugins with clients emits one schema-valid package plus the Codex and Copilot marketplaces", async () => {
+    await project.write({
+      "pluginpack.config.ts": CONFIG.replace(
+        "  targets: {",
+        `  targets: {
+    "agent-plugins": {
+      outDir: "out-ap",
+      clients: { codex: {}, copilot: {} },
+      plugins: {
+        glean: {
+          from: ["glean"],
+          clients: {
+            codex: {
+              entry: {
+                policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
+                category: "Developer Tools"
+              }
+            }
+          }
+        }
+      }
+    },`,
+      ),
+      plugins: {
+        glean: {
+          agents: {
+            "reviewer.md":
+              "---\nname: reviewer\ndescription: Reviews code.\n---\n\nReview.\n",
+          },
+        },
+      },
+    });
+    const result = await runBin("build", "--target", "agent-plugins");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+
+    // One package serves both clients.
+    const plugin = readJson(
+      project.baseDir,
+      "out-ap/plugins/glean/plugin.json",
+    );
+    expect(schemaErrors(agentPluginsPluginSchema, plugin)).toEqual([]);
+    const mcp = readJson(project.baseDir, "out-ap/plugins/glean/mcp.json");
+    expect(schemaErrors(agentPluginsMcpSchema, mcp)).toEqual([]);
+    // Copilot's client-only files live in its extension directory, named
+    // NAME.agent.md; nothing client-only is left at the package root.
+    expect(
+      fs.existsSync(
+        path.join(
+          project.baseDir,
+          "out-ap/plugins/glean/com.github.copilot/agents/reviewer.agent.md",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(project.baseDir, "out-ap/plugins/glean/agents")),
+    ).toBe(false);
+
+    // Codex: { name, interface, plugins }, entries with policy and category.
+    const codexMarketplace = readJson(
+      project.baseDir,
+      "out-ap/.agents/plugins/marketplace.json",
+    );
+    expect(Object.keys(codexMarketplace).sort()).toEqual([
+      "interface",
+      "name",
+      "plugins",
+    ]);
+    expect(codexMarketplace.plugins).toEqual([
+      expect.objectContaining({
+        name: "glean",
+        source: "./plugins/glean",
+        policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
+        category: "Developer Tools",
+      }),
+    ]);
+
+    // Copilot: name, owner and plugins required; an Agent Plugins entry needs
+    // only name and source, with no component paths.
+    const copilotMarketplace = readJson(
+      project.baseDir,
+      "out-ap/.github/plugin/marketplace.json",
+    );
+    expect(copilotMarketplace).toMatchObject({
+      name: "glean-plugins",
+      owner: { name: "Glean" },
+    });
+    const [copilotEntry] = copilotMarketplace.plugins as Record<
+      string,
+      unknown
+    >[];
+    expect(copilotEntry).toMatchObject({
+      name: "glean",
+      source: "./plugins/glean",
+    });
+    expect(
+      Object.keys(copilotEntry).filter(
+        (key) => !["name", "source", "description", "version"].includes(key),
+      ),
+    ).toEqual([]);
+
+    const validated = await runBin("validate", "--target", "agent-plugins");
+    expect(validated.exitCode, String(validated.stdout)).toBe(0);
+  });
+
   it("install-info prints every configured target's snippet by default", async () => {
     const result = await runBin("install-info");
     expect(result.exitCode, String(result.stderr)).toBe(0);

@@ -103,6 +103,11 @@ export async function emitFromDefinition(
   const version = targetConfig.version ?? project.config.version;
   const files = new Map<string, FileValue>();
   const entries: Record<string, unknown>[] = [];
+  const clientMarketplaces =
+    definition.clientMarketplaces?.(targetConfig) ?? [];
+  const clientEntries = new Map<string, Record<string, unknown>[]>(
+    clientMarketplaces.map((marketplace) => [marketplace.client, []]),
+  );
   const updateCheck = resolveUpdateCheck(
     project,
     target,
@@ -174,8 +179,22 @@ export async function emitFromDefinition(
     if (sourceHooksFile !== undefined) {
       pluginFiles.delete("hooks/hooks.json");
     }
+    // Placement can map two source files to one path (e.g. agents/x.md and
+    // agents/x.agent.md for Copilot); fail instead of keeping either.
+    const placedFrom = new Map<string, string>();
     for (const [relativePath, value] of pluginFiles) {
-      files.set(toPosix(path.join(pluginPath, relativePath)), value);
+      for (const placed of definition.placeFile?.(relativePath, pluginName) ?? [
+        relativePath,
+      ]) {
+        const earlier = placedFrom.get(placed);
+        if (earlier !== undefined && earlier !== relativePath) {
+          throw new Error(
+            `Target "${target}" plugin "${pluginName}": "${earlier}" and "${relativePath}" both write "${placed}". Rename or remove one of them.`,
+          );
+        }
+        placedFrom.set(placed, relativePath);
+        files.set(toPosix(path.join(pluginPath, placed)), value);
+      }
     }
     if (sourceHooksFile !== undefined) {
       files.set(toPosix(definition.hooksPath(pluginPath)), sourceHooksFile);
@@ -221,7 +240,7 @@ export async function emitFromDefinition(
       files.set(toPosix(manifestPath), manifestContent);
     }
 
-    const entry = definition.buildMarketplaceEntry({
+    const entryContext = {
       pluginName,
       pluginPath,
       pluginConfig,
@@ -230,12 +249,49 @@ export async function emitFromDefinition(
       mcpServers,
       pluginFiles,
       manifest,
-    });
+    };
+    const entry = definition.buildMarketplaceEntry(entryContext);
     if (entry) {
       // Deep-merge the config's per-plugin entry passthrough, so a target
       // can carry author-supplied fields it can't derive on its own.
       entries.push(stripUndefined(deepMerge(entry, pluginConfig.entry ?? {})));
     }
+    for (const marketplace of clientMarketplaces) {
+      const clientEntry = (
+        pluginConfig.clients as
+          Record<string, { entry?: Record<string, unknown> }> | undefined
+      )?.[marketplace.client]?.entry;
+      clientEntries
+        .get(marketplace.client)
+        ?.push(
+          stripUndefined(
+            deepMerge(marketplace.buildEntry(entryContext), clientEntry ?? {}),
+          ),
+        );
+    }
+  }
+
+  for (const marketplace of clientMarketplaces) {
+    const clientManifest = (
+      targetConfig.clients as
+        Record<string, { manifest?: Record<string, unknown> }> | undefined
+    )?.[marketplace.client]?.manifest;
+    files.set(
+      toPosix(marketplace.path),
+      json(
+        stripUndefined(
+          deepMerge(
+            marketplace.buildManifest({
+              project,
+              targetConfig,
+              version,
+              plugins: clientEntries.get(marketplace.client) ?? [],
+            }),
+            clientManifest ?? {},
+          ),
+        ),
+      ),
+    );
   }
 
   const marketplace = stripUndefined(

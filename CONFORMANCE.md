@@ -44,7 +44,9 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   deliberately **not** used here: Copilot derives from the Claude marketplace but
   extends entries (e.g. `mcpServers` as a `.mcp.json` path), which Claude's stricter
   schema rejects. Because it shares the Claude marketplace path, the `claude` and
-  `copilot` targets need separate output roots.
+  `copilot` targets need separate output roots. An `agent-plugins` target with
+  `clients.copilot` also writes `.github/plugin/marketplace.json`, so it needs an
+  output root separate from the `copilot` target's.
 - **antigravity** — covered structurally by the cross-target build test in
   `tests/core.test.ts` (required `plugin.json` fields present; optional
   `mcp_config.json` written when MCP servers are present). Antigravity CLI does
@@ -55,7 +57,13 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   validator (`src/agent-plugins.ts`) re-implements the closed-schema checks
   without ajv, plus the semantic rules a JSON Schema can't express: skill names
   per the Agent Skills specification and matching their directory, and MCP
-  server rules from spec §7.2 and §9 (`src/mcp.ts`).
+  server rules from spec §7.2 and §9 (`src/mcp.ts`). With `clients`, the same
+  package oracle applies. The Codex marketplace uses the codex checks below,
+  and the Copilot marketplace and `com.github.copilot/agents/` layout are
+  asserted structurally against the
+  [Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)
+  (retrieved 2026-10-20), which publishes no schema. Client facts and their
+  citations live in `src/package-clients.ts`.
 - **codex** — the package half uses the Agent Plugins oracle above. The
   marketplace half is asserted structurally in `tests/conformance.test.ts` and
   `tests/core.test.ts` against the
@@ -74,8 +82,9 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   added via `entry` is a structured object with an inner `source` discriminator
   (e.g. `{ source: "git-subdir", url, path, ref }`), validated by shape rather
   than requiring a local directory to exist. No published JSON Schema exists.
-  Codex shares no marketplace path with the other targets, so it needs no
-  separate output root.
+  Among the native targets, Codex shares no marketplace path, but an
+  `agent-plugins` target with `clients.codex` writes the same
+  `.agents/plugins/marketplace.json`, so the two need separate output roots.
 
 ## Update-check hook facts
 

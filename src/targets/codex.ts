@@ -55,7 +55,7 @@ function resolveLocalPluginDir(root: string, source: unknown): string | null {
  * regardless of source shape, must carry `policy.installation`,
  * `policy.authentication`, and `category` — see `citations`.
  */
-function validateCodexEntry(
+export function validateCodexEntry(
   entry: Record<string, unknown>,
   index: number,
   root: string,
@@ -174,8 +174,11 @@ function requireName(
   }
 }
 
-/** Shared by both Codex layouts: everything outside the plugin directory. */
-const codexMarketplace = {
+/**
+ * Shared by both Codex layouts, and by the `agent-plugins` target's Codex
+ * client: everything outside the plugin directory.
+ */
+export const codexMarketplace = {
   name: "codex",
 
   defaultComponents: ["skills", "hooks", "scripts", "assets"],

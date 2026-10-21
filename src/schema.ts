@@ -54,6 +54,56 @@ const updateCheckSchema = z.object({
   repository: z.string().min(1).optional(),
 });
 
+/**
+ * Clients an `agent-plugins` package can carry a profile and a marketplace
+ * for. The full definitions (namespace, marketplace, file placement) live in
+ * `src/package-clients.ts`; this module keeps only the data the config
+ * schema checks.
+ */
+export const PACKAGE_CLIENT_NAMES = ["codex", "copilot"] as const;
+export type PackageClientName = (typeof PACKAGE_CLIENT_NAMES)[number];
+
+/**
+ * The client-only content kinds each package client loads from its
+ * extension directory. A kind not listed for any configured client is a
+ * config error, as it is for a package with no clients.
+ */
+export const PACKAGE_CLIENT_CONTENT_KINDS: Record<
+  PackageClientName,
+  readonly string[]
+> = {
+  codex: [],
+  copilot: ["agents"],
+};
+
+/** `targets["agent-plugins"].clients.<client>`: client-wide settings. */
+const packageClientSchema = z.object({
+  // Deep-merged into this client's generated marketplace file.
+  manifest: z.record(z.string(), z.unknown()).optional(),
+});
+
+/** `plugins.<name>.clients.<client>`: one plugin's settings for one client. */
+const pluginClientSchema = z.object({
+  // Deep-merged into this plugin's entry in the client's marketplace, for
+  // fields pluginpack can't derive (e.g. Codex `policy`/`category`).
+  entry: z.record(z.string(), z.unknown()).optional(),
+});
+
+// Strict, unlike the rest of the config: a misspelled client name would
+// otherwise drop that client's whole marketplace without a word.
+const packageClientsSchema = z
+  .object({
+    codex: packageClientSchema.optional(),
+    copilot: packageClientSchema.optional(),
+  })
+  .strict();
+const pluginClientsSchema = z
+  .object({
+    codex: pluginClientSchema.optional(),
+    copilot: pluginClientSchema.optional(),
+  })
+  .strict();
+
 /** One authored plugin source mapped to an emitted plugin for a target. */
 const emittedPluginSchema = z
   .object({
@@ -70,6 +120,8 @@ const emittedPluginSchema = z
     // the marketplace `plugins` array), letting a config supply target-specific
     // entry fields a target can't derive — e.g. Codex `policy`/`category`.
     entry: z.record(z.string(), z.unknown()).optional(),
+    // agent-plugins only: per-client settings for this plugin.
+    clients: pluginClientsSchema.optional(),
     // Canonical selection names. `components` is the legacy include-only name.
     include: z.array(z.string().min(1)).optional(),
     exclude: z.array(z.string().min(1)).optional(),
@@ -96,8 +148,8 @@ const emittedPluginSchema = z
 
 /**
  * Content kinds that only mean something inside a client's extension
- * namespace, so the standalone `agent-plugins` target (which has no client
- * profile) can't ship them.
+ * namespace. The `agent-plugins` target ships one only when a configured
+ * client implements it (see `PACKAGE_CLIENT_CONTENT_KINDS`).
  */
 export const CLIENT_ONLY_CONTENT_KINDS = [
   "agents",
@@ -120,6 +172,9 @@ const targetSchema = z.object({
   // updateCheck.repository answers, asked by a different feature.
   repository: z.string().min(1).optional(),
   plugins: z.record(z.string(), emittedPluginSchema),
+  // agent-plugins only: the clients each package carries a profile and a
+  // marketplace for. See docs/adr/0002.
+  clients: packageClientsSchema.optional(),
   manifest: z.record(z.string(), z.unknown()).optional(),
   ignoredDiffPaths: z.array(z.string()).optional(),
   updateCheck: updateCheckSchema.optional(),
@@ -186,23 +241,100 @@ const configSchema = z
         });
       }
     }
+    for (const [target, targetConfig] of Object.entries(config.targets)) {
+      if (target === "agent-plugins" || !targetConfig) {
+        continue;
+      }
+      if (targetConfig.clients) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["targets", target, "clients"],
+          message: "clients is only supported for the agent-plugins target",
+        });
+      }
+      for (const [pluginName, plugin] of Object.entries(targetConfig.plugins)) {
+        if (plugin.clients) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["targets", target, "plugins", pluginName, "clients"],
+            message: "clients is only supported for the agent-plugins target",
+          });
+        }
+      }
+    }
     const agentPlugins = config.targets["agent-plugins"];
+    // A key set to undefined (e.g. `copilot: flag ? {} : undefined`) isn't a
+    // listed client; the build skips it the same way (configuredClients).
+    const clients = listedKeys(agentPlugins?.clients) as PackageClientName[];
+    const supportedKinds = new Set(
+      clients.flatMap((client) => PACKAGE_CLIENT_CONTENT_KINDS[client]),
+    );
+    // agent-plugins writes only client marketplaces, so the shared
+    // marketplace passthroughs would be dropped; point at the client ones.
+    if (agentPlugins?.manifest !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["targets", "agent-plugins", "manifest"],
+        message:
+          'manifest isn\'t used by the agent-plugins target; set it per client in targets["agent-plugins"].clients.<client>.manifest',
+      });
+    }
     for (const [pluginName, plugin] of Object.entries(
       agentPlugins?.plugins ?? {},
     )) {
+      if (plugin.entry !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["targets", "agent-plugins", "plugins", pluginName, "entry"],
+          message: `entry isn't used by the agent-plugins target; set it per client in targets["agent-plugins"].plugins.${pluginName}.clients.<client>.entry`,
+        });
+      }
       const selected = plugin.include ?? plugin.components ?? [];
-      const clientOnly = selected.filter((kind) =>
-        CLIENT_ONLY_CONTENT_KINDS.includes(kind),
+      const unsupported = selected.filter(
+        (kind) =>
+          CLIENT_ONLY_CONTENT_KINDS.includes(kind) && !supportedKinds.has(kind),
       );
-      if (clientOnly.length > 0) {
+      if (unsupported.length > 0) {
+        const implementers = PACKAGE_CLIENT_NAMES.filter((client) =>
+          unsupported.some((kind) =>
+            PACKAGE_CLIENT_CONTENT_KINDS[client].includes(kind),
+          ),
+        );
         ctx.addIssue({
           code: "custom",
           path: ["targets", "agent-plugins", "plugins", pluginName],
-          message: `${clientOnly.join(", ")} only exist inside a client extension namespace; the agent-plugins target can't include them`,
+          message:
+            `${unsupported.join(", ")} only exist inside a client extension namespace; the agent-plugins target can't include them` +
+            (implementers.length > 0
+              ? ` unless targets["agent-plugins"].clients lists a client that loads them (${implementers.join(", ")})`
+              : " (no supported client loads them yet)"),
         });
+      }
+      for (const client of listedKeys(plugin.clients)) {
+        if (!clients.includes(client as PackageClientName)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [
+              "targets",
+              "agent-plugins",
+              "plugins",
+              pluginName,
+              "clients",
+              client,
+            ],
+            message: `client "${client}" isn't listed in targets["agent-plugins"].clients`,
+          });
+        }
       }
     }
   });
+
+/** The keys of `record` whose values are set. */
+function listedKeys(record: Record<string, unknown> | undefined): string[] {
+  return Object.entries(record ?? {})
+    .filter(([, value]) => value !== undefined)
+    .map(([key]) => key);
+}
 
 /** A source plugin's own `plugin.pluginpack.json`, if it has one. */
 const sourcePluginManifestSchema = metadataSchema.extend({
