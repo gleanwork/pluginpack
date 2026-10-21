@@ -26,6 +26,11 @@ import type { Artifact, TargetName } from "../src/types.js";
 
 type DirJSON = NonNullable<ProjectArgs["files"]>;
 
+// Each journey runs several real builds and validations. The longest take
+// 3-4s locally, and CI runners run the whole suite in parallel, so vitest's
+// 5s default is too tight for this file.
+vi.setConfig({ testTimeout: 60_000 });
+
 const allTargets: TargetName[] = [
   "cursor",
   "claude",
@@ -521,9 +526,7 @@ describe.each(Object.entries(layouts))(
       expect(
         warnings.filter((warning) => /edited|changed since/i.test(warning)),
       ).toEqual([]);
-      // Six targets through seven steps, each followed by six validations,
-      // takes 3-4s locally and more than vitest's 5s default on CI.
-    }, 60_000);
+    });
   },
 );
 
