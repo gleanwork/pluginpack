@@ -9,6 +9,7 @@ import {
   normalizeManagedPath,
   planPrune,
   readManagedManifest,
+  recordHandedOverHashes,
   warnOnEditedOverwrites,
   writeManagedManifest,
   type PrunePlan,
@@ -40,6 +41,15 @@ export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
     // that no longer matches either state.
     for (const artifact of artifacts) {
       await writeArtifact(artifact.outDir, artifact.files);
+    }
+    // Before any target prunes or gives up a path, every target's manifest
+    // claims its new paths and still lists its old ones. A path handed from
+    // one target to another is then always listed by at least one manifest:
+    // if the recipient's prune fails after the donor's final manifest is
+    // written, the recipient's interim manifest still owns the path, and a
+    // later clean can remove it.
+    for (const plan of prunes) {
+      await writeManagedManifest(plan.artifact, plan.previous);
     }
     for (const plan of prunes) {
       await executePrune(plan);
@@ -110,6 +120,7 @@ async function planBuildChecked(
       await planPrune(artifact, { dryRun: options.dryRun, guard, owners }),
     );
   }
+  await recordHandedOverHashes(prunes);
   return { artifacts, prunes };
 }
 

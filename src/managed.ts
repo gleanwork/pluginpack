@@ -54,7 +54,11 @@ function contentHash(value: FileValue): string {
  * as the artifact itself, so a symlinked `.pluginpack/` cannot redirect the
  * write outside the output directory.
  */
-export async function writeManagedManifest(artifact: Artifact): Promise<void> {
+export async function writeManagedManifest(
+  artifact: Artifact,
+  retained: ManagedManifest | null = null,
+): Promise<void> {
+  const files = [...artifact.managedPaths];
   const sha256: Record<string, string> = {};
   for (const managedPath of artifact.managedPaths) {
     const value = artifact.files.get(managedPath);
@@ -62,10 +66,20 @@ export async function writeManagedManifest(artifact: Artifact): Promise<void> {
       sha256[managedPath] = contentHash(value);
     }
   }
+  const current = new Set(artifact.managedPaths.map(normalizeManagedPath));
+  for (const file of retained?.files ?? []) {
+    if (!current.has(normalizeManagedPath(file))) {
+      files.push(file);
+      const hash = retained?.sha256[file];
+      if (hash !== undefined) {
+        sha256[file] = hash;
+      }
+    }
+  }
   const manifest: ManagedManifest = {
     version: MANIFEST_VERSION,
     target: artifact.target,
-    files: artifact.managedPaths,
+    files,
     sha256,
   };
   await writeArtifact(
@@ -172,12 +186,57 @@ export async function readManagedManifest(
   return { version: MANIFEST_VERSION, target, files, sha256 };
 }
 
+/** A hash a target's manifest recorded for a file it wrote. */
+type RecordedHash = { target: TargetName; sha256: string };
+
 /** What a prune will delete, decided before anything is written or removed. */
 export type PrunePlan = {
   artifact: Artifact;
   previous: ManagedManifest | null;
   stale: string[];
+  /**
+   * For a path this target takes over from another target in this build, the
+   * hash the previous owner recorded, so an edit to it still warns. Filled
+   * in by `recordHandedOverHashes`.
+   */
+  handedOver: Map<string, RecordedHash>;
 };
+
+/**
+ * Fills in each plan's `handedOver` hashes from the previous manifests of the
+ * other targets in the same build. A path that moves from one target to
+ * another (the agent-plugins Codex marketplace handed to the codex target,
+ * say) is new to the recipient's manifest, so without this an edit to it
+ * would be overwritten without a warning.
+ */
+export async function recordHandedOverHashes(
+  plans: PrunePlan[],
+): Promise<void> {
+  const recorded = new Map<string, RecordedHash>();
+  for (const plan of plans) {
+    const { outDir, target } = plan.artifact;
+    for (const [file, sha256] of Object.entries(plan.previous?.sha256 ?? {})) {
+      const key = await managedPathKey(outDir, target, file, { entry: true });
+      recorded.set(key, { target, sha256 });
+    }
+  }
+  for (const plan of plans) {
+    const { outDir, target } = plan.artifact;
+    const own = new Set(
+      (plan.previous?.files ?? []).map((file) => normalizeManagedPath(file)),
+    );
+    for (const file of plan.artifact.managedPaths) {
+      if (own.has(normalizeManagedPath(file))) {
+        continue;
+      }
+      const key = await managedPathKey(outDir, target, file, { entry: true });
+      const previousOwner = recorded.get(key);
+      if (previousOwner && previousOwner.target !== target) {
+        plan.handedOver.set(file, previousOwner);
+      }
+    }
+  }
+}
 
 /**
  * Decides which previously managed files are stale and checks it is safe to
@@ -229,10 +288,10 @@ export async function planPrune(
     artifact.outDir,
     artifact.target,
     stale,
-    previous,
+    ownHashes(artifact.target, previous),
     options.dryRun ? "a real run would delete it" : "deleting it",
   );
-  return { artifact, previous, stale };
+  return { artifact, previous, stale, handedOver: new Map() };
 }
 
 /** Deletes the stale files a `planPrune` decided on. */
@@ -264,16 +323,17 @@ export async function warnOnEditedOverwrites(
   plan: PrunePlan,
   dryRun?: boolean,
 ): Promise<void> {
-  const { artifact, previous } = plan;
+  const { artifact, previous, handedOver } = plan;
   const incoming = new Map<string, string>();
   for (const [file, value] of artifact.files) {
     incoming.set(file, contentHash(value));
   }
+  const own = ownHashes(artifact.target, previous);
   await warnOnEditedFiles(
     artifact.outDir,
     artifact.target,
     artifact.managedPaths,
-    previous,
+    (file) => own(file) ?? handedOver.get(file),
     dryRun ? "a real build would overwrite it" : "overwriting it",
     incoming,
   );
@@ -314,7 +374,7 @@ export async function planClean(
     outDir,
     target,
     files,
-    previous,
+    ownHashes(target, previous),
     options.dryRun ? "a real run would delete it" : "deleting it",
   );
   return { target, outDir, paths: [...files, managedManifestPath(target)] };
@@ -350,15 +410,12 @@ async function warnOnEditedFiles(
   outDir: string,
   target: TargetName,
   files: string[],
-  previous: ManagedManifest | null,
+  recordedHash: (file: string) => RecordedHash | undefined,
   action: string,
   replacements?: Map<string, string>,
 ): Promise<void> {
-  if (!previous) {
-    return;
-  }
   for (const file of files) {
-    const recorded = previous.sha256[file];
+    const recorded = recordedHash(file);
     if (recorded === undefined) {
       continue;
     }
@@ -369,13 +426,28 @@ async function warnOnEditedFiles(
       continue;
     }
     const actual = contentHash(contents);
-    if (actual !== recorded && actual !== replacements?.get(file)) {
+    if (actual !== recorded.sha256 && actual !== replacements?.get(file)) {
+      const from =
+        recorded.target === target
+          ? ""
+          : ` (handed over from ${recorded.target})`;
       console.warn(
-        `warning: ${target} managed file ${path.join(outDir, file)} was edited after pluginpack wrote it; ${action}. ` +
+        `warning: ${target} managed file ${path.join(outDir, file)}${from} was edited after pluginpack wrote it; ${action}. ` +
           `Keep the edit by moving it into the source, or recover it from version control.`,
       );
     }
   }
+}
+
+/** Looks up the hashes a target's own previous manifest recorded. */
+function ownHashes(
+  target: TargetName,
+  previous: ManagedManifest | null,
+): (file: string) => RecordedHash | undefined {
+  return (file) => {
+    const sha256 = previous?.sha256[file];
+    return sha256 === undefined ? undefined : { target, sha256 };
+  };
 }
 
 /**

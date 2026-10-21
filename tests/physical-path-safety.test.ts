@@ -518,6 +518,72 @@ describe("a stale path another target now owns is left in place", () => {
     ).not.toContain(".agents/plugins/marketplace.json");
   });
 
+  it("warns before overwriting an edited file handed over from another target", async () => {
+    const root = await makeProject(agentPluginsWithCodex);
+    await build({ cwd: root });
+    await writeFile(
+      path.join(root, marketplace),
+      `${await readFile(path.join(root, marketplace), "utf8")}HAND EDIT\n`,
+    );
+    const configPath = await revision(
+      root,
+      "handoff",
+      `${codexTarget},\n${agentPluginsWithoutCodex}`,
+    );
+
+    const warnings = await captureWarnings(() =>
+      build({ cwd: root, configPath }),
+    );
+
+    expect(warnings).toEqual([
+      expect.stringMatching(
+        /codex managed file .*out\/\.agents\/plugins\/marketplace\.json \(handed over from agent-plugins\) was edited after pluginpack wrote it; overwriting it/,
+      ),
+    ]);
+  });
+
+  it("keeps a handed-over path owned when the recipient's prune fails", async () => {
+    const one = `outDir: "out", plugins: { one: { source: "shared/acme" } }`;
+    const two = `outDir: "out", plugins: { two: { source: "shared/acme" } }`;
+    const root = await makeProject(
+      `    antigravity: { ${one}, rootFiles: { "transfer.txt": "authored.txt" } },
+    cursor: { ${two}, rootFiles: { "blocked": "authored.txt" } }`,
+      { "authored.txt": "AUTHORED\n" },
+    );
+    await build({ cwd: root });
+    // A directory where cursor's stale file was makes cursor's prune fail.
+    await rm(path.join(root, "out/blocked"));
+    await mkdir(path.join(root, "out/blocked"));
+    const configPath = await revision(
+      root,
+      "handoff",
+      `    antigravity: { ${one} },
+    cursor: { ${two}, rootFiles: { "transfer.txt": "authored.txt" } }`,
+    );
+
+    await expect(build({ cwd: root, configPath })).rejects.toThrow(
+      /Failed to remove managed path "blocked"/,
+    );
+
+    const owners: string[] = [];
+    for (const target of ["antigravity", "cursor"] as const) {
+      const manifest = await readManagedManifest(
+        path.join(root, "out"),
+        target,
+      );
+      if (manifest?.files.includes("transfer.txt")) {
+        owners.push(target);
+      }
+    }
+    expect(owners).toEqual(["cursor"]);
+    await rm(path.join(root, "out/blocked"), { recursive: true });
+    await clean({ cwd: root, configPath });
+    await expect(exists(path.join(root, "out/transfer.txt"))).resolves.toBe(
+      false,
+    );
+    await access(path.join(root, "authored.txt"));
+  });
+
   it("does not prune a stale path another configured target's manifest claims", async () => {
     const root = await makeProject(agentPluginsWithCodex);
     await build({ cwd: root });
