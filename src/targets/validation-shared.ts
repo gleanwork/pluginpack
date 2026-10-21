@@ -16,6 +16,7 @@ import {
   substitutionRunsOn,
 } from "../partials.js";
 import type { TargetName, ValidationIssue } from "../types.js";
+import type { OutputValidationContext } from "./types.js";
 
 export const marketplaceNamePattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
@@ -122,18 +123,35 @@ export async function validateNoSurvivingPartialTags(
 
 /**
  * The paths `validateNoSurvivingPartialTags` should scan for one plugin
- * directory a target's validator found. A plugin emitted at the output root
- * (`path: "."`) shares that root with authored sources, dependencies, and
- * other files pluginpack does not own, so only its component directories and
- * static files are scanned; the managed manifest covers the rest of its
- * output.
+ * directory a target's validator found. A plugin in its own directory is
+ * scanned whole.
+ *
+ * A plugin emitted at the output root (`path: "."`) shares that root with
+ * authored sources, dependencies, and other files pluginpack does not own,
+ * so the root is never walked. Instead:
+ *
+ * - `nativeFiles` (plugin-relative manifest, MCP, hooks, and extension
+ *   paths) are always scanned, because the host reads them from a root
+ *   plugin whoever wrote them.
+ * - With managed state, the managed manifest's file list covers the rest of
+ *   the output (the engine adds it), so nothing else is scanned.
+ * - Without managed state, the recognized component directories and static
+ *   files are scanned as the best available guess at the plugin's output.
  */
-export function pluginScanPaths(root: string, pluginDir: string): string[] {
+export function pluginScanPaths(
+  root: string,
+  pluginDir: string,
+  nativeFiles: readonly string[],
+  context: OutputValidationContext,
+): string[] {
   if (path.resolve(pluginDir) !== path.resolve(root)) {
     return [pluginDir];
   }
-  return [...componentDirs, ...staticFiles].map((entry) =>
-    path.join(root, entry),
+  const fallback = context.hasManagedState
+    ? []
+    : [...componentDirs, ...staticFiles];
+  return [...nativeFiles, ...fallback].map((entry) =>
+    path.join(pluginDir, entry),
   );
 }
 

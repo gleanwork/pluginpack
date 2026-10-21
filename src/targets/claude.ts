@@ -13,6 +13,13 @@ import type { PluginTargetDefinition } from "./types.js";
 
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 
+/** Plugin-relative files Claude Code reads from a plugin, whoever wrote them. */
+const NATIVE_FILES = [
+  ".claude-plugin/plugin.json",
+  ".mcp.json",
+  "hooks/hooks.json",
+];
+
 /**
  * Claude Code agent-plugin target. `validateManifest`'s required fields
  * (`version`, `description`, `author.name`) were verified directly against
@@ -100,7 +107,7 @@ export const claude: PluginTargetDefinition = {
       pluginNamePattern,
     ),
 
-  validateOutput: async (root, issues) => {
+  validateOutput: async (root, issues, context) => {
     const marketplacePath = path.join(
       root,
       ".claude-plugin",
@@ -134,7 +141,9 @@ export const claude: PluginTargetDefinition = {
         continue;
       }
       const pluginDir = path.join(root, entry.source);
-      ownedPaths.push(...pluginScanPaths(root, pluginDir));
+      ownedPaths.push(
+        ...pluginScanPaths(root, pluginDir, NATIVE_FILES, context),
+      );
       const manifest = await readJson(
         path.join(pluginDir, ".claude-plugin", "plugin.json"),
         `${pluginName} plugin manifest`,

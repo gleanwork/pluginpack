@@ -15,6 +15,14 @@ import type { PluginTargetDefinition } from "./types.js";
 
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 
+/** Plugin-relative files Copilot reads from a plugin, whoever wrote them. */
+const NATIVE_FILES = [
+  ".github/plugin/plugin.json",
+  "plugin.json",
+  ".mcp.json",
+  "hooks/hooks.json",
+];
+
 /** Kebab-case, letters/numbers/hyphens only, per the Copilot plugin.json field reference. */
 const copilotNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -139,7 +147,7 @@ export const copilot: PluginTargetDefinition = {
       pluginNamePattern,
     ),
 
-  validateOutput: async (root, issues) => {
+  validateOutput: async (root, issues, context) => {
     const marketplacePath = path.join(
       root,
       ".claude-plugin",
@@ -185,7 +193,9 @@ export const copilot: PluginTargetDefinition = {
         continue;
       }
       const pluginDir = path.join(root, entry.source);
-      ownedPaths.push(...pluginScanPaths(root, pluginDir));
+      ownedPaths.push(
+        ...pluginScanPaths(root, pluginDir, NATIVE_FILES, context),
+      );
       // .github/plugin/ is the authoritative copy; the root copy is only
       // checked for presence, not re-parsed.
       const manifest = await readJson(

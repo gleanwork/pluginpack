@@ -543,6 +543,8 @@ That emits `{{> auth}}` verbatim. A backslash directly before a tag always escap
 
 Because substitution does not run on other file types, a tag authored in (say) a `.yaml` reference file or a `.py` script would otherwise ship through untouched; `build` fails on any such tag left in emitted output, and `validate` reports it in an already-generated target repo. `validate` does not report tags in `.md`/`.mdc`/`.markdown`/`.txt` files: there, the only tag a build leaves is an escaped one.
 
+For a plugin emitted at the output root (`path: "."`), `validate` does not walk the whole root, because authored sources and dependencies live there too. It checks the files listed in the target's managed manifest (`.pluginpack/<target>.json`) and the files the app reads from the plugin root, such as the plugin manifest and MCP config. Without a managed manifest, it checks the recognized component directories (`skills/`, `scripts/`, and so on) instead.
+
 ## Other Shapes
 
 There are two reasonable alternatives when the single-repo shape is not enough:

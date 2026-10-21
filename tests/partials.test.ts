@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Project, type ProjectArgs } from "fixturify-project";
 import { afterEach, describe, expect, it } from "vitest";
@@ -242,28 +242,41 @@ describe("validate and partial tags", () => {
 
   // A plugin emitted at the output root (`path: "."`) shares that root with
   // authored sources and dependencies, which validate must not scan.
-  it.each([
+  // Each row: target, targets block, native manifest, native MCP file.
+  const rootTargets = [
     [
       "cursor",
       `    cursor: { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+      ".cursor-plugin/plugin.json",
+      ".mcp.json",
     ],
     [
       "claude",
       `    claude: { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+      ".claude-plugin/plugin.json",
+      ".mcp.json",
     ],
     [
       "copilot",
       `    copilot: { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+      ".github/plugin/plugin.json",
+      ".mcp.json",
     ],
     [
       "codex",
       `    codex: { outDir: ".", plugins: { acme: { source: "shared/acme", path: ".", entry: { policy: { installation: "AVAILABLE", authentication: "NOT_REQUIRED" }, category: "Developer Tools" } } } }`,
+      "plugin.json",
+      "mcp.json",
     ],
     [
       "agent-plugins",
       `    "agent-plugins": { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+      "plugin.json",
+      "mcp.json",
     ],
-  ] as const)(
+  ] as const;
+
+  it.each(rootTargets)(
     "validates a %s plugin emitted at the output root without scanning unrelated files",
     async (target, targets) => {
       const root = await setup(targets, {
@@ -287,12 +300,124 @@ describe("validate and partial tags", () => {
     },
   );
 
-  it("still flags a tag in a root-level plugin's component directory", async () => {
+  // The host reads its native manifest and MCP file from a root plugin no
+  // matter which tool wrote them, so validate checks them with or without
+  // the managed manifest.
+  it.each(rootTargets)(
+    "flags a tag in a %s root plugin's native manifest and MCP file, with or without managed state",
+    async (target, targets, manifestPath, mcpPath) => {
+      const root = await setup(targets, {
+        shared: { acme: { skills: { a: { "SKILL.md": skill("a") } } } },
+      });
+      await build({ cwd: root });
+      const manifestFile = path.join(root, manifestPath);
+      const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
+      manifest.description = "{{> auth}}";
+      await writeFile(manifestFile, JSON.stringify(manifest));
+      await writeFile(
+        path.join(root, mcpPath),
+        JSON.stringify({ mcpServers: { s: { command: "{{> auth}}" } } }),
+      );
+      const expected = {
+        ok: false,
+        issues: expect.arrayContaining([
+          {
+            level: "error",
+            message: expect.stringContaining(
+              `${manifestPath} contains an unsubstituted partial reference {{> auth}}`,
+            ),
+          },
+          {
+            level: "error",
+            message: expect.stringContaining(
+              `${mcpPath} contains an unsubstituted partial reference {{> auth}}`,
+            ),
+          },
+        ]),
+      };
+
+      await expect(validateOutput(target, root)).resolves.toEqual(expected);
+      await rm(path.join(root, ".pluginpack"), { recursive: true });
+      await expect(validateOutput(target, root)).resolves.toEqual(expected);
+    },
+  );
+
+  it("flags a tag in a root Agent Plugins package's client extension directory without managed state", async () => {
+    const root = await setup(
+      `    "agent-plugins": { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+      { shared: { acme: { skills: { a: { "SKILL.md": skill("a") } } } } },
+    );
+    await build({ cwd: root });
+    await rm(path.join(root, ".pluginpack"), { recursive: true });
+    await mkdir(path.join(root, "com.github.copilot"));
+    await writeFile(
+      path.join(root, "com.github.copilot/lsp.json"),
+      '{"a": "{{> auth}}"}',
+    );
+
+    await expect(validateOutput("agent-plugins", root)).resolves.toEqual({
+      ok: false,
+      issues: [
+        {
+          level: "error",
+          message: expect.stringContaining(
+            "com.github.copilot/lsp.json contains an unsubstituted partial reference {{> auth}}",
+          ),
+        },
+      ],
+    });
+  });
+
+  it("scans only managed files and native files for a root plugin with managed state", async () => {
+    const root = await setup(
+      `    cursor: { outDir: ".", plugins: { acme: { source: "shared/acme", path: ".", include: ["skills"] } } }`,
+      {
+        shared: { acme: { skills: { a: { "SKILL.md": skill("a") } } } },
+        scripts: { "check-template.mjs": 'const tag = "{{> auth}}";\n' },
+      },
+    );
+    await build({ cwd: root });
+
+    await expect(validateOutput("cursor", root)).resolves.toEqual({
+      ok: true,
+      issues: [],
+    });
+  });
+
+  it("flags a tag in a managed file of a root-level plugin", async () => {
+    const root = await setup(
+      `    cursor: { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+      {
+        shared: {
+          acme: {
+            skills: { a: { "SKILL.md": skill("a"), "data.yaml": "a: 1\n" } },
+          },
+        },
+      },
+    );
+    await build({ cwd: root });
+    await writeFile(path.join(root, "skills/a/data.yaml"), "a: {{> auth}}\n");
+
+    const result = await validateOutput("cursor", root);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      {
+        level: "error",
+        message: expect.stringContaining(
+          "skills/a/data.yaml contains an unsubstituted partial reference {{> auth}}",
+        ),
+      },
+    ]);
+  });
+
+  it("falls back to a root-level plugin's component directories without managed state", async () => {
     const root = await setup(
       `    cursor: { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
       { shared: { acme: { skills: { a: { "SKILL.md": skill("a") } } } } },
     );
     await build({ cwd: root });
+    await rm(path.join(root, ".pluginpack"), { recursive: true });
     await writeFile(path.join(root, "skills/a/data.yaml"), "a: {{> auth}}\n");
 
     const result = await validateOutput("cursor", root);

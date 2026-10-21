@@ -29,6 +29,18 @@ import type { PluginTargetDefinition } from "./types.js";
 const noProfile = {};
 
 /**
+ * Plugin-relative files and directories a client reads from a package,
+ * whoever wrote them: the manifest, the MCP config, the hooks file, and each
+ * client's extension directory.
+ */
+const NATIVE_FILES = [
+  packageLayout.manifest,
+  packageLayout.mcp,
+  "hooks/hooks.json",
+  ...Object.values(PACKAGE_CLIENTS).map((client) => client.namespace),
+];
+
+/**
  * Agent Plugins target: one portable package per plugin under
  * `plugins/<name>/`. With no `clients`, it writes packages only — no
  * marketplace (the specification defines none) and no client files. With
@@ -78,7 +90,7 @@ export const agentPlugins: PluginTargetDefinition = {
   // Validates every package, then each client's marketplace and extension
   // directory. Output carries no config, so a client is validated when its
   // marketplace or extension directory is present.
-  validateOutput: async (root, issues) => {
+  validateOutput: async (root, issues, context) => {
     const pluginDirs = await findPackages(root);
     if (pluginDirs.length === 0) {
       error(
@@ -91,7 +103,7 @@ export const agentPlugins: PluginTargetDefinition = {
       await rejectClientOnlyContent(pluginDir, issues);
     }
     const owned = pluginDirs.flatMap((pluginDir) =>
-      pluginScanPaths(root, pluginDir),
+      pluginScanPaths(root, pluginDir, NATIVE_FILES, context),
     );
     for (const client of Object.values(PACKAGE_CLIENTS)) {
       owned.push(...(await client.validate(root, pluginDirs, issues)));

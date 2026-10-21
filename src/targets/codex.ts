@@ -25,6 +25,19 @@ const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 const sourceKinds = new Set(["local", "url", "git-subdir", "npm"]);
 
 /**
+ * Plugin-relative files Codex reads from a plugin, whoever wrote them, in
+ * either layout: the legacy `.codex-plugin/` manifest and `.mcp.json`, or
+ * the Agent Plugins package's `plugin.json` and `mcp.json`.
+ */
+const NATIVE_FILES = [
+  ".codex-plugin/plugin.json",
+  ".mcp.json",
+  packageLayout.manifest,
+  packageLayout.mcp,
+  "hooks/hooks.json",
+];
+
+/**
  * Resolves a marketplace entry's local plugin directory, or `null` when the
  * entry points somewhere pluginpack's own output doesn't contain (a remote
  * `url`/`git-subdir`/`npm` source, added via the `entry` passthrough for a
@@ -220,7 +233,7 @@ export const codexMarketplace = {
   validateManifest: requireName,
   validateMarketplaceEntry: validateCodexEntry,
 
-  validateOutput: async (root, issues) => {
+  validateOutput: async (root, issues, context) => {
     const marketplacePath = path.join(
       root,
       ".agents",
@@ -253,7 +266,9 @@ export const codexMarketplace = {
       if (!pluginDir) {
         continue;
       }
-      ownedPaths.push(...pluginScanPaths(root, pluginDir));
+      ownedPaths.push(
+        ...pluginScanPaths(root, pluginDir, NATIVE_FILES, context),
+      );
       const manifest = await validateCodexPlugin(pluginDir, pluginName, issues);
       if (!manifest) {
         continue;
