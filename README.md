@@ -523,9 +523,15 @@ export default defineConfig({
 
 Partials are project-level (shared across every source plugin, not scoped to one), and may reference other partials — nested composition resolves in one pass, though a circular reference (A includes B includes A) is a build-time error. A tag alone on its own line — the common case — leaves no blank line behind.
 
-Substitution runs on every `.md`/`.mdc`/`.markdown`/`.txt` file pluginpack emits — skills, agents, commands, rules, declared shipping files, and a target's `repositoryFiles` — via the real [`mustache`](https://github.com/janl/mustache.js) library.
+Substitution runs on every `.md`/`.mdc`/`.markdown`/`.txt` file pluginpack emits, whatever the case of the extension (`NOTES.MD` counts) — skills, agents, commands, rules, declared shipping files, and a target's `repositoryFiles` — via the real [`mustache`](https://github.com/janl/mustache.js) library.
 
-**A tag that cannot be resolved fails the build.** A `{{> name}}` reference naming a partial that does not exist is an error listing the available partials and the nearest match, rather than rendering as nothing — silently dropping a section out of a shipped skill file is worse than a red build. The same applies to a malformed reference (`{{> }}`), and to a tag inside a partial's own body.
+**A tag that cannot be resolved fails the build.** A `{{> name}}` reference naming a partial that does not exist is an error listing the available partials and the nearest match, rather than rendering as nothing — silently dropping a section out of a shipped skill file is worse than a red build. The same applies to a malformed reference (`{{> }}`), to a tag inside a partial's own body, and to a tag that substitution itself would assemble from neighboring text, such as a partial that ends in `{` placed before `{> name}}`.
+
+Substitution keeps the bytes of the file intact:
+
+- A file that contains a partial tag, and every partial, must be valid UTF-8. Otherwise the build fails, instead of replacing the invalid bytes with U+FFFD. A file with no partial tag is copied byte for byte, whatever its encoding.
+- A partial's leading byte-order mark is dropped, so it does not appear in the middle of the including file.
+- A partial takes the line endings of the file that includes it. pluginpack reads them from that file's first line break, so a CRLF partial in an LF file emits LF, and an LF partial in a CRLF file emits CRLF.
 
 Only partial tags are substituted. Any other `{{...}}`-shaped text — documentation about Handlebars, Jinja, Go templates, or Mustache itself, or a curly-brace code sample — is emitted exactly as authored, including text Mustache could not parse as a template at all. To write a literal partial tag, escape it with a backslash:
 
@@ -533,7 +539,9 @@ Only partial tags are substituted. Any other `{{...}}`-shaped text — documenta
 Reference a partial by writing \{{> auth}} in a skill file.
 ```
 
-That emits `{{> auth}}` verbatim. Because substitution does not run on other file types, a tag authored in (say) a `.yaml` reference file or a `.py` script would otherwise ship through untouched; `build` fails on any such tag left in emitted output, and `validate` reports it in an already-generated target repo.
+That emits `{{> auth}}` verbatim. A backslash directly before a tag always escapes it, so `\\{{> auth}}` emits `\{{> auth}}`. To emit a literal backslash followed by the partial's content, put the backslash in a partial of its own (for example `partials/backslash.md`, holding only `\` with no trailing newline) and write `{{> backslash}}{{> auth}}`.
+
+Because substitution does not run on other file types, a tag authored in (say) a `.yaml` reference file or a `.py` script would otherwise ship through untouched; `build` fails on any such tag left in emitted output, and `validate` reports it in an already-generated target repo. `validate` does not report tags in `.md`/`.mdc`/`.markdown`/`.txt` files: there, the only tag a build leaves is an escaped one.
 
 ## Other Shapes
 

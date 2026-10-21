@@ -70,16 +70,18 @@ export function warning(issues: ValidationIssue[], message: string): void {
 }
 
 /**
- * Flags `{{> name}}` partial references left in generated output, where a tag
- * should never survive — it means whatever reads the file gets a template
- * marker instead of the text meant to be inlined.
+ * Flags `{{> name}}` partial references left in generated output in a file
+ * type substitution never runs on (a `.yaml` reference file, a `.py`
+ * script). Whatever reads such a file gets a template marker instead of the
+ * text meant to be inlined, so it's an error.
  *
- * Where substitution never runs (a `.yaml` reference file, a `.py` script)
- * this is unambiguously a mistake, so it's an error. In a file substitution
- * *does* run on, the only way a tag reaches output is the documented `\{{>`
- * escape — which is legitimate — so a build by a current pluginpack cannot
- * produce one accidentally, and this is a warning covering output generated
- * before unresolved tags were caught at build time.
+ * Files substitution does run on are not scanned. At build time
+ * `resolvePartials` resolves every tag in them, or fails the build on an
+ * unknown, malformed, or assembled one, so the only tag a current build
+ * leaves there is the documented `\{{>` escape, which is meant to reach
+ * output. Validate cannot tell an escape from a stale or hand-edited tag
+ * after the fact, and flagging every escape would make the documented
+ * syntax permanent noise.
  */
 export async function validateNoSurvivingPartialTags(
   root: string,
@@ -104,20 +106,14 @@ export async function validateNoSurvivingPartialTags(
   ).flat();
   for (const file of [...new Set(files)]) {
     const relative = toPosix(path.relative(root, file));
-    const tag = findPartialTag(await fs.readFile(file));
-    if (!tag) {
+    if (substitutionRunsOn(relative)) {
       continue;
     }
-    const message = `${relative} contains an unsubstituted partial reference ${tag}.`;
-    if (substitutionRunsOn(relative)) {
-      warning(
-        issues,
-        `${message} If it is not an intentional \`\\{{>\` escape, rebuild with a current pluginpack.`,
-      );
-    } else {
+    const tag = findPartialTag(await fs.readFile(file));
+    if (tag) {
       error(
         issues,
-        `${message} Partial substitution does not run on this file type (${substitutedExtensions()}).`,
+        `${relative} contains an unsubstituted partial reference ${tag}. Partial substitution does not run on this file type (${substitutedExtensions()}).`,
       );
     }
   }
