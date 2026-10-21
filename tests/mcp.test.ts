@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AGENT_PLUGINS_MCP_SCHEMA,
+  pluginArgFiles,
+  pluginCommandFiles,
   renderMcpConfig,
   type McpDialect,
 } from "../src/mcp.js";
@@ -104,19 +106,26 @@ describe("renderMcpConfig: native dialects", () => {
     });
   });
 
+  it("rejects any cwd for claude, because Claude Code ignores it for plugin servers", () => {
+    for (const cwd of [
+      "./server",
+      "./",
+      "${CLAUDE_PLUGIN_ROOT}/server",
+      "/srv",
+    ]) {
+      expect(() =>
+        render({ s: { type: "stdio", command: "node", cwd } }, "claude"),
+      ).toThrow(
+        'Target "t" plugin "p": MCP server "s" has "cwd", but Claude Code ignores "cwd" for plugin MCP servers and starts them in the user\'s working directory. Remove "cwd" and resolve paths in "args" with ${CLAUDE_PLUGIN_ROOT} instead (for example "args": ["${CLAUDE_PLUGIN_ROOT}/server/index.js"]), or put a claude-only config.json without "cwd" in the claude plugin\'s overrides directory (mcp/config.json).',
+      );
+    }
+  });
+
   it("spells out the plugin root for a ./ cwd", () => {
     const servers = {
       s: { type: "stdio", command: "node", cwd: "./server" },
       root: { type: "stdio", command: "node", cwd: "./" },
     };
-    expect(render(servers, "claude").mcpServers).toEqual({
-      s: {
-        type: "stdio",
-        command: "node",
-        cwd: "${CLAUDE_PLUGIN_ROOT}/server",
-      },
-      root: { type: "stdio", command: "node", cwd: "${CLAUDE_PLUGIN_ROOT}" },
-    });
     expect(render(servers, "cursor").mcpServers).toEqual({
       s: { command: "node", cwd: "${CURSOR_PLUGIN_ROOT}/server" },
       root: { command: "node", cwd: "${CURSOR_PLUGIN_ROOT}" },
@@ -225,6 +234,16 @@ describe("renderMcpConfig: agent-plugins dialect", () => {
       "must stay inside the plugin root",
     ],
     [
+      "a root-variable command with arguments",
+      { command: "${CLAUDE_PLUGIN_ROOT}/bin/server --stdio" },
+      'Target "t" plugin "p": MCP server "s" "command" is "${CLAUDE_PLUGIN_ROOT}/bin/server --stdio"; Agent Plugins requires a single executable token',
+    ],
+    [
+      "a ./ command with arguments",
+      { command: "./scripts/server.sh --stdio" },
+      'Move arguments into "args"',
+    ],
+    [
       "a field outside the variant",
       { command: "x", url: "https://example.com" },
       'has field "url", which the Agent Plugins stdio server shape does not allow',
@@ -292,5 +311,161 @@ describe("renderMcpConfig: agent-plugins dialect", () => {
     expect(() =>
       render({ broken: { command: "a b" } }, "agent-plugins"),
     ).toThrow('Target "t" plugin "p": MCP server "broken" "command"');
+  });
+
+  it("rejects per-server extensions and says only the codex target emits them", () => {
+    expect(() =>
+      render(
+        {
+          s: {
+            type: "streamable-http",
+            url: "https://example.com/mcp",
+            extensions: { "com.openai": { auth: { type: "none" } } },
+          },
+        },
+        "agent-plugins",
+      ),
+    ).toThrow(
+      'has field "extensions", which the Agent Plugins streamable-http server shape does not allow (allowed: type, url, headers). Only the codex target emits per-server "extensions"',
+    );
+  });
+});
+
+describe("renderMcpConfig: codex dialect", () => {
+  const auth = {
+    type: "oauth",
+    client: { mode: "provided", clientId: "docs-client" },
+    baseScopes: ["docs:read"],
+  };
+
+  it('passes extensions["com.openai"] through on remote and stdio servers', () => {
+    const config = render(
+      {
+        docs: {
+          extensions: { "com.openai": { auth } },
+          type: "http",
+          url: "https://example.com/mcp",
+        },
+        local: {
+          command: "${CLAUDE_PLUGIN_ROOT}/bin/server",
+          extensions: { "com.openai": { auth: { type: "none" } } },
+        },
+      },
+      "codex",
+    );
+    expect(JSON.stringify(config)).toBe(
+      JSON.stringify({
+        $schema: AGENT_PLUGINS_MCP_SCHEMA,
+        mcpServers: {
+          docs: {
+            type: "streamable-http",
+            url: "https://example.com/mcp",
+            extensions: { "com.openai": { auth } },
+          },
+          local: {
+            type: "stdio",
+            command: "./bin/server",
+            extensions: { "com.openai": { auth: { type: "none" } } },
+          },
+        },
+      }),
+    );
+  });
+
+  it("applies every Agent Plugins rule to the rest of the server", () => {
+    expect(() => render({ s: { command: "node server.js" } }, "codex")).toThrow(
+      "requires a single executable token",
+    );
+  });
+
+  it.each([
+    [
+      "a non-object extensions field",
+      "oauth",
+      '"extensions" must be an object',
+    ],
+    [
+      "a namespace Codex doesn't read",
+      { "com.example": {} },
+      'has extensions["com.example"]; Codex reads only extensions["com.openai"]',
+    ],
+    [
+      "a non-object com.openai value",
+      { "com.openai": "oauth" },
+      'extensions["com.openai"] must be an object',
+    ],
+  ])("rejects %s", (_label, extensions, message) => {
+    expect(() =>
+      render({ s: { url: "https://example.com/mcp", extensions } }, "codex"),
+    ).toThrow(message);
+  });
+});
+
+describe("pluginArgFiles", () => {
+  it("lists the plugin file each root-variable argument names", () => {
+    expect(
+      pluginArgFiles({
+        a: { command: "node", args: ["${PLUGIN_ROOT}/dist/a.js", "--stdio"] },
+        b: {
+          command: "node",
+          args: ["--inspect", "${CLAUDE_PLUGIN_ROOT}/lib/../dist/b.js"],
+        },
+        c: { command: "node", args: ["${CURSOR_PLUGIN_ROOT}/my dir/c.js"] },
+        // Not plugin files: a ./ argument resolves against the server's
+        // working directory, and the rest aren't plain paths in the plugin.
+        d: {
+          command: "node",
+          args: [
+            "./relative.js",
+            "${PLUGIN_ROOT}",
+            "${PLUGIN_DATA}/state.json",
+            "--config=${PLUGIN_ROOT}/config.json",
+            "${PLUGIN_ROOT}/../outside.js",
+            "${PLUGIN_ROOT}/${NAME}.js",
+            42,
+          ],
+        },
+        e: { url: "https://example.com" },
+      }),
+    ).toEqual([
+      {
+        server: "a",
+        field: "args[0]",
+        value: "${PLUGIN_ROOT}/dist/a.js",
+        file: "dist/a.js",
+      },
+      {
+        server: "b",
+        field: "args[1]",
+        value: "${CLAUDE_PLUGIN_ROOT}/lib/../dist/b.js",
+        file: "dist/b.js",
+      },
+      {
+        server: "c",
+        field: "args[0]",
+        value: "${CURSOR_PLUGIN_ROOT}/my dir/c.js",
+        file: "my dir/c.js",
+      },
+    ]);
+  });
+});
+
+describe("pluginCommandFiles", () => {
+  it("lists the plugin file each ./ or root-variable command names", () => {
+    expect(
+      pluginCommandFiles({
+        a: { command: "./bin/a" },
+        b: { command: "${CLAUDE_PLUGIN_ROOT}/bin/b" },
+        c: { command: "${PLUGIN_ROOT}/bin/../bin/c" },
+        d: { command: "node" },
+        e: { command: "${CLAUDE_PLUGIN_DATA}/bin/e" },
+        f: { url: "https://example.com" },
+        g: { command: "./../outside" },
+      }),
+    ).toEqual([
+      { server: "a", command: "./bin/a", file: "bin/a" },
+      { server: "b", command: "${CLAUDE_PLUGIN_ROOT}/bin/b", file: "bin/b" },
+      { server: "c", command: "${PLUGIN_ROOT}/bin/../bin/c", file: "bin/c" },
+    ]);
   });
 });

@@ -6,6 +6,7 @@ import {
   getUnsupportedInstallTargets,
 } from "../src/install-snippet.js";
 import type { InstallParams } from "../src/install-snippet.js";
+import { getMcpDialectCitations, MCP_DIALECTS } from "../src/mcp.js";
 
 const params: InstallParams = {
   repository: "https://github.com/gleanwork/plugins",
@@ -81,12 +82,35 @@ describe("install snippet", () => {
     });
   });
 
-  it("every target carries a dated documentation citation", () => {
-    for (const target of [
+  it("every target and every MCP dialect rule carries a dated documentation citation", () => {
+    const citations = [
       ...getSupportedInstallTargets(),
       ...getUnsupportedInstallTargets(),
-    ]) {
-      const citation = getInstallSnippetCitation(target);
+    ].map((target) => getInstallSnippetCitation(target));
+    for (const dialect of MCP_DIALECTS) {
+      const dialectCitations = getMcpDialectCitations(dialect);
+      // verbatim is, by definition, the dialect with nothing documented.
+      if (dialect === "verbatim") {
+        expect(dialectCitations).toEqual([]);
+        continue;
+      }
+      expect(dialectCitations.length, dialect).toBeGreaterThan(0);
+      citations.push(...dialectCitations);
+    }
+    // Each native dialect cites its root-variable, data-variable, and
+    // transport-label rules separately; claude also cites why it rejects
+    // "cwd".
+    for (const dialect of ["cursor", "copilot"] as const) {
+      expect(getMcpDialectCitations(dialect), dialect).toHaveLength(3);
+    }
+    expect(getMcpDialectCitations("claude")).toHaveLength(4);
+    expect(getMcpDialectCitations("claude")).toContainEqual(
+      expect.objectContaining({
+        claim: expect.stringContaining('"cwd" is not a documented field'),
+      }),
+    );
+    for (const citation of citations) {
+      expect(citation.claim).not.toBe("");
       expect(citation.documentationUrl).toMatch(/^https:\/\//);
       expect(citation.verifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }

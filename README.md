@@ -474,18 +474,46 @@ For Agent Plugins output, a `${<root variable>}/bin/server` command becomes
 `./bin/server`. Anything a conforming client would silently skip fails the
 build instead:
 
-- a shell string as `command`;
+- a shell string as `command`, including a `./` or `${<root variable>}/`
+  path followed by arguments (`./bin/server --stdio`): clients run the whole
+  value as one file name, so arguments go in `args`;
 - a `${VAR}` other than `${PLUGIN_ROOT}`/`${PLUGIN_DATA}` (left unexpanded),
   or any placeholder in `url` or `headers`;
 - a `cwd` that isn't `./<path>`, `${PLUGIN_ROOT}`, `${PLUGIN_DATA}`, or a
   path under one of them that stays inside it (`.` and bare relative paths
   fail; omit `cwd` to use the plugin root);
 - a field outside `type`, `command`, `args`, `env`, `cwd` (stdio) or `type`,
-  `url`, `headers` (remote);
+  `url`, `headers` (remote). The one exception is the `codex` target, which
+  also passes through a per-server `extensions["com.openai"]` object, where
+  Codex reads MCP auth. The `agent-plugins` target rejects it, even with
+  `clients.codex`, because other clients skip a server that has it. To build
+  both targets, set `overrides: "overrides/codex/<plugin>"` on the codex
+  plugin and put a copy of `config.json` with the extension in
+  `overrides/codex/<plugin>/mcp/config.json`. See
+  [CONFORMANCE.md](CONFORMANCE.md#mcp-dialect-facts);
 - an `env` entry named `PLUGIN_ROOT` or `PLUGIN_DATA`, or a header set twice;
 - plain `http` to a non-loopback host.
 
 With `format: "legacy"`, `codex` writes `.mcp.json` as authored.
+
+On every target, a `./bin/server` or `${<root variable>}/bin/server` command
+must name a file the plugin ships, and so must an `args` entry that starts
+with `${<root variable>}/`, such as `${PLUGIN_ROOT}/dist/server.js` (a
+directory the plugin ships also counts). If the build output has no such
+file, the build prints a warning, because you can still add the file after
+the build. `validate` fails an Agent Plugins package whose command file is
+missing.
+
+The `claude` target rejects a stdio server that sets `cwd`. Claude Code
+ignores `cwd` for plugin MCP servers and starts them in the user's working
+directory; it resolves `${CLAUDE_PLUGIN_ROOT}` only in `command`, `args`, and
+`env` ([plugins reference](https://code.claude.com/docs/en/plugins-reference#environment-variables),
+[MCP docs](https://code.claude.com/docs/en/mcp)). Remove `cwd` and write
+plugin paths in `args` with the root variable, for example
+`"args": ["${PLUGIN_ROOT}/server/index.js"]`. If other targets need the
+`cwd`, keep it in the shared `config.json`, set
+`overrides: "overrides/claude/<plugin>"` on the claude plugin, and put a copy
+without `cwd` in `overrides/claude/<plugin>/mcp/config.json`.
 
 A `./bin/server` command or `./server` `cwd` becomes
 `${<root variable>}/bin/server` for targets whose clients don't resolve
