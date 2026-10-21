@@ -253,7 +253,9 @@ async function expectProjectTree(
       const value = artifact.files.get(managedPath);
       expected.set(
         inOutput(root, artifact, managedPath),
-        typeof value === "string" ? value : value?.toString("utf8"),
+        typeof value === "string" || value === undefined
+          ? value
+          : Buffer.from(value).toString("utf8"),
       );
     }
     expected.set(
