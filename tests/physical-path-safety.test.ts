@@ -274,6 +274,100 @@ describe("the delete guard protects discovered legacy sources nothing references
   });
 });
 
+describe("upgrading a codex outDir '.' build from 0.11 (version 1 manifest)", () => {
+  const codexAtRoot = `    codex: {
+      outDir: ".",
+      plugins: { acme: { source: "shared/acme" } }
+    }`;
+
+  /**
+   * The files and version 1 manifest pluginpack 0.11.1 writes for `codexAtRoot`
+   * when the source also had a skill `gamma` (since deleted). 0.11 wrote the
+   * Codex manifest under `.codex-plugin/`; the package format now writes it at
+   * the package root, so the first build after upgrading must prune it.
+   */
+  async function seed011(root: string) {
+    const files: Record<string, string> = {
+      ".agents/plugins/marketplace.json": json({
+        name: "physical-demo",
+        interface: { displayName: "physical-demo" },
+        plugins: [
+          {
+            name: "acme",
+            source: "./plugins/acme",
+            description: "P",
+            version: "1.0.0",
+          },
+        ],
+      }),
+      "plugins/acme/.codex-plugin/plugin.json": json({
+        name: "acme",
+        version: "1.0.0",
+        description: "P",
+        author: { name: "P" },
+        license: "MIT",
+        skills: "./skills/",
+      }),
+      "plugins/acme/skills/alpha/SKILL.md": skill("alpha"),
+      "plugins/acme/skills/beta/SKILL.md": skill("beta"),
+      "plugins/acme/skills/gamma/SKILL.md": skill("gamma"),
+    };
+    for (const [file, body] of Object.entries(files)) {
+      await mkdir(path.dirname(path.join(root, file)), { recursive: true });
+      await writeFile(path.join(root, file), body);
+    }
+    await writeManifest(root, ".", "codex", Object.keys(files));
+  }
+
+  it("builds, prunes the stale 0.11 paths, and upgrades the manifest", async () => {
+    const root = await makeProject(codexAtRoot);
+    await seed011(root);
+
+    await build({ cwd: root });
+
+    const manifest = await readManagedManifest(root, "codex");
+    expect(manifest?.version).toBe(2);
+    expect(
+      await exists(path.join(root, "plugins/acme/.codex-plugin/plugin.json")),
+    ).toBe(false);
+    expect(
+      await exists(path.join(root, "plugins/acme/skills/gamma/SKILL.md")),
+    ).toBe(false);
+    await access(path.join(root, "plugins/acme/plugin.json"));
+    await sourceSurvives(root);
+  });
+
+  it("prunes and cleans straight off the version 1 manifest", async () => {
+    const root = await makeProject(codexAtRoot);
+    await seed011(root);
+
+    await prune({ cwd: root });
+    expect(
+      await exists(path.join(root, "plugins/acme/skills/gamma/SKILL.md")),
+    ).toBe(false);
+    await clean({ cwd: root });
+
+    expect(await exists(path.join(root, "plugins/acme"))).toBe(false);
+    expect(await exists(path.join(root, managedManifestPath("codex")))).toBe(
+      false,
+    );
+    await sourceSurvives(root);
+  });
+
+  it("still refuses when the package directory holds a file the manifest does not list", async () => {
+    const root = await makeProject(codexAtRoot, {
+      plugins: { acme: { agents: { "mine.md": "authored\n" } } },
+    });
+    await seed011(root);
+
+    await expect(clean({ cwd: root })).rejects.toThrow(
+      /Refusing to clean \d+ path\(s\)[\s\S]*resolves inside .*plugins\/acme/,
+    );
+    await access(path.join(root, "plugins/acme/agents/mine.md"));
+    await access(path.join(root, "plugins/acme/skills/alpha/SKILL.md"));
+  });
+});
+
 describe("source protection compares physical paths", () => {
   async function aliasedSource(): Promise<string> {
     const root = await makeProject(`    "agent-plugins": {
