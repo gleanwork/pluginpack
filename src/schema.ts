@@ -1,14 +1,16 @@
 import { z } from "zod";
-import { isSafeRelativePath } from "./fs.js";
+import { isSafeRelativeFilePath } from "./fs.js";
 
 /**
  * A path written to or read from disk relative to a root — rejects absolute
- * paths and `..` escapes so a config can't write or read outside it.
+ * paths and `..` escapes so a config can't write or read outside it. Every
+ * field using it is a filesystem path, so a URL-shaped value gets no
+ * exemption: `path.resolve` would read `https://../x` as `../x`.
  */
 const safeRelativePath = z
   .string()
   .refine(
-    isSafeRelativePath,
+    isSafeRelativeFilePath,
     'must be a safe relative path (no absolute paths or ".." segments)',
   );
 
@@ -41,7 +43,9 @@ const rootPluginSchema = metadataSchema.extend({
 const sourceSchema = z.object({
   plugins: z.string().optional(),
   skills: z.string().optional(),
-  partials: z.string().optional(),
+  // Partials are inlined into shipped output, so reading them from outside the
+  // project would publish files that are not part of it.
+  partials: safeRelativePath.optional(),
   rootPlugin: rootPluginSchema.optional(),
 });
 
@@ -160,6 +164,10 @@ export const CLIENT_ONLY_CONTENT_KINDS = [
 
 /** One target's output configuration: where it's written, and which plugins it emits. */
 const targetSchema = z.object({
+  // Deliberately not safeRelativePath: an outDir may be a sibling output
+  // repository ("../cursor-plugins"). The delete guard protects this
+  // project's source and the outDir's .git; it knows nothing else about an
+  // external repo, which the README calls out.
   outDir: z.string().min(1),
   // codex only: "agent-plugins" (default) emits Agent Plugins packages;
   // "legacy" emits the .codex-plugin layout. See docs/adr/0001.
