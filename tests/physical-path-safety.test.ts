@@ -3,6 +3,7 @@ import path from "node:path";
 import { Project } from "fixturify-project";
 import { afterEach, describe, expect, it } from "vitest";
 import { build } from "../src/build.js";
+import { loadConfig } from "../src/config.js";
 import { walkFiles } from "../src/fs.js";
 
 let project: Project | undefined;
@@ -56,6 +57,22 @@ async function makeProject(
   await project.write();
   return project.baseDir;
 }
+
+describe("config path fields stay inside the project", () => {
+  it("rejects source.partials outside the project at config load", async () => {
+    const root = await makeProject(
+      `    antigravity: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      `source: { partials: "../outside" },`,
+    );
+
+    await expect(loadConfig(root)).rejects.toThrow(
+      /Invalid pluginpack config in .*: source\.partials: must be a safe relative path/,
+    );
+  });
+});
 
 describe("walkFiles distinguishes a missing directory from a file", () => {
   it("throws when the directory is a file", async () => {

@@ -41,7 +41,9 @@ const rootPluginSchema = metadataSchema.extend({
 const sourceSchema = z.object({
   plugins: z.string().optional(),
   skills: z.string().optional(),
-  partials: z.string().optional(),
+  // Partials are inlined into shipped output, so reading them from outside the
+  // project would publish files that are not part of it.
+  partials: safeRelativePath.optional(),
   rootPlugin: rootPluginSchema.optional(),
 });
 

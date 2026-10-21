@@ -583,7 +583,7 @@ rest of the artifact.
 | ------------ | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `plugins`    | string | no       | Directory to discover source plugins from. Defaults to `plugins`.                                                                                                            |
 | `skills`     | string | no       | Repo-level skills directory; creates a root source plugin from sibling component dirs.                                                                                       |
-| `partials`   | string | no       | Directory of reusable `{{> name}}` text fragments, shared across every source plugin (see **Partials**).                                                                     |
+| `partials`   | string | no       | Directory of reusable `{{> name}}` text fragments, shared across every source plugin (see **Partials**). Safe relative: it must sit inside the project.                      |
 | `rootPlugin` | object | no       | Metadata for that root skills plugin. Accepts all **`metadata`** fields plus `id`, `name`, `description`. `id` is the source-plugin name used in each target's `from` array. |
 
 **`metadata`** (and `source.rootPlugin`)
