@@ -12,7 +12,9 @@ export function toPosix(value: string): string {
  * Dotfiles are included. Symlinks are followed: a link to a file is listed
  * as a file and a link to a directory is walked, except a link back to a
  * directory already being walked, which would loop. Broken links are
- * skipped. A missing `dir` yields no files.
+ * skipped. A missing `dir` yields no files; a `dir` that is a file is an
+ * error, since reading it as an empty directory would silently drop content
+ * the author meant to ship.
  */
 export async function walkFiles(dir: string): Promise<string[]> {
   const files: string[] = [];
@@ -23,6 +25,12 @@ export async function walkFiles(dir: string): Promise<string[]> {
       real = await fs.realpath(current);
       entries = await fs.readdir(current, { withFileTypes: true });
     } catch (err) {
+      if (await isExistingNonDirectory(err, current)) {
+        throw new Error(
+          `Expected a directory but found a file: ${current}. Move the file into a directory of that name, or remove it.`,
+          { cause: err },
+        );
+      }
       if (isNotFoundError(err)) {
         return;
       }
@@ -192,4 +200,23 @@ export function isNotFoundError(error: unknown): boolean {
   }
   const code = (error as NodeJS.ErrnoException).code;
   return code === "ENOENT" || code === "ENOTDIR";
+}
+
+/**
+ * Whether `error` is an ENOTDIR raised because `dir` itself exists as a file,
+ * rather than because some ancestor of it is a file (which means `dir` is
+ * simply missing).
+ */
+async function isExistingNonDirectory(
+  error: unknown,
+  dir: string,
+): Promise<boolean> {
+  if (
+    !(error instanceof Error) ||
+    (error as NodeJS.ErrnoException).code !== "ENOTDIR"
+  ) {
+    return false;
+  }
+  const stats = await fs.stat(dir).catch(() => null);
+  return stats !== null && !stats.isDirectory();
 }
