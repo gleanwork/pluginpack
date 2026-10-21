@@ -1,0 +1,21 @@
+{
+  "name": "golden-plugins",
+  "owner": {
+    "name": "Golden"
+  },
+  "metadata": {
+    "description": "Plugins whose output is pinned byte for byte.",
+    "keywords": [
+      "golden",
+      "test"
+    ]
+  },
+  "plugins": [
+    {
+      "name": "acme",
+      "source": "plugins/acme",
+      "description": "Acme from the source manifest."
+    }
+  ],
+  "version": "1.2.3"
+}

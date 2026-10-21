@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "target": "antigravity",
+  "files": [
+    "CONTRIBUTING.md",
+    "README.md",
+    "acme/LICENSE",
+    "acme/README.md",
+    "acme/agents/helper.agent.md",
+    "acme/assets/icon.png",
+    "acme/bin/server",
+    "acme/hooks.json",
+    "acme/mcp_config.json",
+    "acme/plugin.json",
+    "acme/rules/style.mdc",
+    "acme/scripts/run.sh",
+    "acme/skills/release-notes/SKILL.md",
+    "acme/skills/release-notes/references/template.txt"
+  ],
+  "sha256": {
+    "CONTRIBUTING.md": "5d81cc62707c5592ad3fd46205b8b45d3aa25e2a1e6e18d59c14b3e801217bc7",
+    "README.md": "2e67a1226ce201bd5560b910ec05652241bf38ec364fc639d5173ae433980e5e",
+    "acme/LICENSE": "adc37366f403835c1470ab2df93d3837d4719372fc1ef8593d922e06f033f8b2",
+    "acme/README.md": "bd8dd9498117b96048242a906bd2112379227d573726b62ea4bbcba214a24469",
+    "acme/agents/helper.agent.md": "f98ea67be542b0a45b4b493c086c36fef4bb7b18c3a9ed957370083b1b0962f4",
+    "acme/assets/icon.png": "71fde3856a298a052c6edb5155638d8422114e55bf0e28374d90dea8be99ef6c",
+    "acme/bin/server": "9210d306feecb440d7bd86c82b2ddfae0bb2b706571ed3962f566a7f3f3cf83d",
+    "acme/hooks.json": "ffa7f7bd137c04c26f889c25e3ea9cad84596c619f55a2f6324369c9a413c94d",
+    "acme/mcp_config.json": "f3c91992c02ed1cb0767accf66bf8e7bca72408b401771c6c9ab5c5c55fc6aa1",
+    "acme/plugin.json": "af2e215200fc6427ae5630ff25de0d9db4d66d3a068fb07274f0e7ccd11fc5d1",
+    "acme/rules/style.mdc": "8d5532f408bbf1d24877ce3afb4cdf15114628ab98235787d1957bfe425546ee",
+    "acme/scripts/run.sh": "a4e0317eafab5cf1bc4a0041c7c8aeb6ece56fe72e7b2b3017a8a6574614cd35",
+    "acme/skills/release-notes/SKILL.md": "ab3912f7c2cd1515c291a59d91205364a66b41566095e4202ce8842c59d21b6d",
+    "acme/skills/release-notes/references/template.txt": "0528c3e23a7f67ba714dc08d17d0fa4d1d71584c3a52caa2d344d5f030db441a"
+  }
+}

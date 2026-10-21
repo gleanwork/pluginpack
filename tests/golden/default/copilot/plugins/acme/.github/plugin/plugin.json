@@ -1,0 +1,21 @@
+{
+  "name": "acme",
+  "version": "1.2.3",
+  "description": "Acme for Copilot.",
+  "author": {
+    "name": "Golden",
+    "email": "golden@example.com"
+  },
+  "homepage": "https://example.com/golden",
+  "repository": "https://github.com/example/golden-plugins",
+  "license": "MIT",
+  "keywords": [
+    "golden",
+    "test"
+  ],
+  "category": "Productivity",
+  "agents": "agents/",
+  "skills": "skills/",
+  "hooks": "hooks/hooks.json",
+  "mcpServers": ".mcp.json"
+}

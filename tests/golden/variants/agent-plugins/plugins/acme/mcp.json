@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "acme": {
+      "type": "stdio",
+      "command": "./bin/server",
+      "args": [
+        "--stdio"
+      ],
+      "env": {
+        "ACME_MODE": "plugin"
+      }
+    },
+    "docs": {
+      "type": "streamable-http",
+      "url": "https://mcp.example.com/mcp"
+    }
+  }
+}

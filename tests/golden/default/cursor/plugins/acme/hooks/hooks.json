@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo ready"
+          }
+        ]
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "sh ./scripts/pluginpack-update-check.sh",
+        "timeout": 15
+      }
+    ]
+  },
+  "version": 1
+}

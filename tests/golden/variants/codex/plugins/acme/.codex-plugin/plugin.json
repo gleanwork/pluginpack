@@ -1,0 +1,19 @@
+{
+  "name": "acme",
+  "version": "1.2.3",
+  "description": "Acme from the source manifest.",
+  "author": {
+    "name": "Golden",
+    "email": "golden@example.com"
+  },
+  "homepage": "https://example.com/golden",
+  "repository": "https://github.com/example/golden-plugins",
+  "license": "MIT",
+  "keywords": [
+    "golden",
+    "test"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json"
+}

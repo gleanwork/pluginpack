@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "acme": {
+      "type": "stdio",
+      "command": "${PLUGIN_ROOT}/bin/server",
+      "args": [
+        "--stdio"
+      ],
+      "env": {
+        "ACME_MODE": "plugin"
+      }
+    },
+    "docs": {
+      "type": "http",
+      "url": "https://mcp.example.com/mcp"
+    }
+  }
+}
