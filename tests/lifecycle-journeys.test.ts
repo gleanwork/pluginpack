@@ -210,6 +210,10 @@ async function writeFiles(
   }
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** Asserts each hand-written file is still on disk with the bytes it was written with. */
 async function expectSurvives(
   root: string,
@@ -295,21 +299,6 @@ function findOutput(artifact: Artifact, suffix: string): string {
     );
   }
   return found;
-}
-
-/**
- * Runs the steps of an `it.fails` test that must succeed before the bug can
- * show. `it.fails` passes on any failure, so a setup step that throws would
- * hide a broken test; this returns undefined instead, the test then returns
- * normally, and `it.fails` reports it.
- */
-async function setupOnly<T>(steps: () => Promise<T>): Promise<T | undefined> {
-  try {
-    return await steps();
-  } catch (error) {
-    console.error("it.fails setup failed, so the test proves nothing:", error);
-    return undefined;
-  }
 }
 
 const layouts: Record<string, Record<TargetName, Placement>> = {
@@ -580,107 +569,113 @@ describe("codex <-> agent-plugins clients.codex handoff in one outDir", () => {
   });
 
   /**
-   * Writes the config for one side under its own file name. jiti caches a
-   * config module by path for the life of the process (see the `it.fails`
-   * at the end of this file), so rewriting `pluginpack.config.ts` in place
-   * would keep building the old config in-process; a CLI user gets a fresh
-   * process per command.
+   * Rewrites `pluginpack.config.ts` in place to build one side, as a user
+   * editing the config would, and records the new bytes as authored.
    */
-  async function useConfig(root: string, side: Side): Promise<string> {
-    const configPath = `pluginpack.${side}.config.ts`;
-    await writeFiles(root, { [configPath]: configSource(configs[side]) });
-    return configPath;
+  async function useConfig(
+    root: string,
+    sources: Map<string, string>,
+    side: Side,
+  ): Promise<void> {
+    const contents = configSource(configs[side]);
+    await writeFiles(root, { "pluginpack.config.ts": contents });
+    sources.set("pluginpack.config.ts", contents);
+  }
+
+  /** The project after building `from` and adding a hand-written file. */
+  async function builtWith(from: Side) {
+    const root = await makeProject(configSource(""), handoffFiles());
+    const sources = await readTree(root);
+    await useConfig(root, sources, from);
+    const [first] = await build({ cwd: root });
+    expect(first.target).toBe(from);
+    await writeFiles(root, notes);
+    await expectProjectTree(root, "first build", sources, notes, [first]);
+    await expectValid(from, path.join(root, "out"));
+    return { root, sources };
+  }
+
+  /** Builds `to`, checks its output is complete and valid, then cleans it. */
+  async function buildAndCleanNew(
+    root: string,
+    sources: Map<string, string>,
+    to: Side,
+  ): Promise<void> {
+    const [second] = await build({ cwd: root });
+    expect(second.target).toBe(to);
+    await expectProjectTree(root, "build new", sources, notes, [second]);
+    await expectValid(to, path.join(root, "out"));
+    expect(second.managedPaths.includes("plugins/acme/hooks/hooks.json")).toBe(
+      to === "codex",
+    );
+
+    await clean({ cwd: root });
+    await expectProjectTree(root, "clean new", sources, notes, []);
   }
 
   it.each(handoffs)(
     "%s -> %s: clean the old target first, then build the new one",
     async (from, to) => {
-      const root = await makeProject(configSource(""), handoffFiles());
-      const out = path.join(root, "out");
-      const fromConfig = await useConfig(root, from);
-      const toConfig = await useConfig(root, to);
-      const sources = await readTree(root);
-      const [first] = await build({ cwd: root, configPath: fromConfig });
-      await writeFiles(root, notes);
-      await expectProjectTree(root, "first build", sources, notes, [first]);
-      await expectValid(from, out);
+      const { root, sources } = await builtWith(from);
 
       // The documented move: clean the old target while it is still
-      // configured, then build the new one.
-      await clean({ cwd: root, configPath: fromConfig, target: from });
+      // configured, then switch the config and build the new one.
+      await clean({ cwd: root, target: from });
       await expectProjectTree(root, "clean old", sources, notes, []);
 
-      const [second] = await build({ cwd: root, configPath: toConfig });
-      expect(second.target).toBe(to);
-      await expectProjectTree(root, "build new", sources, notes, [second]);
-      await expectValid(to, out);
-      expect(
-        second.managedPaths.includes("plugins/acme/hooks/hooks.json"),
-      ).toBe(to === "codex");
-
-      await clean({ cwd: root, configPath: toConfig });
-      await expectProjectTree(root, "clean new", sources, notes, []);
+      await useConfig(root, sources, to);
+      await buildAndCleanNew(root, sources, to);
     },
   );
 
-  // BUG: build, prune and clean read only the managed manifests of targets
-  // the current config lists. After a config switches an outDir from one of
-  // these targets to the other without cleaning first, the old target's
-  // manifest and its files that the new target does not overwrite stay
-  // forever: codex -> agent-plugins leaves `plugins/acme/hooks/hooks.json`
-  // inside the package (so `validate --target agent-plugins` fails) and
-  // `.pluginpack/codex.json`; agent-plugins -> codex leaves the Copilot
-  // client's `.github/plugin/marketplace.json` and
-  // `.pluginpack/agent-plugins.json`, and both outlive `clean`. The README on
-  // fix/target-conformance documents cleaning first as the workaround.
-  it.fails.each(handoffs)(
-    "%s -> %s: switching the config without cleaning leaves no stale output",
+  // Switching first leaves the old target's manifest in `out`, and no
+  // configured target would prune the files it lists (codex's hooks inside
+  // an agent-plugins package, say, which fail validation). build and prune
+  // refuse, name the manifest and say which clean to run; that clean finds
+  // the manifest even though the old target is no longer configured.
+  it.each(handoffs)(
+    "%s -> %s: switching the config without cleaning refuses until the old target is cleaned",
     async (from, to) => {
-      const ready = await setupOnly(async () => {
-        const root = await makeProject(configSource(""), handoffFiles());
-        const toConfig = await useConfig(root, to);
-        const sources = await readTree(root);
-        await build({ cwd: root, configPath: await useConfig(root, from) });
-        sources.set(
-          `pluginpack.${from}.config.ts`,
-          configSource(configs[from]),
-        );
-        await writeFiles(root, notes);
-        const [second] = await build({ cwd: root, configPath: toConfig });
-        return { root, toConfig, sources, second };
-      });
-      if (!ready) return;
-      const { root, toConfig, sources, second } = ready;
-      await expectProjectTree(root, "switch", sources, notes, [second]);
-      await expectValid(to, path.join(root, "out"));
-      await clean({ cwd: root, configPath: toConfig });
-      await expectProjectTree(root, "clean", sources, notes, []);
+      const { root, sources } = await builtWith(from);
+
+      await useConfig(root, sources, to);
+      const before = await readTree(root);
+      // Names the stale manifest, then the command that removes it.
+      const refusal = new RegExp(
+        `${escapeRegExp(`${from}.json (${from})`)}[\\s\\S]*${escapeRegExp(`pluginpack clean --target ${from}`)}`,
+      );
+      await expect(build({ cwd: root }), "build refuses").rejects.toThrow(
+        refusal,
+      );
+      await expect(prune({ cwd: root }), "prune refuses").rejects.toThrow(
+        refusal,
+      );
+      // Refusing touched nothing.
+      expect(await readTree(root)).toEqual(before);
+
+      const cleaned = await clean({ cwd: root, target: from });
+      expect(cleaned.map((result) => result.target)).toEqual([from]);
+      await expectProjectTree(root, "clean old", sources, notes, []);
+
+      await buildAndCleanNew(root, sources, to);
     },
   );
 });
 
-// BUG: loadProjectConfig imports the config through jiti with its default
-// module cache, so a second build() in the same process after the config file
-// changes on disk still builds the first config. The CLI starts a new process
-// per command and is unaffected; a long-lived script calling the programmatic
-// API (a watcher, a test harness) silently builds stale config.
-it.fails(
-  "build() reads pluginpack.config.ts again after it changes",
-  async () => {
-    const second = await setupOnly(async () => {
-      const placement = { outDir: "out", repositoryFiles: false };
-      const root = await makeProject(
-        configSource(targetBlock("claude", placement)),
-        authoredFiles(),
-      );
-      await build({ cwd: root });
-      await writeFiles(root, {
-        "pluginpack.config.ts": configSource(targetBlock("cursor", placement)),
-      });
-      const [artifact] = await build({ cwd: root });
-      return artifact;
-    });
-    if (!second) return;
-    expect(second.target).toBe("cursor");
-  },
-);
+// A long-lived process calling the programmatic API (a watcher, a test
+// harness) must build the config on disk, not a cached copy of an earlier one.
+it("build() reads pluginpack.config.ts again after it changes", async () => {
+  const placement = { outDir: "out", repositoryFiles: false };
+  const root = await makeProject(
+    configSource(targetBlock("claude", placement)),
+    authoredFiles(),
+  );
+  const [first] = await build({ cwd: root });
+  expect(first.target).toBe("claude");
+  await clean({ cwd: root });
+  await writeFiles(root, {
+    "pluginpack.config.ts": configSource(targetBlock("cursor", placement)),
+  });
+  const [second] = await build({ cwd: root });
+  expect(second.target).toBe("cursor");
+});
