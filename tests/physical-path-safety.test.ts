@@ -634,6 +634,30 @@ describe("a stale path another target now owns is left in place", () => {
     await access(path.join(root, "authored.txt"));
   });
 
+  it.skipIf(!caseInsensitiveFs)(
+    "does not prune a path renamed only by case, which is the file just written",
+    async () => {
+      const root = await makeProject(`    antigravity: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme", path: "first" } }
+    }`);
+      await build({ cwd: root });
+      const configPath = await revision(
+        root,
+        "renamed",
+        `    antigravity: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme", path: "FIRST" } }
+    }`,
+      );
+
+      await build({ cwd: root, configPath });
+
+      await access(path.join(root, "out/FIRST/skills/alpha/SKILL.md"));
+      await access(path.join(root, "out/FIRST/plugin.json"));
+    },
+  );
+
   it("does not prune a stale path another configured target's manifest claims", async () => {
     const root = await makeProject(agentPluginsWithCodex);
     await build({ cwd: root });

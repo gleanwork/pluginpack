@@ -249,7 +249,9 @@ export async function recordHandedOverHashes(
  * another target owns has changed hands (for example a marketplace file moved
  * from one target to another sharing the outDir) and is left in place rather
  * than deleted from under its new owner. This target's next manifest no
- * longer lists it, so the ownership transfer completes on the next build.
+ * longer lists it, so the ownership transfer completes on the next build. A
+ * stale path that is physically one of this target's own current paths (a
+ * case-only rename on a case-insensitive volume) is kept for the same reason.
  */
 export async function planPrune(
   artifact: Artifact,
@@ -270,8 +272,11 @@ export async function planPrune(
       const key = await managedPathKey(artifact.outDir, artifact.target, file, {
         entry: true,
       });
-      const owner = options.owners.get(key);
-      if (owner && owner !== artifact.target) {
+      // Another owner means the path changed hands. This target as the owner
+      // means the stale spelling is one of its current files under another
+      // name (`first/` renamed `FIRST/` on a case-insensitive volume), and
+      // deleting it would delete the file just written.
+      if (options.owners.has(key)) {
         continue;
       }
     }
