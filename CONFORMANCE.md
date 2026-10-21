@@ -126,19 +126,29 @@ marketplace. Each target's snippet and citation live on its own
 `PluginTargetDefinition.installSnippet` in `src/targets/<name>.ts`, verified
 directly against product docs:
 
-| Target        | Snippet                                                                                                                  | Source                                                                                                | Verified   |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
-| `claude`      | `/plugin marketplace add <repo>` then `/plugin install <name>@<marketplace>` (slash-only)                                | <https://code.claude.com/docs/en/plugins-reference#cli-commands-reference>                            | 2026-07-25 |
-| `codex`       | `codex plugin marketplace add <repo>`                                                                                    | <https://learn.chatgpt.com/codex/developer-commands>                                                  | 2026-07-25 |
-| `copilot`     | `copilot plugin marketplace add <repo>` then `copilot plugin install <name>@<marketplace>`                               | <https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing> | 2026-07-25 |
-| `antigravity` | `git clone <repo> plugin-source && cd plugin-source && agy plugin install <pluginPath>`                                  | <https://antigravity.google/docs/cli/plugins>                                                         | 2026-07-25 |
-| `cursor`      | No CLI equivalent exists. Prints the repo URL, pasted into Dashboard → Plugins → Team Marketplaces → "Import from Repo." | <https://cursor.com/docs/plugins>                                                                     | 2026-07-25 |
+| Target        | Snippet                                                                                               | Source                                                                                                | Verified   |
+| ------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------- |
+| `claude`      | `/plugin marketplace add <repo>` then `/plugin install <name>@<marketplace>`                          | <https://code.claude.com/docs/en/plugins-reference#cli-commands-reference>                            | 2026-07-25 |
+| `codex`       | `codex plugin marketplace add <repo>`                                                                 | <https://learn.chatgpt.com/codex/developer-commands>                                                  | 2026-10-21 |
+| `copilot`     | `copilot plugin marketplace add <repo>` then `copilot plugin install <name>@<marketplace>`            | <https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing> | 2026-10-21 |
+| `antigravity` | `git clone <repo> plugin-source && cd plugin-source && agy plugin install <pluginPath>`               | <https://antigravity.google/docs/cli/plugins>                                                         | 2026-07-25 |
+| `cursor`      | Prints the repo URL, pasted into Dashboard → Plugins & MCPs → Team Marketplaces → "Import from Repo." | <https://cursor.com/docs/plugins>                                                                     | 2026-10-21 |
 
-`claude`'s two-step sequence is not symmetric with `codex`/`copilot`'s shell
-commands: `/plugin marketplace add` is slash-only inside an active Claude Code
-session, with no shell equivalent — but once a marketplace is already added,
-`claude plugin install <name>@<marketplace>` does work as a standalone shell
-command, surfaced as a secondary `note`.
+The 2026-10-21 refresh found two contradicted install citations. Claude Code
+2.1.284 exposes `claude plugin marketplace add <source>` in its shell help, so
+marketplace add is not slash-only. Antigravity's cited CLI page now redirects to
+[Plugins](https://antigravity.google/docs/plugins?tab=cli), which documents
+`agy plugin install https://github.com/<owner>/<repo>` as well as local paths.
+The generated slash-command and clone-then-install snippets remain usable, but
+their historical citations overstate the restrictions. Their `verifiedAt` dates
+remain unchanged pending correction; the scheduled freshness check must flag
+them rather than certify the old claims.
+
+The same refresh could not confirm the legacy Codex manifest's name-only
+requirement in the current [packaging docs](https://developers.openai.com/codex/plugins/build).
+Those docs still support `.codex-plugin/plugin.json` as a compatibility fallback,
+but no longer state its minimum required fields. That citation's date also
+remains unchanged until a primary source or native validation confirms it.
 
 `agent-plugins` is the one target with `userConfigurable: false`. The
 specification defines no marketplace or install command, and installation is

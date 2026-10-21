@@ -5,9 +5,9 @@ plugin/marketplace JSON Schemas, authored outside this repo.
 
 - Source: `gleanwork/cursor-plugins` → `schemas/`
 - Commit: `424c3485` (fetched 2026-05-29)
-- Verified-at: 2026-07-28
-- Re-verified byte-identical against upstream `schemas/` (commit `6f3ad6e6`) on
-  2026-07-28 — no re-fetch needed.
+- Verified-at: 2026-10-21
+- Re-fetched both schemas and verified byte-identical against upstream `schemas/`
+  at commit `d6077b77e56d5aa908713669ba8c72af0ef892e5` on 2026-10-21.
 
 Do not hand-edit. Re-fetch to update:
 
