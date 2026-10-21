@@ -67,7 +67,9 @@ export const agentPlugins: PluginTargetDefinition = {
 
   mcpConfigPath: (pluginPath) => path.join(pluginPath, packageLayout.mcp),
   mcpDialect: "agent-plugins",
-  // Unreachable: hooks are a client-only content kind for this target.
+  // Hooks are a client-only content kind for this target. The schema rejects
+  // selecting them; a hooks file from additionalFiles lands here without
+  // clients (validate reports it) and goes through placeFile with them.
   hooksPath: (pluginPath) => path.join(pluginPath, "hooks", "hooks.json"),
 
   validateManifest: () => {},
@@ -147,7 +149,7 @@ function withClients(
       // here (e.g. through plugin.pluginpack.json additionalFiles).
       if (placed.length === 0) {
         throw new Error(
-          `Target "agent-plugins" plugin "${pluginName}": "${relativePath}" is ${kind} content, and none of the listed clients (${clients.map((client) => client.name).join(", ")}) loads ${kind}. Remove it, or list a client that does.`,
+          `Target "agent-plugins" plugin "${pluginName}": "${relativePath}" is ${kind} content, and pluginpack doesn't place ${kind} for any of the listed clients (${clients.map((client) => client.name).join(", ")}). Remove it, or list a client pluginpack places ${kind} for.`,
         );
       }
       return placed;

@@ -149,7 +149,8 @@ async function addDeclaredFiles(
   declared: Record<string, string> | undefined,
 ): Promise<void> {
   for (const [dest, source] of Object.entries(declared ?? {})) {
-    const destPath = toPosix(dest);
+    // Normalized, so "./agents/x.md" is placed and checked as "agents/x.md".
+    const destPath = path.posix.normalize(toPosix(dest));
     if (files.has(destPath)) {
       throw new Error(
         `Authored plugin additionalFiles destination "${dest}" collides with another emitted file.`,
@@ -299,7 +300,7 @@ async function readPluginFiles(
   const additionalFiles = plugin.manifest.additionalFiles;
   if (additionalFiles) {
     for (const [dest, source] of Object.entries(additionalFiles)) {
-      const destPath = toPosix(dest);
+      const destPath = path.posix.normalize(toPosix(dest));
       if (!isSafeRelativePath(destPath)) {
         throw new Error(
           `Source plugin "${plugin.id}" additionalFiles destination "${dest}" must be a safe relative path.`,

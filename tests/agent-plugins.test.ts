@@ -727,6 +727,29 @@ describe("agent-plugins target with clients", () => {
     ).toEqual({ name: "Acme Platform" });
   });
 
+  it("takes Copilot's marketplace owner from metadata.owner before metadata.author", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {},
+      `{
+    description: "Acme plugins.",
+    owner: { name: "Acme Platform", email: "platform@acme.example" },
+    author: { name: "Jane Doe" }
+  }`,
+    );
+
+    await build({ cwd: root });
+
+    expect(
+      (await readJsonFile(root, "out/.github/plugin/marketplace.json")).owner,
+    ).toEqual({ name: "Acme Platform", email: "platform@acme.example" });
+  });
+
   it("rejects a misspelled client name", async () => {
     const root = await setup(`
     "agent-plugins": {
@@ -847,7 +870,78 @@ describe("agent-plugins target with clients", () => {
     );
 
     await expect(build({ cwd: root })).rejects.toThrow(
-      'Target "agent-plugins" plugin "acme": "commands/run.md" is commands content, and none of the listed clients (copilot) loads commands. Remove it, or list a client that does.',
+      'Target "agent-plugins" plugin "acme": "commands/run.md" is commands content, and pluginpack doesn\'t place commands for any of the listed clients (copilot). Remove it, or list a client pluginpack places commands for.',
+    );
+  });
+
+  it("fails the build for a hooks file that no listed client loads", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {
+        "plugin.pluginpack.json": `${JSON.stringify({
+          additionalFiles: { "hooks/hooks.json": "extra.json" },
+        })}\n`,
+        "extra.json": "{}\n",
+      },
+    );
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      'Target "agent-plugins" plugin "acme": "hooks/hooks.json" is hooks content, and pluginpack doesn\'t place hooks for any of the listed clients (copilot).',
+    );
+  });
+
+  it("fails the build when a ./ destination would replace a placed agent", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {
+        agents: { "reviewer.md": AGENT },
+        "plugin.pluginpack.json": `${JSON.stringify({
+          additionalFiles: {
+            "./com.github.copilot/agents/reviewer.agent.md": "extra.md",
+          },
+        })}\n`,
+        "extra.md": "# declared\n",
+      },
+    );
+
+    await expect(build({ cwd: root })).rejects.toThrow(
+      'both write "com.github.copilot/agents/reviewer.agent.md"',
+    );
+  });
+
+  it("places a ./ agents destination for Copilot", async () => {
+    const root = await setup(
+      `
+    "agent-plugins": {
+      outDir: "out",
+      clients: { copilot: {} },
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {
+        "plugin.pluginpack.json": `${JSON.stringify({
+          additionalFiles: { "./agents/reviewer.md": "extra.md" },
+        })}\n`,
+        "extra.md": AGENT,
+      },
+    );
+
+    const [artifact] = await build({ cwd: root });
+
+    expect(artifact.managedPaths).toContain(
+      "plugins/acme/com.github.copilot/agents/reviewer.agent.md",
+    );
+    expect(artifact.managedPaths).not.toContain(
+      "plugins/acme/agents/reviewer.md",
     );
   });
 

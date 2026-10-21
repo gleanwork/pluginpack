@@ -307,7 +307,7 @@ const configSchema = z
             `${unsupported.join(", ")} only exist inside a client extension namespace; the agent-plugins target can't include them` +
             (implementers.length > 0
               ? ` unless targets["agent-plugins"].clients lists a client that loads them (${implementers.join(", ")})`
-              : " (no supported client loads them yet)"),
+              : " (pluginpack doesn't place them for any client yet)"),
         });
       }
       for (const client of listedKeys(plugin.clients)) {

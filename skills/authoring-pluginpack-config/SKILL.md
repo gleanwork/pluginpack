@@ -98,7 +98,9 @@ portable packages. Without `clients` it writes no marketplace and can't include
 `agents`, `commands`, `rules`, or `hooks`. With `clients: { codex: {}, copilot:
 {} }` it builds each package once and writes each client's marketplace. Listing
 `copilot` allows `agents`, which go to `com.github.copilot/agents/NAME.agent.md`;
-no client allows `commands`, `rules`, or `hooks`. Put client manifest data
+pluginpack doesn't place `commands`, `rules`, or `hooks` for any client yet.
+The target-level `manifest` and per-plugin `entry` are errors on this target;
+use `clients.<client>.manifest` and `plugins.<name>.clients.<client>.entry`. Put client manifest data
 under `manifest.extensions["<namespace>"]`, and Codex `policy`/`category` under
 `plugins.<name>.clients.codex.entry`. Skill names must be lowercase letters,
 digits, and hyphens and match their directory, or Agent Plugins clients skip

@@ -327,17 +327,24 @@ targets: {
 - `clients.<client>.manifest` is deep-merged into that client's marketplace
   file. `plugins.<name>.clients.<client>.entry` is deep-merged into the
   plugin's entry in it.
+- The target-level `manifest` and per-plugin `entry` are config errors on
+  `agent-plugins`, with or without `clients`, because the target writes no
+  shared marketplace for them to go into. Move them to
+  `clients.<client>.manifest` and `plugins.<name>.clients.<client>.entry`.
 - Client manifest data goes under `manifest.extensions["<namespace>"]`
   explicitly. A package for several clients can't guess which client a
   top-level field belongs to, so a non-portable top-level field is still a
   build error.
 - A client-only content kind is selected by default, and allowed in
-  `include`, only when a listed client loads it.
+  `include`, only when pluginpack places it for a listed client. Today that
+  is `agents` for `copilot`. pluginpack doesn't place `commands`, `rules`, or
+  `hooks` for any client yet.
 - Copilot's marketplace requires an owner, from `metadata.owner` or
   `metadata.author`.
 - `validate` checks every package, then each client marketplace that's
   present: every entry must point at a package whose `plugin.json` has the
-  same name.
+  same name. Each Copilot agent must be named `NAME.agent.md` and have the
+  `name` and `description` frontmatter Copilot requires.
 
 `validate` checks packages against the specification: the closed manifest, a
 valid plugin name, `mcp.json` servers, and skill names that follow the

@@ -174,8 +174,11 @@ export async function emitFromDefinition(
     // verbatim from the source's conventional hooks/hooks.json, so a target
     // whose real hooks convention differs (e.g. a root-level file, not a
     // directory) gets it right by construction. A same-path target is a
-    // same-path no-op.
-    const sourceHooksFile = pluginFiles.get("hooks/hooks.json");
+    // same-path no-op. A target that places files itself places hooks too,
+    // so it can move them into a client's directory or reject them.
+    const sourceHooksFile = definition.placeFile
+      ? undefined
+      : pluginFiles.get("hooks/hooks.json");
     if (sourceHooksFile !== undefined) {
       pluginFiles.delete("hooks/hooks.json");
     }
@@ -186,14 +189,16 @@ export async function emitFromDefinition(
       for (const placed of definition.placeFile?.(relativePath, pluginName) ?? [
         relativePath,
       ]) {
-        const earlier = placedFrom.get(placed);
+        // Key on the joined output path, so "./a" and "a" collide.
+        const outputPath = toPosix(path.join(pluginPath, placed));
+        const earlier = placedFrom.get(outputPath);
         if (earlier !== undefined && earlier !== relativePath) {
           throw new Error(
             `Target "${target}" plugin "${pluginName}": "${earlier}" and "${relativePath}" both write "${placed}". Rename or remove one of them.`,
           );
         }
-        placedFrom.set(placed, relativePath);
-        files.set(toPosix(path.join(pluginPath, placed)), value);
+        placedFrom.set(outputPath, relativePath);
+        files.set(outputPath, value);
       }
     }
     if (sourceHooksFile !== undefined) {

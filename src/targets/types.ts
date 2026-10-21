@@ -147,8 +147,8 @@ export type PluginTargetDefinition = {
   /**
    * Maps one plugin-relative source file to the plugin-relative paths it is
    * written to — none to drop it, more than one to give several clients
-   * their own copy. Defaults to the same path. Not applied to
-   * `hooks/hooks.json`, which `hooksPath` places. Throws for a file the
+   * their own copy. Defaults to the same path. When set, it also places
+   * `hooks/hooks.json` and `hooksPath` is not used. Throws for a file the
    * target can't place.
    */
   placeFile?: (relativePath: string, pluginName: string) => string[];
