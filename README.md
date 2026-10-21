@@ -356,8 +356,12 @@ their directory. Conforming clients skip a skill that fails these checks.
 ## Upgrading from 0.11
 
 0.12 changes generated output for `codex`, `claude`, `cursor` and `copilot`.
-[`MIGRATING_TO_0.12.md`](./MIGRATING_TO_0.12.md) has the full steps and
-before/after output.
+Some configs and sources that 0.11 accepted now fail at config load, build or
+`validate`. [`MIGRATING_TO_0.12.md`](./MIGRATING_TO_0.12.md) lists each error
+with its fix, then the changed output, the new warnings and the API type
+changes. The first 0.12 build rewrites each `.pluginpack/<target>.json` in a
+format 0.11 can't read, so upgrade every machine that builds the same output
+together.
 
 - The `codex` target's output layout changes. Run `pluginpack build`, and
   either publish the new layout or set `format: "legacy"` until 0.13. If
@@ -374,12 +378,13 @@ before/after output.
   The error stops every target, so nothing is written. Give `cursor` its own
   `mcp/config.json` through `overrides`, or add `"mcp"` to its `exclude`.
 - `claude`, `cursor` and `copilot` no longer copy MCP config as authored. A
-  `./bin/server` command or `./` `cwd` becomes `${CLAUDE_PLUGIN_ROOT}/bin/server`
-  for `claude`, `${CURSOR_PLUGIN_ROOT}/bin/server` for `cursor` and
-  `${PLUGIN_ROOT}/bin/server` for `copilot`. Other root and data variables
-  are renamed to each client's own. `"type": "streamable-http"` becomes
-  `"type": "http"` for `claude` and `copilot`, and `cursor` drops `type`
-  for stdio and HTTP servers.
+  `./bin/server` command becomes `${CLAUDE_PLUGIN_ROOT}/bin/server` for
+  `claude`, `${CURSOR_PLUGIN_ROOT}/bin/server` for `cursor` and
+  `${PLUGIN_ROOT}/bin/server` for `copilot`. A `claude` build fails on an MCP
+  server with `cwd`, because Claude Code ignores it. Other root and data
+  variables are renamed to each client's own. `"type": "streamable-http"`
+  becomes `"type": "http"` for `claude` and `copilot`, and `cursor` drops
+  `type` for stdio and HTTP servers.
 - `validate` rejects `---json` frontmatter and tab-indented YAML, which 0.11
   accepted. An unquoted number with a leading zero, such as `017`, now reads
   as 17 instead of the octal 15.
