@@ -422,11 +422,7 @@ export async function validateFromDefinition(
   definition: PluginTargetDefinition,
   managedPaths: string[] = [],
 ): Promise<void> {
-  const ownedPaths = await definition.validateOutput(
-    root,
-    issues,
-    managedPaths,
-  );
+  const ownedPaths = await definition.validateOutput(root, issues);
   await validateNoSurvivingPartialTags(
     root,
     [...ownedPaths, ...managedPaths],

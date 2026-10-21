@@ -190,7 +190,6 @@ export type PluginTargetDefinition = {
   validateOutput: (
     root: string,
     issues: ValidationIssue[],
-    managedPaths?: string[],
   ) => Promise<string[]>;
 
   installSnippet: InstallSnippetDefinition;
