@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   isInside,
   isInsideFolded,
+  isNotFoundError,
   json,
   physicalKey,
   resolveInside,
@@ -206,7 +207,7 @@ export async function planPrune(
       continue;
     }
     if (options.owners) {
-      const key = await physicalKey(path.resolve(artifact.outDir, file), {
+      const key = await managedPathKey(artifact.outDir, artifact.target, file, {
         entry: true,
       });
       const owner = options.owners.get(key);
@@ -218,10 +219,12 @@ export async function planPrune(
   }
   await assertNoProtectedDeletions(
     artifact.outDir,
+    artifact.target,
     stale,
     options.guard,
     "prune",
   );
+  await assertRemovalsContained(artifact.outDir, artifact.target, stale);
   await warnOnEditedFiles(
     artifact.outDir,
     artifact.target,
@@ -276,19 +279,37 @@ export async function warnOnEditedOverwrites(
   );
 }
 
-/** Deletes every file the previous build managed for a target, including its manifest. */
-export async function cleanManagedFiles(
+/** What a clean will delete for one target, decided before anything is removed. */
+export type CleanPlan = {
+  target: TargetName;
+  outDir: string;
+  /** Every managed path, then the manifest itself; empty when no manifest exists. */
+  paths: string[];
+};
+
+/**
+ * Checks it is safe to delete every file the previous build managed for a
+ * target, without touching disk: the delete guard, containment of every path,
+ * and a warning for each edited file. Runs on dry runs too.
+ */
+export async function planClean(
   outDir: string,
   target: TargetName,
   options: { dryRun?: boolean; guard?: DeleteGuard } = {},
-): Promise<CleanupResult> {
+): Promise<CleanPlan> {
   const previous = await readManagedManifest(outDir, target);
-  const entries: CleanupEntry[] = [];
   if (!previous) {
-    return { target, outDir, entries };
+    return { target, outDir, paths: [] };
   }
   const files = previous.files.map(normalizeManagedPath);
-  await assertNoProtectedDeletions(outDir, files, options.guard, "clean");
+  await assertNoProtectedDeletions(
+    outDir,
+    target,
+    files,
+    options.guard,
+    "clean",
+  );
+  await assertRemovalsContained(outDir, target, files);
   await warnOnEditedFiles(
     outDir,
     target,
@@ -296,18 +317,27 @@ export async function cleanManagedFiles(
     previous,
     options.dryRun ? "a real run would delete it" : "deleting it",
   );
-  for (const normalized of files) {
-    entries.push({ type: "deleted", target, path: normalized });
-    if (!options.dryRun) {
-      await removeManagedPath(outDir, normalized, target);
-    }
+  return { target, outDir, paths: [...files, managedManifestPath(target)] };
+}
+
+/** Deletes what a `planClean` decided on, the manifest last. */
+export async function executeClean(plan: CleanPlan): Promise<void> {
+  for (const file of plan.paths) {
+    await removeManagedPath(plan.outDir, file, plan.target);
   }
-  const manifestPath = managedManifestPath(target);
-  entries.push({ type: "deleted", target, path: manifestPath });
-  if (!options.dryRun) {
-    await removeManagedPath(outDir, manifestPath, target);
-  }
-  return { target, outDir, entries };
+}
+
+/** The cleanup report for a clean plan. */
+export function cleanResult(plan: CleanPlan): CleanupResult {
+  return {
+    target: plan.target,
+    outDir: plan.outDir,
+    entries: plan.paths.map((file): CleanupEntry => ({
+      type: "deleted",
+      target: plan.target,
+      path: file,
+    })),
+  };
 }
 
 /**
@@ -380,6 +410,7 @@ export async function buildDeleteGuard(
 
 async function assertNoProtectedDeletions(
   outDir: string,
+  target: TargetName,
   paths: string[],
   guard: DeleteGuard | undefined,
   command: string,
@@ -396,7 +427,7 @@ async function assertNoProtectedDeletions(
   );
   const blocked: Array<{ file: string; root: string }> = [];
   for (const file of paths) {
-    const root = await protectingRoot(outDir, file, rootKeys);
+    const root = await protectingRoot(outDir, target, file, rootKeys);
     if (root !== null) {
       blocked.push({ file, root });
     }
@@ -427,6 +458,7 @@ async function assertNoProtectedDeletions(
  */
 async function protectingRoot(
   outDir: string,
+  target: TargetName,
   relativePath: string,
   roots: Array<{ root: string; key: string }>,
 ): Promise<string | null> {
@@ -435,8 +467,52 @@ async function protectingRoot(
   if (lexical) {
     return lexical.root;
   }
-  const key = await physicalKey(absolute, { entry: true });
+  const key = await managedPathKey(outDir, target, relativePath, {
+    entry: true,
+  });
   return roots.find((root) => isInside(root.key, key))?.root ?? null;
+}
+
+/**
+ * `physicalKey` for a path a target's managed manifest lists. A failure to
+ * resolve it (EACCES on a locked directory, say) names the manifest and the
+ * way out, since every caller runs before anything is deleted.
+ */
+export async function managedPathKey(
+  outDir: string,
+  target: TargetName,
+  relativePath: string,
+  options: { entry?: boolean } = {},
+): Promise<string> {
+  try {
+    return await physicalKey(
+      path.resolve(outDir, normalizeManagedPath(relativePath)),
+      options,
+    );
+  } catch (error) {
+    throw uncheckedPathError(outDir, target, relativePath, error);
+  }
+}
+
+function uncheckedPathError(
+  outDir: string,
+  target: TargetName,
+  relativePath: string,
+  error: unknown,
+): Error {
+  return new Error(
+    `Cannot check managed path "${relativePath}" under ${outDir}: ${(error as Error).message}. ` +
+      nothingDeleted(outDir, target),
+    { cause: error },
+  );
+}
+
+function nothingDeleted(outDir: string, target: TargetName): string {
+  const manifest = path.join(path.resolve(outDir), managedManifestPath(target));
+  return (
+    `Nothing was deleted. The managed manifest ${manifest} lists this path. ` +
+    `Fix the cause and re-run the same command, or remove the entry from that manifest to leave the path alone.`
+  );
 }
 
 /** Normalizes a managed path to a safe, relative, forward-slash form, throwing if it escapes the output dir. */
@@ -459,23 +535,34 @@ export function normalizeManagedPath(value: string): string {
   return normalized.startsWith("./") ? normalized.slice(2) : normalized;
 }
 
-async function removeManagedPath(
-  outDir: string,
+/** A managed path that cannot be removed safely. The message says why. */
+class UnsafeRemovalError extends Error {}
+
+/**
+ * The absolute path `relativePath` names under `root`, or `null` when there is
+ * nothing to remove: the entry is missing, or an ancestor is now a file, so
+ * the managed file cannot exist. Throws `UnsafeRemovalError` when removing the
+ * entry would reach outside `root`.
+ */
+async function inspectRemoval(
+  root: string,
   relativePath: string,
-  target: TargetName,
-): Promise<void> {
-  const root = path.resolve(outDir);
+): Promise<string | null> {
   const normalized = normalizeManagedPath(relativePath);
   const destination = path.resolve(root, normalized);
   if (!isInside(root, destination)) {
-    throw new Error(`Managed path escapes output directory: ${relativePath}`);
+    throw new UnsafeRemovalError(
+      `Managed path escapes output directory: ${relativePath}`,
+    );
   }
   let stats;
   try {
     stats = await fs.lstat(destination);
   } catch (error) {
-    if (isNotFound(error)) {
-      return;
+    // ENOTDIR: an ancestor was replaced by a file, so the managed file is
+    // gone and the file in its way is not pluginpack's to delete.
+    if (isNotFoundError(error)) {
+      return null;
     }
     throw error;
   }
@@ -485,7 +572,7 @@ async function removeManagedPath(
       await fs.readlink(destination),
     );
     if (!isInside(root, linkTarget)) {
-      throw new Error(
+      throw new UnsafeRemovalError(
         `Refusing to remove a symlink pointing outside the output directory: ${relativePath}`,
       );
     }
@@ -495,18 +582,70 @@ async function removeManagedPath(
   // string test passes and the final entry is an ordinary file. Resolve the
   // real destination as the catch-all before deleting.
   if ((await resolveInside(root, destination)) === null) {
-    throw new Error(
+    throw new UnsafeRemovalError(
       `Refusing to remove a path that resolves outside the output directory: ${relativePath}`,
     );
+  }
+  return destination;
+}
+
+/**
+ * Runs the containment checks `removeManagedPath` runs, for every path, before
+ * anything is written or deleted. Dry runs run it too, so `--dry-run` refuses
+ * a path that escapes the output directory exactly where the real command
+ * would, and a build refuses before writing new output.
+ */
+async function assertRemovalsContained(
+  outDir: string,
+  target: TargetName,
+  paths: string[],
+): Promise<void> {
+  const root = path.resolve(outDir);
+  for (const file of paths) {
+    try {
+      await inspectRemoval(root, file);
+    } catch (error) {
+      if (error instanceof UnsafeRemovalError) {
+        throw new Error(
+          `${error.message} (under ${outDir}). ${nothingDeleted(outDir, target)}`,
+          { cause: error },
+        );
+      }
+      throw uncheckedPathError(outDir, target, file, error);
+    }
+  }
+}
+
+async function removeManagedPath(
+  outDir: string,
+  relativePath: string,
+  target: TargetName,
+): Promise<void> {
+  const root = path.resolve(outDir);
+  const manifest = path.join(root, managedManifestPath(target));
+  const recovery =
+    `The managed manifest ${manifest} still lists every remaining path, so fix the cause and re-run the same command. ` +
+    `To stop pluginpack managing these files instead, delete that manifest.`;
+  let destination: string | null;
+  try {
+    destination = await inspectRemoval(root, relativePath);
+  } catch (error) {
+    if (error instanceof UnsafeRemovalError) {
+      throw new Error(`${error.message}. ${recovery}`, { cause: error });
+    }
+    throw new Error(
+      `Failed to check managed path "${relativePath}" under ${outDir}: ${(error as Error).message}. ${recovery}`,
+      { cause: error },
+    );
+  }
+  if (destination === null) {
+    return;
   }
   try {
     await fs.rm(destination, { force: true });
   } catch (error) {
-    const manifest = path.join(root, managedManifestPath(target));
     throw new Error(
-      `Failed to remove managed path "${relativePath}" under ${outDir}: ${(error as Error).message}. ` +
-        `The managed manifest ${manifest} still lists every remaining path, so fix the cause and re-run the same command. ` +
-        `To stop pluginpack managing these files instead, delete that manifest.`,
+      `Failed to remove managed path "${relativePath}" under ${outDir}: ${(error as Error).message}. ${recovery}`,
       { cause: error },
     );
   }

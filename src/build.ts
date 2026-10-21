@@ -5,6 +5,7 @@ import {
   assertManagedManifestContained,
   buildDeleteGuard,
   executePrune,
+  managedPathKey,
   normalizeManagedPath,
   planPrune,
   readManagedManifest,
@@ -264,11 +265,13 @@ async function assertNoCollisionsWithBuiltTargets(
     }
     for (const file of manifest.files) {
       const absolute = path.resolve(otherOutDir, normalizeManagedPath(file));
-      const key = await physicalKey(absolute, { entry: true });
+      const key = await managedPathKey(otherOutDir, other, file, {
+        entry: true,
+      });
       claimed.set(key, other);
       const conflicting =
         incoming.byEntry.get(key) ??
-        incoming.byWrite.get(await physicalKey(absolute));
+        incoming.byWrite.get(await managedPathKey(otherOutDir, other, file));
       if (conflicting) {
         collisions.push(
           `  ${other} (previously built) and ${conflicting.target}: ${describeAlias(absolute, conflicting.absolute)}`,

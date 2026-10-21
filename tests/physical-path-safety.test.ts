@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
   access,
+  chmod,
   link,
   mkdir,
   mkdtemp,
@@ -586,6 +587,44 @@ describe("dry runs run the same destructive preflight as the real command", () =
     await access(path.join(root, "skills/gamma/SKILL.md"));
   });
 
+  describe("with a stale path that crosses a symlink out of the outDir", () => {
+    async function escapingStalePath(): Promise<string> {
+      const root = await makeProject(
+        `    antigravity: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+        { outside: { "sentinel.txt": "UNMANAGED\n" }, out: {} },
+      );
+      await symlink("../outside", path.join(root, "out/link"));
+      await writeManifest(root, "out", "antigravity", ["link/sentinel.txt"]);
+      return root;
+    }
+    const refusal =
+      /Refusing to remove a path that resolves outside the output directory: link\/sentinel\.txt \(under .*out\)\. Nothing was deleted\. The managed manifest .*out\/\.pluginpack\/antigravity\.json lists this path/;
+
+    it.each(["clean", "prune"] as const)(
+      "%s --dry-run refuses it, as the real command does",
+      async (command) => {
+        const root = await escapingStalePath();
+        const run = command === "clean" ? clean : prune;
+
+        await expect(run({ cwd: root, dryRun: true })).rejects.toThrow(refusal);
+        await expect(run({ cwd: root })).rejects.toThrow(refusal);
+        await access(path.join(root, "outside/sentinel.txt"));
+      },
+    );
+
+    it("build refuses it before writing any output", async () => {
+      const root = await escapingStalePath();
+
+      await expect(build({ cwd: root, dryRun: true })).rejects.toThrow(refusal);
+      await expect(build({ cwd: root })).rejects.toThrow(refusal);
+      await expect(exists(path.join(root, "out/acme"))).resolves.toBe(false);
+      await access(path.join(root, "outside/sentinel.txt"));
+    });
+  });
+
   it("build --dry-run fails where build would, and build refuses before writing", async () => {
     const root = await protectedStalePath();
     await rm(path.join(root, "generated"), { recursive: true });
@@ -841,6 +880,58 @@ describe("a failed clean says how to recover", () => {
     );
     await access(manifestPath);
   });
+});
+
+describe("clean when generated directories were replaced or locked", () => {
+  const target = `    antigravity: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme" } }
+    }`;
+
+  it("treats managed files below a directory now replaced by a file as gone", async () => {
+    const root = await makeProject(target);
+    await build({ cwd: root });
+    await rm(path.join(root, "out/acme/skills"), { recursive: true });
+    await writeFile(path.join(root, "out/acme/skills"), "USER FILE\n");
+
+    await clean({ cwd: root });
+
+    expect(await readFile(path.join(root, "out/acme/skills"), "utf8")).toBe(
+      "USER FILE\n",
+    );
+    await expect(exists(path.join(root, "out/acme/plugin.json"))).resolves.toBe(
+      false,
+    );
+    await expect(
+      exists(path.join(root, "out", managedManifestPath("antigravity"))),
+    ).resolves.toBe(false);
+  });
+
+  it.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
+    "names the manifest and deletes nothing when a managed path cannot be inspected",
+    async () => {
+      const root = await makeProject(target);
+      await build({ cwd: root });
+      const locked = path.join(root, "out/acme/skills");
+      await chmod(locked, 0o000);
+      try {
+        const manifestPath = path.join(
+          root,
+          "out",
+          managedManifestPath("antigravity"),
+        );
+        await expect(clean({ cwd: root })).rejects.toThrow(
+          new RegExp(
+            `Cannot check managed path "acme/skills/alpha/SKILL\\.md" under .*out: EACCES[\\s\\S]*Nothing was deleted\\. The managed manifest ${manifestPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} lists this path`,
+          ),
+        );
+        await access(path.join(root, "out/acme/plugin.json"));
+        await access(manifestPath);
+      } finally {
+        await chmod(locked, 0o755);
+      }
+    },
+  );
 });
 
 describe("an external outDir keeps its version-control data", () => {

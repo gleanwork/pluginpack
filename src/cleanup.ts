@@ -2,14 +2,18 @@ import path from "node:path";
 import { describeAlias, planBuild } from "./build.js";
 import { targetNames } from "./adapters.js";
 import { loadProjectConfig } from "./config.js";
-import { physicalKey } from "./fs.js";
+import { withPathCache } from "./fs.js";
 import {
   buildDeleteGuard,
-  cleanManagedFiles,
+  cleanResult,
+  executeClean,
   executePrune,
+  managedPathKey,
+  planClean,
   normalizeManagedPath,
   pruneResult,
   readManagedManifest,
+  type CleanPlan,
 } from "./managed.js";
 import type {
   CleanupResult,
@@ -59,27 +63,34 @@ export async function clean(
     force?: boolean;
   } = {},
 ): Promise<CleanupResult[]> {
-  const project = await loadProjectConfig(options.cwd, options.configPath);
-  const guard = await buildDeleteGuard(project, options.force);
-  const targets = options.target
-    ? [options.target]
-    : (Object.keys(project.config.targets) as TargetName[]);
-  await assertNoManifestCollisions(project, targets, options.force);
-  const results: CleanupResult[] = [];
-  for (const target of targets) {
-    const targetConfig = project.config.targets[target];
-    if (!targetConfig) {
-      throw new Error(`Target "${target}" is not configured.`);
+  // Check every target before deleting anything, so a refusal for one target
+  // does not leave another already torn down.
+  const plans = await withPathCache(async () => {
+    const project = await loadProjectConfig(options.cwd, options.configPath);
+    const guard = await buildDeleteGuard(project, options.force);
+    const targets = options.target
+      ? [options.target]
+      : (Object.keys(project.config.targets) as TargetName[]);
+    await assertNoManifestCollisions(project, targets, options.force);
+    const planned: CleanPlan[] = [];
+    for (const target of targets) {
+      const targetConfig = project.config.targets[target];
+      if (!targetConfig) {
+        throw new Error(`Target "${target}" is not configured.`);
+      }
+      const outDir = path.resolve(project.rootDir, targetConfig.outDir);
+      planned.push(
+        await planClean(outDir, target, { dryRun: options.dryRun, guard }),
+      );
     }
-    const outDir = path.resolve(project.rootDir, targetConfig.outDir);
-    results.push(
-      await cleanManagedFiles(outDir, target, {
-        dryRun: options.dryRun,
-        guard,
-      }),
-    );
+    return planned;
+  });
+  if (!options.dryRun) {
+    for (const plan of plans) {
+      await executeClean(plan);
+    }
   }
-  return results;
+  return plans.map(cleanResult);
 }
 
 /**
@@ -122,7 +133,7 @@ async function assertNoManifestCollisions(
     }
     for (const file of manifest.files) {
       const absolute = path.resolve(outDir, normalizeManagedPath(file));
-      const key = await physicalKey(absolute, { entry: true });
+      const key = await managedPathKey(outDir, target, file, { entry: true });
       const owner = owners.get(key);
       if (owner && owner.target !== target) {
         if (cleaning.includes(owner.target) || cleaning.includes(target)) {
