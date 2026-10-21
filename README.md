@@ -188,7 +188,15 @@ Each emitted plugin names one `source`. Optional `overrides` are applied after
 the source, so it can add or replace files for that target. `repositoryFiles`
 copies a whole directory into the generated repository root.
 
-`pluginpack` writes a `.pluginpack/<target>.json` managed-file manifest for each built target. That manifest lets builds and cleanup commands remove stale generated files without touching source files or unmanaged repo content.
+`pluginpack` writes a `.pluginpack/<target>.json` managed-file manifest for each built target. That manifest lets builds and cleanup commands remove stale generated files without touching source files or unmanaged repo content. It also records a sha256 of each file as written. If you edit a generated file and a later `build`, `prune` or `clean` would overwrite or delete it, pluginpack prints a warning naming the file first. It still goes ahead, because the output belongs to pluginpack; move the edit into the source to keep it. Manifests from 0.11 and earlier have no hashes, so they produce no warnings until the next build rewrites them.
+
+Before it deletes anything, pluginpack compares real paths, with symlinks resolved and, on a case-insensitive filesystem, case folded. It refuses an `outDir` that lands inside a source, overrides, partials, `repositoryFiles` or `rootFiles` path, even through a symlink. It also refuses two targets that write the same file through different spellings, such as `out` and `OUT` on macOS, or through a generated file that is a symlink to another target's file. Under the default `plugins/` root, a directory with a component directory counts as legacy source and is never deleted, unless pluginpack recorded writing every file in it. `--dry-run` runs the same checks, so it fails wherever the real command would.
+
+If an `outDir` holds a manifest for a target the config no longer builds there, `build` and `prune` refuse to run. That happens when a config drops a target, or moves an outDir to another target, such as `codex` to `agent-plugins`, without cleaning first. No configured target would prune those files, so they would stay forever. Run `pluginpack clean --target <old>` to delete them. It finds the old target's manifest in any outDir the config uses, even when that target is no longer configured. A plain `clean` deletes them too. To keep the files unmanaged instead, delete the manifest.
+
+An `outDir` outside the project, such as a sibling output repository (`../cursor-plugins`), works. The guard there knows only that repository's `.git` directory and the files the manifest lists, so it cannot protect anything else in that repository from a manifest someone edited by hand.
+
+**Upgrading from 0.11 (managed files):** the first build rewrites each manifest as version 2. pluginpack 0.11 cannot read a version 2 manifest, so upgrade every machine and CI job that builds the same output together. A manifest from a newer pluginpack fails with a message saying to upgrade. Some configs that 0.11 accepted now fail at load or build: `source.partials` outside the project, an `outDir` inside a source path, and a `rootFiles` entry that copies a file onto itself (`"README.md": "README.md"` with `outDir: "."`). Each error names the field to change. A build into an outDir that still holds a dropped target's manifest also fails until you run `pluginpack clean --target <old>`.
 
 ## Components
 
@@ -551,9 +559,15 @@ export default defineConfig({
 
 Partials are project-level (shared across every source plugin, not scoped to one), and may reference other partials — nested composition resolves in one pass, though a circular reference (A includes B includes A) is a build-time error. A tag alone on its own line — the common case — leaves no blank line behind.
 
-Substitution runs on every `.md`/`.mdc`/`.markdown`/`.txt` file pluginpack emits — skills, agents, commands, rules, declared shipping files, and a target's `repositoryFiles` — via the real [`mustache`](https://github.com/janl/mustache.js) library.
+Substitution runs on every `.md`/`.mdc`/`.markdown`/`.txt` file pluginpack emits, whatever the case of the extension (`NOTES.MD` counts) — skills, agents, commands, rules, declared shipping files, and a target's `repositoryFiles` — via the real [`mustache`](https://github.com/janl/mustache.js) library.
 
-**A tag that cannot be resolved fails the build.** A `{{> name}}` reference naming a partial that does not exist is an error listing the available partials and the nearest match, rather than rendering as nothing — silently dropping a section out of a shipped skill file is worse than a red build. The same applies to a malformed reference (`{{> }}`), and to a tag inside a partial's own body.
+**A tag that cannot be resolved fails the build.** A `{{> name}}` reference naming a partial that does not exist is an error listing the available partials and the nearest match, rather than rendering as nothing — silently dropping a section out of a shipped skill file is worse than a red build. The same applies to a malformed reference (`{{> }}`), to a tag inside a partial's own body, and to a tag that substitution itself would assemble from neighboring text, such as a partial that ends in `{` placed before `{> name}}`.
+
+Substitution keeps the bytes of the file intact:
+
+- A file that contains a partial tag, and every partial, must be valid UTF-8. Otherwise the build fails, instead of replacing the invalid bytes with U+FFFD. A file with no partial tag is copied byte for byte, whatever its encoding.
+- A partial's leading byte-order mark is dropped, so it does not appear in the middle of the including file.
+- A partial takes the line endings of the file that includes it. pluginpack reads them from that file's first line break, so a CRLF partial in an LF file emits LF, and an LF partial in a CRLF file emits CRLF.
 
 Only partial tags are substituted. Any other `{{...}}`-shaped text — documentation about Handlebars, Jinja, Go templates, or Mustache itself, or a curly-brace code sample — is emitted exactly as authored, including text Mustache could not parse as a template at all. To write a literal partial tag, escape it with a backslash:
 
@@ -561,7 +575,11 @@ Only partial tags are substituted. Any other `{{...}}`-shaped text — documenta
 Reference a partial by writing \{{> auth}} in a skill file.
 ```
 
-That emits `{{> auth}}` verbatim. Because substitution does not run on other file types, a tag authored in (say) a `.yaml` reference file or a `.py` script would otherwise ship through untouched; `build` fails on any such tag left in emitted output, and `validate` reports it in an already-generated target repo.
+That emits `{{> auth}}` verbatim. A backslash directly before a tag always escapes it, so `\\{{> auth}}` emits `\{{> auth}}`. To emit a literal backslash followed by the partial's content, put the backslash in a partial of its own (for example `partials/backslash.md`, holding only `\` with no trailing newline) and write `{{> backslash}}{{> auth}}`.
+
+Because substitution does not run on other file types, a tag authored in (say) a `.yaml` reference file or a `.py` script would otherwise ship through untouched; `build` fails on any such tag left in emitted output, and `validate` reports it in an already-generated target repo. `validate` does not report tags in `.md`/`.mdc`/`.markdown`/`.txt` files: there, the only tag a build leaves is an escaped one.
+
+For a plugin emitted at the output root (`path: "."`), `validate` does not walk the whole root, because authored sources and dependencies live there too. It checks the files listed in the target's managed manifest (`.pluginpack/<target>.json`) and the files the app reads from the plugin root, such as the plugin manifest and MCP config. Without a managed manifest, it checks the recognized component directories (`skills/`, `scripts/`, and so on) instead.
 
 ## Other Shapes
 
@@ -611,7 +629,7 @@ rest of the artifact.
 | ------------ | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `plugins`    | string | no       | Directory to discover source plugins from. Defaults to `plugins`.                                                                                                            |
 | `skills`     | string | no       | Repo-level skills directory; creates a root source plugin from sibling component dirs.                                                                                       |
-| `partials`   | string | no       | Directory of reusable `{{> name}}` text fragments, shared across every source plugin (see **Partials**).                                                                     |
+| `partials`   | string | no       | Directory of reusable `{{> name}}` text fragments, shared across every source plugin (see **Partials**). Safe relative: it must sit inside the project.                      |
 | `rootPlugin` | object | no       | Metadata for that root skills plugin. Accepts all **`metadata`** fields plus `id`, `name`, `description`. `id` is the source-plugin name used in each target's `from` array. |
 
 **`metadata`** (and `source.rootPlugin`)
@@ -634,7 +652,7 @@ rest of the artifact.
 
 | Field              | Type                            | Required | Meaning                                                                                                                                                |
 | ------------------ | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `outDir`           | string                          | yes      | Output directory for this target, relative to the config root.                                                                                         |
+| `outDir`           | string                          | yes      | Output directory for this target, relative to the config root. May be outside the project; it may not sit inside a source path.                        |
 | `format`           | `"agent-plugins"` \| `"legacy"` | no       | `codex` only. `"legacy"` keeps the `.codex-plugin/plugin.json` layout; default `"agent-plugins"`.                                                      |
 | `plugins`          | record                          | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).                                                               |
 | `marketplaceDir`   | string (safe relative)          | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).                                                                          |
@@ -721,7 +739,7 @@ A few things worth knowing about this surface before depending on it:
 
 ### `init`
 
-Create a starter pluginpack.config.ts and source plugin layout.
+Create a starter pluginpack.config.ts for every target and a shared/example source plugin. Refuses to overwrite existing files.
 
 ```bash
 pluginpack init [options]
@@ -831,7 +849,7 @@ Exit codes:
 
 ### `clean`
 
-Remove all managed files for configured target outputs.
+Remove all managed files in configured target outputs, including those of a target the config no longer builds there.
 
 ```bash
 pluginpack clean [--target copilot|antigravity|cursor|claude|codex|agent-plugins] [--dry-run]
@@ -839,7 +857,7 @@ pluginpack clean [--target copilot|antigravity|cursor|claude|codex|agent-plugins
 
 Options:
 
-- `--target <target>`: Clean only one configured target.
+- `--target <target>`: Clean only one target. It may be one the config no longer builds, if its manifest is in a configured outDir.
 - `--dry-run`: Print managed files without deleting them.
 - `--force`: Delete even paths that resolve inside the source tree or config.
 
@@ -897,6 +915,6 @@ Examples:
 Exit codes:
 
 - 0 when docs are current or updated
-- 1 when --check finds stale docs
+- 1 when --check finds stale docs or CLI reference metadata is missing
 
 <!-- pluginpack-cli:end -->

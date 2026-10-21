@@ -342,17 +342,21 @@ export async function emitFromDefinition(
 /**
  * Validates one target's output using its `PluginTargetDefinition`, plus the
  * checks that hold for every target regardless of its layout.
+ * `managedPaths` is the managed manifest's file list, or `undefined` when
+ * the output has no managed manifest for this target.
  */
 export async function validateFromDefinition(
   root: string,
   issues: ValidationIssue[],
   definition: PluginTargetDefinition,
-  managedPaths: string[] = [],
+  managedPaths?: string[],
 ): Promise<void> {
-  const ownedPaths = await definition.validateOutput(root, issues);
+  const ownedPaths = await definition.validateOutput(root, issues, {
+    hasManagedState: managedPaths !== undefined,
+  });
   await validateNoSurvivingPartialTags(
     root,
-    [...ownedPaths, ...managedPaths],
+    [...ownedPaths, ...(managedPaths ?? [])],
     issues,
   );
 }
