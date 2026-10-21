@@ -1,6 +1,6 @@
 import path from "node:path";
 import { assertOutDirsOutsideSource, loadConfig } from "./config.js";
-import { physicalKey, writeArtifact } from "./fs.js";
+import { physicalKey, withPathCache, writeArtifact } from "./fs.js";
 import {
   assertManagedManifestContained,
   buildDeleteGuard,
@@ -58,7 +58,15 @@ export async function build(options: BuildOptions = {}): Promise<Artifact[]> {
  * fails exactly where the real command would, and a refused prune never
  * leaves a half-written build behind. `force` relaxes only the delete guard.
  */
-export async function planBuild(
+export function planBuild(
+  options: BuildOptions,
+  force?: boolean,
+): Promise<{ artifacts: Artifact[]; prunes: PrunePlan[] }> {
+  // Nothing in the plan writes, so it can resolve each directory once.
+  return withPathCache(() => planBuildChecked(options, force));
+}
+
+async function planBuildChecked(
   options: BuildOptions,
   force?: boolean,
 ): Promise<{ artifacts: Artifact[]; prunes: PrunePlan[] }> {

@@ -1,12 +1,16 @@
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
   access,
+  link,
   mkdir,
+  mkdtemp,
   readFile,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Project, type ProjectArgs } from "fixturify-project";
@@ -14,7 +18,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { build } from "../src/build.js";
 import { clean, prune } from "../src/cleanup.js";
 import { loadConfig } from "../src/config.js";
-import { exists, json, walkFiles } from "../src/fs.js";
+import {
+  exists,
+  json,
+  physicalKey,
+  walkFiles,
+  withPathCache,
+} from "../src/fs.js";
 import { managedManifestPath, readManagedManifest } from "../src/managed.js";
 
 type DirJSON = NonNullable<ProjectArgs["files"]>;
@@ -106,6 +116,53 @@ const caseInsensitiveFs = existsSync(
     "PHYSICAL-PATH-SAFETY.TEST.TS",
   ),
 );
+
+/**
+ * Mounts an empty case-sensitive APFS volume at a directory under the
+ * (case-insensitive by default) system temp directory, or returns null where
+ * that is not possible: not macOS, or `hdiutil` unavailable or refused.
+ */
+async function mountCaseSensitiveVolume(): Promise<string | null> {
+  if (process.platform !== "darwin") {
+    return null;
+  }
+  const base = await mkdtemp(path.join(os.tmpdir(), "pluginpack-casefs-"));
+  const image = path.join(base, "volume.sparseimage");
+  const mountPoint = path.join(base, "mnt");
+  try {
+    await mkdir(mountPoint);
+    execFileSync("hdiutil", [
+      "create",
+      "-quiet",
+      "-size",
+      "16m",
+      "-fs",
+      "Case-sensitive APFS",
+      "-type",
+      "SPARSE",
+      "-volname",
+      "pluginpack-cs",
+      image,
+    ]);
+    execFileSync("hdiutil", [
+      "attach",
+      "-quiet",
+      "-nobrowse",
+      "-mountpoint",
+      mountPoint,
+      image,
+    ]);
+  } catch {
+    await rm(base, { recursive: true, force: true });
+    return null;
+  }
+  return mountPoint;
+}
+
+function unmountVolume(mountPoint: string): void {
+  execFileSync("hdiutil", ["detach", "-quiet", "-force", mountPoint]);
+  execFileSync("rm", ["-rf", path.dirname(mountPoint)]);
+}
 
 const sourceSurvives = async (root: string) => {
   await access(path.join(root, "shared/acme/skills/alpha/SKILL.md"));
@@ -242,6 +299,28 @@ describe("source protection compares physical paths", () => {
   });
 });
 
+/**
+ * In a case-sensitive `dir`, two hard links whose names differ only by case
+ * are one inode: comparing inodes of `name` and `NAME` would conclude the
+ * directory folds case and alias the distinct files `other` and `OTHER`.
+ */
+async function expectHardLinksKeepCase(dir: string): Promise<void> {
+  const links = path.join(dir, "links");
+  await mkdir(links);
+  await writeFile(path.join(links, "name"), "x\n");
+  await link(path.join(links, "name"), path.join(links, "NAME"));
+  await writeFile(path.join(links, "other"), "a\n");
+  await writeFile(path.join(links, "OTHER"), "b\n");
+
+  const keys = await withPathCache(async () => [
+    await physicalKey(path.join(links, "name"), { entry: true }),
+    await physicalKey(path.join(links, "other"), { entry: true }),
+    await physicalKey(path.join(links, "OTHER"), { entry: true }),
+  ]);
+
+  expect(new Set(keys).size).toBe(3);
+}
+
 describe("cross-target collision checks compare physical paths", () => {
   const codexAndAgentPlugins = (
     codexOut: string,
@@ -289,6 +368,44 @@ describe("cross-target collision checks compare physical paths", () => {
       ).rejects.toThrow(
         /overlaps a previously built target's managed files[\s\S]*codex \(previously built\) and agent-plugins/,
       );
+    },
+  );
+
+  it("builds outDirs that differ only by case on a case-sensitive volume mounted under a case-insensitive parent", async (context) => {
+    // The volume is the destination filesystem. Probing how its mount point's
+    // name compares in the parent directory asks the wrong filesystem.
+    const volume = await mountCaseSensitiveVolume();
+    if (!volume) {
+      context.skip();
+      return;
+    }
+    try {
+      const root = await makeProject(
+        codexAndAgentPlugins(
+          path.join(volume, "out"),
+          path.join(volume, "OUT"),
+        ),
+      );
+
+      await build({ cwd: root });
+      await access(path.join(volume, "out/plugins/acme/plugin.json"));
+      await access(path.join(volume, "OUT/plugins/acme/plugin.json"));
+      await clean({ cwd: root });
+      await expect(exists(path.join(volume, "out/plugins"))).resolves.toBe(
+        false,
+      );
+      await expectHardLinksKeepCase(volume);
+    } finally {
+      unmountVolume(volume);
+    }
+  });
+
+  it.skipIf(caseInsensitiveFs)(
+    "does not read a hard link with a case-swapped name as a case-insensitive directory",
+    async () => {
+      const root = await makeProject(codexAndAgentPlugins("out", "OUT"));
+      await expectHardLinksKeepCase(root);
+      await build({ cwd: root });
     },
   );
 
