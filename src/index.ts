@@ -27,6 +27,7 @@ export type {
   FileValue,
   Metadata,
   PluginpackConfig,
+  ResolvedPluginpackConfig,
   ResolvedProject,
   SourcePlugin,
   TargetConfig,

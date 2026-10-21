@@ -50,7 +50,7 @@
   ],
   "scripts": {
     "audit": "npm audit --omit=dev",
-    "build": "tsup",
+    "build": "tsup && node scripts/materialize-config-types.mjs",
     "check": "npm run test:all",
     "dev": "tsx src/cli.ts",
     "docs": "npm run docs:check",

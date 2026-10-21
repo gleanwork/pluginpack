@@ -4,7 +4,7 @@ Rules for reviewing changes in this repository. People and review agents both fo
 
 ## Always check
 
-- **Schemas are the source of truth.** Config types come from the zod schemas in `src/schema.ts` through `z.infer`. A config change edits the schema, not `src/types.ts`.
+- **Schemas are the source of truth.** Authoring config types come from the zod schemas in `src/schema.ts` through `z.input`. Parsed config types use `z.infer` (`ResolvedPluginpackConfig`). A config change edits the schema, not `src/types.ts`. The declaration build materializes these aliases as structural types; do not maintain a separate handwritten config shape.
 - **Targets come from evidence.** A new target, or a change to a target's layout or manifest, cites the host's official docs or a real plugin it was checked against. Guessed formats are a blocker.
 - **The artifact is the seam.** Build, dry run, diff, prune and validate all derive from the in-memory `Artifact`. A change that writes to disk outside it, or makes one of those commands disagree with another, is a blocker.
 - **Destructive paths stay guarded.** `prune` and `clean` remove only managed files. A change near them needs a test that proves unmanaged and source files survive.

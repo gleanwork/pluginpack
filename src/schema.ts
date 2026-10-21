@@ -199,14 +199,9 @@ const targetSchema = z.object({
 /**
  * The root `pluginpack.config.ts` schema.
  *
- * Deliberately not `.strict()`: zod's default `z.object()` silently drops
- * unknown keys rather than erroring, which is the right tradeoff pre-1.0 — it
- * lets a future minor version add an optional config field without that
- * being a breaking change for existing configs. The cost is a typo'd key
- * failing silently instead of loudly; that's an accepted tradeoff, not an
- * oversight. Adding `.strict()` later would itself be a breaking change for
- * anyone currently typo-ing successfully, so this needs to be a deliberate
- * decision made once, not toggled casually.
+ * Keep non-strict parsing: unknown keys are stripped, not rejected. The
+ * config loader warns with their paths so typos do not fail silently.
+ * Manifest and entry records intentionally preserve arbitrary keys.
  */
 const configSchema = z
   .object({
@@ -359,12 +354,16 @@ const mcpManifestSchema = z.object({
 
 export { configSchema, mcpManifestSchema, sourcePluginManifestSchema };
 
-export type Author = z.infer<typeof authorSchema>;
-export type Metadata = z.infer<typeof metadataSchema>;
-export type SourceConfig = z.infer<typeof sourceSchema>;
-export type EmittedPluginConfig = z.infer<typeof emittedPluginSchema>;
-export type UpdateCheckConfig = z.infer<typeof updateCheckSchema>;
-export type TargetConfig = z.infer<typeof targetSchema>;
-export type PluginpackConfig = z.infer<typeof configSchema>;
+// Authoring types describe schema input, so adding a default does not make
+// that field required in existing configs. Parsed project state uses output.
+export type Author = z.input<typeof authorSchema>;
+export type Metadata = z.input<typeof metadataSchema>;
+export type SourceConfig = z.input<typeof sourceSchema>;
+export type EmittedPluginConfig = z.input<typeof emittedPluginSchema>;
+export type UpdateCheckConfig = z.input<typeof updateCheckSchema>;
+export type TargetConfig = z.input<typeof targetSchema>;
+export type PluginpackConfig = z.input<typeof configSchema>;
+/** The validated config, with schema defaults and transforms applied. */
+export type ResolvedPluginpackConfig = z.infer<typeof configSchema>;
 export type SourcePluginManifest = z.infer<typeof sourcePluginManifestSchema>;
 export type McpManifest = z.infer<typeof mcpManifestSchema>;

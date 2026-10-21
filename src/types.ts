@@ -5,6 +5,7 @@ import type {
   EmittedPluginConfig,
   TargetConfig,
   PluginpackConfig,
+  ResolvedPluginpackConfig,
   SourcePluginManifest,
   McpManifest,
   UpdateCheckConfig,
@@ -17,6 +18,7 @@ export type {
   EmittedPluginConfig,
   TargetConfig,
   PluginpackConfig,
+  ResolvedPluginpackConfig,
   SourcePluginManifest,
   McpManifest,
   UpdateCheckConfig,
@@ -35,13 +37,10 @@ export type SourcePlugin = {
 };
 
 /**
- * The one surface pluginpack uses to acquire source. A filesystem provider
- * backs it today; an API-backed provider (e.g. a remote skills API) can
- * implement the same two methods without touching the emit/validate/diff
- * pipeline. Deliberately not exported from `src/index.ts`: nothing in
- * `build()`/`loadConfig()` accepts an override yet, so exporting the type
- * would commit to public surface no one can actually use. Wire a `source`
- * override into `BuildOptions` before re-exporting this.
+ * Internal source access used by the build pipeline. Its structural shape
+ * is reachable through `ResolvedProject.source`, but the public API does
+ * not accept a provider override.
+ * @unstable Not a supported extension point; this interface may change.
  */
 export interface SourceProvider {
   readPluginFiles(
@@ -64,10 +63,14 @@ export type AuthoredPlugin = {
 export type ResolvedProject = {
   rootDir: string;
   configPath: string;
-  config: PluginpackConfig;
+  config: ResolvedPluginpackConfig;
+  /** @unstable Internal source-discovery state, not an extension point. */
   sourceRoot: string;
+  /** @unstable Internal source-discovery state, not an extension point. */
   plugins: Map<string, SourcePlugin>;
+  /** @unstable Internal rendering state, not an extension point. */
   partials: Map<string, string>;
+  /** @unstable Internal source access; provider overrides are not supported. */
   source: SourceProvider;
 };
 
@@ -75,10 +78,10 @@ export type ResolvedProject = {
 export type ResolvedProjectConfig = {
   rootDir: string;
   configPath: string;
-  config: PluginpackConfig;
+  config: ResolvedPluginpackConfig;
 };
 
-export type FileValue = string | Buffer;
+export type FileValue = string | Uint8Array;
 
 /** One target's build output: its files, and which of them are managed by pluginpack. */
 export type Artifact = {
