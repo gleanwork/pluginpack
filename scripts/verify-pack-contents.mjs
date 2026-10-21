@@ -11,6 +11,7 @@ const REQUIRED_FILES = [
   "dist/index.d.ts",
   "package.json",
   "README.md",
+  "MIGRATING_TO_0.12.md",
   "LICENSE",
 ];
 

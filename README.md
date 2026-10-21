@@ -353,14 +353,36 @@ valid plugin name, `mcp.json` servers, and skill names that follow the
 [Agent Skills specification](https://agentskills.io/specification) and match
 their directory. Conforming clients skip a skill that fails these checks.
 
-**Upgrading from 0.11:** the `codex` target's output layout changes. Run
-`pluginpack build`, and either publish the new layout or set
-`format: "legacy"`. If `validate` reports skill names such as
-`skill_name`, rename them before switching, because Agent Plugins clients
-skip them. The build can also fail on MCP config that 0.11 copied as
-authored, such as `cwd: "."` or a `${API_TOKEN}` placeholder. Change it to
-follow the Agent Plugins rules in [MCP Directory](#mcp-directory), or set
-`format: "legacy"` to keep writing `.mcp.json` as authored.
+## Upgrading from 0.11
+
+0.12 changes generated output for `codex`, `claude`, `cursor` and `copilot`.
+[`MIGRATING_TO_0.12.md`](./MIGRATING_TO_0.12.md) has the full steps and
+before/after output.
+
+- The `codex` target's output layout changes. Run `pluginpack build`, and
+  either publish the new layout or set `format: "legacy"` until 0.13. If
+  `validate` reports skill names such as `skill_name`, rename them before
+  switching, because Agent Plugins clients skip them. The build can also fail
+  on MCP config that 0.11 copied as authored, such as `cwd: "."` or a
+  `${API_TOKEN}` placeholder. Change it to follow the Agent Plugins rules in
+  [MCP Directory](#mcp-directory), or set `format: "legacy"` to keep writing
+  `.mcp.json` as authored.
+- A `cursor` build fails when the shared MCP config uses
+  `${CLAUDE_PLUGIN_DATA}` or `${PLUGIN_DATA}`, which 0.11 shipped to Cursor
+  unexpanded:
+  `MCP server "local" uses ${CLAUDE_PLUGIN_DATA}, but Cursor has no plugin-data variable.`
+  The error stops every target, so nothing is written. Give `cursor` its own
+  `mcp/config.json` through `overrides`, or add `"mcp"` to its `exclude`.
+- `claude`, `cursor` and `copilot` no longer copy MCP config as authored. A
+  `./bin/server` command or `./` `cwd` becomes `${CLAUDE_PLUGIN_ROOT}/bin/server`
+  for `claude`, `${CURSOR_PLUGIN_ROOT}/bin/server` for `cursor` and
+  `${PLUGIN_ROOT}/bin/server` for `copilot`. Other root and data variables
+  are renamed to each client's own. `"type": "streamable-http"` becomes
+  `"type": "http"` for `claude` and `copilot`, and `cursor` drops `type`
+  for stdio and HTTP servers.
+- `validate` rejects `---json` frontmatter and tab-indented YAML, which 0.11
+  accepted. An unquoted number with a leading zero, such as `017`, now reads
+  as 17 instead of the octal 15.
 
 ## Legacy 0.10 Source Composition
 
