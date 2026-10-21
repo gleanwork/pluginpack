@@ -24,8 +24,9 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
 
 - **claude** — runs `claude plugin validate --strict` against the emitted
   marketplace and plugin directories when the `claude` CLI is on `PATH` (skipped
-  otherwise, e.g. CI). This is Anthropic's own validator — the same check their
-  submission pipeline runs — so it is a genuinely external oracle that tracks
+  otherwise). CI installs the CLI before running the suite. This is Anthropic's
+  own validator, the same check their submission pipeline runs, so it is an
+  external oracle that tracks
   upstream automatically. A structural golden assertion also pins the exact
   emitted shape.
 - **cursor** — validates the emitted `marketplace.json` and `plugin.json` against
@@ -75,10 +76,12 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   `name` is required and `skills`/`hooks`/`mcpServers` are optional pointers;
   `validate` detects either layout per plugin. Every marketplace entry must carry
   `policy.installation`, `policy.authentication`, and `category`; pluginpack has
-  no way to infer these, so the base entry stays guess-free and `validateOutput`
-  errors clearly if an author never supplies them via the per-plugin `entry`
-  passthrough. An entry's `source` is a bare string only for local plugins (the
-  only shape pluginpack itself ever emits); a `url`/`git-subdir`/`npm` source
+  no way to infer these, so the base entry stays guess-free. Build warns and
+  `validateOutput` errors if an author never supplies them via the per-plugin
+  `entry` passthrough (or `clients.codex.entry` for a package client). Build
+  also warns about skill frontmatter that package validation rejects.
+  An entry's `source` is a bare string only for local plugins (the only shape
+  pluginpack itself ever emits); a `url`/`git-subdir`/`npm` source
   added via `entry` is a structured object with an inner `source` discriminator
   (e.g. `{ source: "git-subdir", url, path, ref }`), validated by shape rather
   than requiring a local directory to exist. No published JSON Schema exists.
@@ -143,6 +146,25 @@ left to each client (for example, VS Code installs a plugin directly from a Git
 repository URL:
 <https://code.visualstudio.com/docs/agent-customization/agent-plugins>,
 verified 2026-10-02).
+
+## Evidence refresh cadence
+
+Re-verify every citation and vendored schema at least every 90 days.
+`tests/evidence-freshness.test.ts` runs in `npm test` and CI. It checks every
+literal `verifiedAt` in `src/` and the `Verified-at` date in each vendored
+schema directory's `SOURCE.md`. It fails when a date is more than 90 days old,
+is in the future, or is invalid. Tests do not fetch the network.
+
+To refresh a citation, open its `documentationUrl`, check the claim against the
+current product docs, and run the affected target's conformance tests. Update
+`verifiedAt` only after that check. Correct the implementation or record a
+format conflict here if the upstream behavior changed.
+
+To refresh a vendored schema, follow the fetch commands in its `SOURCE.md`,
+diff the fetched bytes against the pinned copy, and run
+`npx vitest run tests/conformance.test.ts tests/evidence-freshness.test.ts`.
+Record the checked commit and update `Verified-at: YYYY-MM-DD` in `SOURCE.md`,
+even when the bytes are unchanged. Do not advance dates just to pass CI.
 
 ## Refreshing vendored schemas
 
