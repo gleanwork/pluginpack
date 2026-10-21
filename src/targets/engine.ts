@@ -3,7 +3,7 @@ import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "../render.js";
 import { readAuthoredPlugin } from "../source.js";
 import { isSafeRelativePath, json, toPosix } from "../fs.js";
-import { pluginCommandFiles, renderMcpConfig } from "../mcp.js";
+import { pluginArgFiles, pluginCommandFiles, renderMcpConfig } from "../mcp.js";
 import { resolvePartials } from "../partials.js";
 import { validateNoSurvivingPartialTags } from "./validation-shared.js";
 import { deepMerge, stripUndefined } from "./shared.js";
@@ -223,6 +223,18 @@ export async function emitFromDefinition(
         if (!files.has(toPosix(path.join(pluginPath, file)))) {
           console.warn(
             `Target "${target}" plugin "${pluginName}": MCP server "${server}" "command" is ${JSON.stringify(command)}, but the plugin does not ship "${file}". Add the file to the plugin source (an MCP server file goes in mcp/pluginpack.json "files"), or fix the command.`,
+          );
+        }
+      }
+      // An argument may name a directory the plugin ships, too.
+      for (const { server, field, value, file } of pluginArgFiles(mcpServers)) {
+        const shipped = toPosix(path.join(pluginPath, file));
+        if (
+          !files.has(shipped) &&
+          ![...files.keys()].some((key) => key.startsWith(`${shipped}/`))
+        ) {
+          console.warn(
+            `Target "${target}" plugin "${pluginName}": MCP server "${server}" "${field}" is ${JSON.stringify(value)}, but the plugin does not ship "${file}". Add the file to the plugin source (an MCP server file goes in mcp/pluginpack.json "files"), or fix the argument.`,
           );
         }
       }

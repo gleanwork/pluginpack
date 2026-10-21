@@ -1142,6 +1142,14 @@ describe("MCP config in packages", () => {
               shipped: { command: "./scripts/server.sh" },
               missing: { command: "./bin/missing" },
               rooted: { command: "${CLAUDE_PLUGIN_ROOT}/bin/also-missing" },
+              shippedArg: {
+                command: "node",
+                args: ["${PLUGIN_ROOT}/scripts/server.sh"],
+              },
+              missingArg: {
+                command: "node",
+                args: ["--stdio", "${CLAUDE_PLUGIN_ROOT}/dist/missing.js"],
+              },
             },
           })}\n`,
         },
@@ -1157,6 +1165,7 @@ describe("MCP config in packages", () => {
         ["claude", "codex"].flatMap((target) => [
           `Target "${target}" plugin "acme": MCP server "missing" "command" is "./bin/missing", but the plugin does not ship "bin/missing". ${fix}`,
           `Target "${target}" plugin "acme": MCP server "rooted" "command" is "\${CLAUDE_PLUGIN_ROOT}/bin/also-missing", but the plugin does not ship "bin/also-missing". ${fix}`,
+          `Target "${target}" plugin "acme": MCP server "missingArg" "args[1]" is "\${CLAUDE_PLUGIN_ROOT}/dist/missing.js", but the plugin does not ship "dist/missing.js". Add the file to the plugin source (an MCP server file goes in mcp/pluginpack.json "files"), or fix the argument.`,
         ]),
       );
     } finally {

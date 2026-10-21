@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AGENT_PLUGINS_MCP_SCHEMA,
+  pluginArgFiles,
   pluginCommandFiles,
   renderMcpConfig,
   type McpDialect,
@@ -397,6 +398,55 @@ describe("renderMcpConfig: codex dialect", () => {
     expect(() =>
       render({ s: { url: "https://example.com/mcp", extensions } }, "codex"),
     ).toThrow(message);
+  });
+});
+
+describe("pluginArgFiles", () => {
+  it("lists the plugin file each root-variable argument names", () => {
+    expect(
+      pluginArgFiles({
+        a: { command: "node", args: ["${PLUGIN_ROOT}/dist/a.js", "--stdio"] },
+        b: {
+          command: "node",
+          args: ["--inspect", "${CLAUDE_PLUGIN_ROOT}/lib/../dist/b.js"],
+        },
+        c: { command: "node", args: ["${CURSOR_PLUGIN_ROOT}/my dir/c.js"] },
+        // Not plugin files: a ./ argument resolves against the server's
+        // working directory, and the rest aren't plain paths in the plugin.
+        d: {
+          command: "node",
+          args: [
+            "./relative.js",
+            "${PLUGIN_ROOT}",
+            "${PLUGIN_DATA}/state.json",
+            "--config=${PLUGIN_ROOT}/config.json",
+            "${PLUGIN_ROOT}/../outside.js",
+            "${PLUGIN_ROOT}/${NAME}.js",
+            42,
+          ],
+        },
+        e: { url: "https://example.com" },
+      }),
+    ).toEqual([
+      {
+        server: "a",
+        field: "args[0]",
+        value: "${PLUGIN_ROOT}/dist/a.js",
+        file: "dist/a.js",
+      },
+      {
+        server: "b",
+        field: "args[1]",
+        value: "${CLAUDE_PLUGIN_ROOT}/lib/../dist/b.js",
+        file: "dist/b.js",
+      },
+      {
+        server: "c",
+        field: "args[0]",
+        value: "${CURSOR_PLUGIN_ROOT}/my dir/c.js",
+        file: "my dir/c.js",
+      },
+    ]);
   });
 });
 

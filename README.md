@@ -489,9 +489,12 @@ build instead:
 With `format: "legacy"`, `codex` writes `.mcp.json` as authored.
 
 On every target, a `./bin/server` or `${<root variable>}/bin/server` command
-must name a file the plugin ships. If the build output has no such file, the
-build prints a warning, because you can still add the file after the build.
-`validate` fails an Agent Plugins package whose command file is missing.
+must name a file the plugin ships, and so must an `args` entry that starts
+with `${<root variable>}/`, such as `${PLUGIN_ROOT}/dist/server.js` (a
+directory the plugin ships also counts). If the build output has no such
+file, the build prints a warning, because you can still add the file after
+the build. `validate` fails an Agent Plugins package whose command file is
+missing.
 
 The `claude` target rejects a stdio server that sets `cwd`. Claude Code
 ignores `cwd` for plugin MCP servers and starts them in the user's working

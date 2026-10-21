@@ -149,6 +149,49 @@ export function pluginCommandFiles(
   return result;
 }
 
+/**
+ * The plugin file each server's `args` entry names, for entries rooted at a
+ * plugin-root variable (`${PLUGIN_ROOT}/dist/server.js`). `field` is
+ * `args[<index>]`; `file` is relative to the plugin root. A `./` argument is
+ * not listed: clients pass it through, so it resolves against the server's
+ * working directory, not the plugin.
+ */
+export function pluginArgFiles(
+  servers: Record<string, unknown>,
+): { server: string; field: string; value: string; file: string }[] {
+  const result: {
+    server: string;
+    field: string;
+    value: string;
+    file: string;
+  }[] = [];
+  for (const [server, config] of Object.entries(servers)) {
+    const args = isObject(config) ? config.args : undefined;
+    if (!Array.isArray(args)) {
+      continue;
+    }
+    args.forEach((value: unknown, index) => {
+      if (typeof value !== "string") {
+        return;
+      }
+      const prefix = ROOT_VARIABLES.map((name) => `\${${name}}/`).find(
+        (candidate) => value.startsWith(candidate),
+      );
+      const rest = prefix === undefined ? "" : value.slice(prefix.length);
+      if (!rest || rest.includes("${") || !isSafeRelativePath(rest)) {
+        return;
+      }
+      result.push({
+        server,
+        field: `args[${index}]`,
+        value,
+        file: path.posix.normalize(rest),
+      });
+    });
+  }
+  return result;
+}
+
 const ROOT_VARIABLES = [
   "PLUGIN_ROOT",
   "CLAUDE_PLUGIN_ROOT",
