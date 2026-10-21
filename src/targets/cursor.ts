@@ -1,5 +1,5 @@
 import path from "node:path";
-import { stripUndefined, titleCase } from "./shared.js";
+import { marketplaceDirectory, stripUndefined, titleCase } from "./shared.js";
 import {
   error,
   readJson,
@@ -165,12 +165,13 @@ export const cursor: PluginTargetDefinition = {
       pluginNamePattern,
     ),
 
-  validateOutput: async (root, issues) => {
-    const marketplacePath = path.join(
+  validateOutput: async (root, issues, managedPaths = []) => {
+    const marketplaceDir = marketplaceDirectory(
       root,
       ".cursor-plugin",
-      "marketplace.json",
+      managedPaths,
     );
+    const marketplacePath = path.join(root, marketplaceDir, "marketplace.json");
     const ownedPaths = [marketplacePath];
     const marketplace = await readJson(
       marketplacePath,
@@ -201,7 +202,7 @@ export const cursor: PluginTargetDefinition = {
       const pluginDir = path.join(root, entry.source);
       ownedPaths.push(pluginDir);
       const manifest = await readJson(
-        path.join(pluginDir, ".cursor-plugin", "plugin.json"),
+        path.join(pluginDir, marketplaceDir, "plugin.json"),
         `${pluginName} plugin manifest`,
         issues,
       );

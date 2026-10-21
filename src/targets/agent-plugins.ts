@@ -134,6 +134,12 @@ function withClients(
   );
   return {
     ...base,
+    omittedContentWarnings: clients.some((client) => client.name === "codex")
+      ? {
+          hooks:
+            'The agent-plugins target does not ship Codex hooks. Keep the codex target if hooks are required, or exclude "hooks" explicitly in pluginpack.config.ts.',
+        }
+      : undefined,
     defaultComponents: [
       ...new Set([...base.defaultComponents, ...clientKinds]),
     ],

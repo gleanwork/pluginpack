@@ -16,6 +16,7 @@ export type ManifestBuildContext = {
   pluginName: string;
   pluginConfig: EmittedPluginConfig;
   componentDirs: Set<string>;
+  pluginFiles: Map<string, FileValue>;
   mcpServers: Record<string, unknown> | undefined;
 };
 
@@ -105,6 +106,9 @@ export type PluginTargetDefinition = {
   /** Component directories copied into a plugin when it has no `components` override. */
   defaultComponents: readonly string[];
 
+  /** Build warnings for source content this layout omits by default. */
+  omittedContentWarnings?: Record<string, string>;
+
   resolvePluginPath: (
     pluginName: string,
     pluginConfig: EmittedPluginConfig,
@@ -183,6 +187,7 @@ export type PluginTargetDefinition = {
   validateOutput: (
     root: string,
     issues: ValidationIssue[],
+    managedPaths?: string[],
   ) => Promise<string[]>;
 
   installSnippet: InstallSnippetDefinition;

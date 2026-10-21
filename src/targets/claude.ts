@@ -1,5 +1,5 @@
 import path from "node:path";
-import { stripUndefined } from "./shared.js";
+import { marketplaceDirectory, stripUndefined } from "./shared.js";
 import {
   error,
   readJson,
@@ -99,12 +99,13 @@ export const claude: PluginTargetDefinition = {
       pluginNamePattern,
     ),
 
-  validateOutput: async (root, issues) => {
-    const marketplacePath = path.join(
+  validateOutput: async (root, issues, managedPaths = []) => {
+    const marketplaceDir = marketplaceDirectory(
       root,
       ".claude-plugin",
-      "marketplace.json",
+      managedPaths,
     );
+    const marketplacePath = path.join(root, marketplaceDir, "marketplace.json");
     const ownedPaths = [marketplacePath];
     const marketplace = await readJson(
       marketplacePath,
@@ -135,7 +136,7 @@ export const claude: PluginTargetDefinition = {
       const pluginDir = path.join(root, entry.source);
       ownedPaths.push(pluginDir);
       const manifest = await readJson(
-        path.join(pluginDir, ".claude-plugin", "plugin.json"),
+        path.join(pluginDir, marketplaceDir, "plugin.json"),
         `${pluginName} plugin manifest`,
         issues,
       );

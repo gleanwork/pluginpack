@@ -33,6 +33,7 @@ export const copilot: PluginTargetDefinition = {
     pluginName,
     pluginConfig,
     componentDirs,
+    pluginFiles,
     mcpServers,
   }) => {
     const manifest: Record<string, unknown> = {
@@ -53,7 +54,7 @@ export const copilot: PluginTargetDefinition = {
     if (componentDirs.has("skills")) {
       manifest.skills = "skills/";
     }
-    if (componentDirs.has("hooks")) {
+    if (pluginFiles.has("hooks/hooks.json")) {
       manifest.hooks = "hooks/hooks.json";
     }
     if (mcpServers) {
