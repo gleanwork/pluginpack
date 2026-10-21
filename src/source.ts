@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { componentDirs, staticFiles } from "./components.js";
+import { warnOnStrippedKeys } from "./config-diagnostics.js";
 import { exists, isSafeRelativePath, toPosix, walkFiles } from "./fs.js";
 import { mcpManifestSchema, sourcePluginManifestSchema } from "./schema.js";
 import type {
@@ -236,6 +237,7 @@ async function readRequiredJson<T>(
       .join("; ");
     throw new Error(`Invalid pluginpack JSON in ${file}: ${details}`);
   }
+  warnOnStrippedKeys(parsed, result.data, file, "manifest");
   return result.data as T;
 }
 

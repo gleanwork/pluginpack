@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
 import { z } from "zod";
 import { componentDirs } from "./components.js";
+import { warnOnStrippedKeys } from "./config-diagnostics.js";
 import { exists } from "./fs.js";
 import { loadPartials } from "./partials.js";
 import { configSchema, sourcePluginManifestSchema } from "./schema.js";
@@ -204,6 +205,7 @@ async function readSourceManifest(
       sourcePluginManifestSchema,
       JSON.parse(raw),
       filePath,
+      "manifest",
     ) as SourcePluginManifest;
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -219,35 +221,15 @@ function parseWithContext<S extends z.ZodType>(
   schema: S,
   value: unknown,
   context: string,
+  kind: "config" | "manifest" = "config",
 ): z.output<S> {
   const parsed = schema.safeParse(value);
   if (parsed.success) {
-    for (const key of strippedKeys(value, parsed.data)) {
-      console.warn(
-        `Unknown config key "${key}" in ${context} was ignored. Remove it or use a supported config field.`,
-      );
-    }
+    warnOnStrippedKeys(value, parsed.data, context, kind);
     return parsed.data;
   }
   const details = parsed.error.issues
     .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
     .join("; ");
-  throw new Error(`Invalid pluginpack config in ${context}: ${details}`);
-}
-
-/** Compare parsed data, not a second schema: record passthroughs retain keys. */
-function strippedKeys(input: unknown, output: unknown, prefix = ""): string[] {
-  if (input === output || !isObject(input) || !isObject(output)) {
-    return [];
-  }
-  return Object.keys(input).flatMap((key) => {
-    const dotted = prefix ? `${prefix}.${key}` : key;
-    return Object.hasOwn(output, key)
-      ? strippedKeys(input[key], output[key], dotted)
-      : [dotted];
-  });
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  throw new Error(`Invalid pluginpack ${kind} in ${context}: ${details}`);
 }

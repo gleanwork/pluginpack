@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import ts from "typescript";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { build } from "../src/index.js";
+import { build, diffTarget, loadConfig, prune } from "../src/index.js";
 import { loadProjectConfig } from "../src/config.js";
 
 const temporaryDirectories: string[] = [];
@@ -169,6 +169,82 @@ void defaultIsPresent; void invalidResolved;
       ],
     ]);
   });
+
+  it.each(["prune", "diff"] as const)(
+    "%s warns once per config path and key even when the config loads twice",
+    async (command) => {
+      const root = await configProject({
+        name: "demo",
+        version: "1.0.0",
+        versoin: "typo",
+        targets: {
+          cursor: {
+            outDir: "out",
+            plugins: { demo: { source: "shared/demo", include: [] } },
+          },
+        },
+      });
+      await mkdir(path.join(root, "shared/demo"), { recursive: true });
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      if (command === "prune") {
+        await prune({ cwd: root, dryRun: true });
+      } else {
+        await diffTarget({ cwd: root, target: "cursor", against: "out" });
+      }
+      // A fresh loader must not repeat the diagnostic, even without jiti caching.
+      await loadProjectConfig(root);
+      expect(warn.mock.calls).toEqual([
+        [expect.stringContaining('Unknown config key "versoin"')],
+      ]);
+      expect(warn.mock.calls[0][0]).toContain(
+        path.join(root, "pluginpack.config.mjs"),
+      );
+    },
+  );
+
+  it.each(["legacy", "canonical"] as const)(
+    "labels unknown keys in %s source manifests as manifest warnings",
+    async (layout) => {
+      const sourceDir = layout === "legacy" ? "plugins/demo" : "shared/demo";
+      const root = await configProject({
+        name: "demo",
+        version: "1.0.0",
+        targets:
+          layout === "legacy"
+            ? {}
+            : {
+                cursor: {
+                  outDir: "out",
+                  plugins: { demo: { source: sourceDir, include: [] } },
+                },
+              },
+      });
+      await mkdir(path.join(root, sourceDir), { recursive: true });
+      const manifestPath = path.join(root, sourceDir, "plugin.pluginpack.json");
+      await writeFile(
+        manifestPath,
+        JSON.stringify({
+          name: "demo",
+          descripton: "typo",
+          author: { name: "Demo", emali: "typo" },
+          mcpServers: { future: { custom: true } },
+        }),
+      );
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      for (let i = 0; i < 2; i++) {
+        if (layout === "legacy") await loadConfig(root);
+        else await build({ cwd: root, dryRun: true });
+      }
+      expect(warn.mock.calls).toEqual([
+        [expect.stringContaining('Unknown manifest key "descripton"')],
+        [expect.stringContaining('Unknown manifest key "author.emali"')],
+      ]);
+      for (const [message] of warn.mock.calls) {
+        expect(message).toContain(manifestPath);
+        expect(message).toContain("supported manifest field");
+      }
+    },
+  );
 
   it("uses the same code-unit ordering for artifact files and managed paths", async () => {
     const plugins = Object.fromEntries(
