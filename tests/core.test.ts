@@ -1117,6 +1117,41 @@ export default defineConfig({
     );
   });
 
+  it("rejects two file paths that write the same output file", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "mcp-collision-plugins",
+  version: "1.0.0",
+  metadata: { description: "MCP collision", author: { name: "M" }, license: "MIT" },
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { source: "shared/demo" } }
+    }
+  }
+});
+`,
+      shared: {
+        demo: {
+          "README.md": "# Shared README\n",
+          skills: { demo: { "SKILL.md": skill("demo", "Demo skill.") } },
+          mcp: {
+            "pluginpack.json": `${JSON.stringify({
+              files: { "./README.md": "start.mjs" },
+            })}\n`,
+            "start.mjs": "console.log('server');\n",
+          },
+        },
+      },
+    });
+
+    await expect(
+      build({ cwd: project.baseDir, target: "claude" }),
+    ).rejects.toThrow(/"README\.md" and "\.\/README\.md" both write/);
+  });
+
   it("excludes an authored plugin's complete MCP capability", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
@@ -2328,6 +2363,36 @@ export default defineConfig({
 
     await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
       /additionalFiles destination "skills\/s1\/SKILL.md" collides with another emitted file/,
+    );
+  });
+
+  it("normalizes a plugin-root files destination before the collision check", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "files-collide-plugins",
+  version: "1.0.0",
+  metadata: { description: "Collide", author: { name: "X" }, license: "MIT" },
+  targets: {
+    claude: { outDir: "dist/claude", plugins: { srv: { from: ["srv"] } } }
+  }
+});
+`,
+      plugins: {
+        srv: {
+          "plugin.pluginpack.json": `${JSON.stringify({
+            additionalFiles: { "./skills/s1/SKILL.md": "extra.md" },
+          })}\n`,
+          "extra.md": "# extra\n",
+          skills: { s1: { "SKILL.md": skill("s1", "S1.") } },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
+      /additionalFiles destination "\.\/skills\/s1\/SKILL.md" collides with another emitted file/,
     );
   });
 
