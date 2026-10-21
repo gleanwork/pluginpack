@@ -72,9 +72,13 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   (re-verified 2026-10-02): a repo-scoped `.agents/plugins/marketplace.json`
   (`{ name, interface, plugins }`, no `owner` field). The default package is a
   root `plugin.json` with OpenAI settings under `extensions.com.openai`.
-  `format: "legacy"` instead emits `.codex-plugin/plugin.json`, where only
-  `name` is required and `skills`/`hooks`/`mcpServers` are optional pointers;
-  `validate` detects either layout per plugin. Every marketplace entry must carry
+  `format: "legacy"` instead emits `.codex-plugin/plugin.json`.
+  In [Codex rust-v0.146.0's legacy parser](https://github.com/openai/codex/blob/rust-v0.146.0/codex-rs/core-plugins/src/manifest.rs#L34-L287),
+  every recognized field has a serde default; an omitted or blank `name` falls
+  back to the plugin directory basename. `version`, `description`, `skills`,
+  `hooks`, and `mcpServers` are optional. Pluginpack keeps a stricter rule:
+  an explicit `name` must match the marketplace entry. `validate` detects
+  either layout per plugin. Every marketplace entry must carry
   `policy.installation`, `policy.authentication`, and `category`; pluginpack has
   no way to infer these, so the base entry stays guess-free. Build warns and
   `validateOutput` errors if an author never supplies them via the per-plugin
@@ -128,27 +132,32 @@ directly against product docs:
 
 | Target        | Snippet                                                                                               | Source                                                                                                | Verified   |
 | ------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------- |
-| `claude`      | `/plugin marketplace add <repo>` then `/plugin install <name>@<marketplace>`                          | <https://code.claude.com/docs/en/plugins-reference#cli-commands-reference>                            | 2026-07-25 |
+| `claude`      | `claude plugin marketplace add <repo>` then `claude plugin install <name>@<marketplace>`              | <https://code.claude.com/docs/en/plugins/cli-reference>                                               | 2026-10-21 |
 | `codex`       | `codex plugin marketplace add <repo>`                                                                 | <https://learn.chatgpt.com/codex/developer-commands>                                                  | 2026-10-21 |
 | `copilot`     | `copilot plugin marketplace add <repo>` then `copilot plugin install <name>@<marketplace>`            | <https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing> | 2026-10-21 |
-| `antigravity` | `git clone <repo> plugin-source && cd plugin-source && agy plugin install <pluginPath>`               | <https://antigravity.google/docs/cli/plugins>                                                         | 2026-07-25 |
+| `antigravity` | `agy plugin install https://github.com/<owner>/<repo>`                                                | <https://antigravity.google/docs/plugins?tab=cli>                                                     | 2026-10-21 |
 | `cursor`      | Prints the repo URL, pasted into Dashboard → Plugins & MCPs → Team Marketplaces → "Import from Repo." | <https://cursor.com/docs/plugins>                                                                     | 2026-10-21 |
 
-The 2026-10-21 refresh found two contradicted install citations. Claude Code
-2.1.284 exposes `claude plugin marketplace add <source>` in its shell help, so
-marketplace add is not slash-only. Antigravity's cited CLI page now redirects to
-[Plugins](https://antigravity.google/docs/plugins?tab=cli), which documents
-`agy plugin install https://github.com/<owner>/<repo>` as well as local paths.
-The generated slash-command and clone-then-install snippets remain usable, but
-their historical citations overstate the restrictions. Their `verifiedAt` dates
-remain unchanged pending correction; the scheduled freshness check must flag
-them rather than certify the old claims.
+The 2026-10-21 refresh corrected both install snippets. Claude's shell
+commands were checked against the current command reference and Claude Code
+2.1.284's `claude plugin --help` and `claude plugin marketplace --help`.
+The old `plugins-reference#cli-commands-reference` URL now redirects to the
+manifest reference, so the citation points to the current command reference.
+The interactive `/plugin marketplace add <repo>` and
+`/plugin install <name>@<marketplace>` forms remain documented. The latter
+opens the plugin details for review and scope selection rather than installing
+immediately; the snippet's note explains this.
 
-The same refresh could not confirm the legacy Codex manifest's name-only
-requirement in the current [packaging docs](https://developers.openai.com/codex/plugins/build).
-Those docs still support `.codex-plugin/plugin.json` as a compatibility fallback,
-but no longer state its minimum required fields. That citation's date also
-remains unchanged until a primary source or native validation confirms it.
+Antigravity's current CLI docs show the exact command
+`agy plugin install https://github.com/<owner>/<repo>` and the local form
+`agy plugin install </path/to/local/plugin>`. `install-info` uses the configured
+repository URL. Its note retains clone-then-local-install with the generated
+`pluginPath`, because the docs do not specify a GitHub URL subdirectory selector.
+
+The legacy Codex citation was also corrected on 2026-10-21 against the tagged
+OpenAI source described above. The native parser does not require an explicit
+`name`; pluginpack's marketplace-matching rule does. Only these three corrected
+citations advance their `verifiedAt` dates in this follow-up.
 
 `agent-plugins` is the one target with `userConfigurable: false`. The
 specification defines no marketplace or install command, and installation is

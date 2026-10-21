@@ -454,6 +454,36 @@ pluginpack install-info --target claude
 
 The repo comes from `targets.<name>.repository`, defaulting to `metadata.repository` (an error if neither is set) — the same fallback `updateCheck.repository` uses. Every target today resolves to a real command except `cursor` and `agent-plugins`. `cursor` has no CLI equivalent: it prints the repo URL and a note to paste it into Cursor's Dashboard under Team Marketplaces. `agent-plugins` has no install snippet, because the specification defines no marketplace or install command. See `CONFORMANCE.md`'s "Install-snippet facts" section for the doc citation behind each target's snippet.
 
+### Claude Code
+
+The [Claude Code command reference](https://code.claude.com/docs/en/plugins/cli-reference)
+shows both operations as shell commands:
+
+```bash
+claude plugin marketplace add <repo>
+claude plugin install <name>@<marketplace>
+```
+
+`install-info` prints that shell sequence. Its note retains the interactive
+`/plugin marketplace add <repo>` and `/plugin install <name>@<marketplace>`
+forms. In a session, `/plugin install` opens the plugin details so you can
+review it and choose an install scope.
+
+### Antigravity
+
+The [Antigravity CLI docs](https://antigravity.google/docs/plugins?tab=cli)
+show this exact GitHub URL command:
+
+```bash
+agy plugin install https://github.com/<owner>/<repo>
+```
+
+`install-info` substitutes the configured repository URL. The docs also show
+`agy plugin install </path/to/local/plugin>`, but do not specify a GitHub URL
+subdirectory selector. To install a generated plugin from a repository
+subdirectory, use the clone-then-local-install command in the snippet's note.
+That command uses the generated `pluginPath`, including a custom plugin path.
+
 ## Target Overrides
 
 When one app needs different or additional content, put it in that emitted

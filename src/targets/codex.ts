@@ -153,6 +153,9 @@ async function validateCodexPlugin(
   if (!manifest) {
     return undefined;
   }
+  // Pluginpack requires an explicit name for marketplace matching. Codex's
+  // legacy parser also accepts an omitted/blank name and uses the directory
+  // basename instead (see the rust-v0.146.0 source citation below).
   requireName(manifest, pluginName, issues);
   await validateReferencedManifestPaths(
     pluginDir,
@@ -322,9 +325,10 @@ export const codexMarketplace = {
     },
     {
       claim:
-        'legacy .codex-plugin/plugin.json requires only "name"; version/description/author etc. are optional',
-      documentationUrl: "https://developers.openai.com/codex/plugins/build",
-      verifiedAt: "2026-07-26",
+        "Codex rust-v0.146.0's legacy parser defaults every RawPluginManifest field; an omitted or blank name falls back to the plugin directory basename, and version/description/skills/hooks/mcpServers are optional",
+      documentationUrl:
+        "https://github.com/openai/codex/blob/rust-v0.146.0/codex-rs/core-plugins/src/manifest.rs#L34-L287",
+      verifiedAt: "2026-10-21",
     },
     {
       claim:

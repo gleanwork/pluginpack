@@ -152,15 +152,14 @@ export const claude: PluginTargetDefinition = {
     userConfigurable: true,
     build: ({ repository, pluginName, marketplaceName }) => ({
       kind: "command",
-      snippet: `/plugin marketplace add ${repository}\n/plugin install ${pluginName}@${marketplaceName}`,
-      note: `Once the marketplace is added, "claude plugin install ${pluginName}@${marketplaceName}" also works as a standalone shell command — but marketplace add itself is slash-only, with no shell equivalent.`,
+      snippet: `claude plugin marketplace add ${repository}\nclaude plugin install ${pluginName}@${marketplaceName}`,
+      note: `In an interactive Claude Code session, use "/plugin marketplace add ${repository}" then "/plugin install ${pluginName}@${marketplaceName}". The latter opens the plugin details so you can review it and choose an install scope.`,
     }),
     citation: {
       claim:
-        "/plugin marketplace add is slash-only; claude plugin install works as a standalone shell command once a marketplace is already added",
-      documentationUrl:
-        "https://code.claude.com/docs/en/plugins-reference#cli-commands-reference",
-      verifiedAt: "2026-07-25",
+        "claude plugin marketplace add <source> and claude plugin install <plugin> are shell commands (also checked with Claude Code 2.1.284 --help); /plugin marketplace add and /plugin install remain interactive forms, with /plugin install opening the plugin details",
+      documentationUrl: "https://code.claude.com/docs/en/plugins/cli-reference",
+      verifiedAt: "2026-10-21",
     },
   },
 
