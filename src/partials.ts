@@ -90,8 +90,8 @@ function normalizePartial(text: string): string {
 }
 
 /** Decodes UTF-8, or returns `undefined` if the bytes do not survive a decode/encode round trip. */
-function decodeUtf8(bytes: Buffer): string | undefined {
-  const text = bytes.toString("utf8");
+function decodeUtf8(bytes: Uint8Array): string | undefined {
+  const text = Buffer.from(bytes).toString("utf8");
   return Buffer.from(text, "utf8").equals(bytes) ? text : undefined;
 }
 
