@@ -20,8 +20,7 @@ jobs:
             // Dependabot and friends label their own PRs (dependencies,
             // javascript, github_actions) and cannot be asked to pick a
             // changelog label, so the gate does not apply to them. Passing
-            // rather than skipping the job keeps the check reportable if it
-            // ever becomes a required status check.
+            // rather than skipping the job keeps the required check reportable.
             if (pullRequest.user.type === "Bot") {
               core.info(
                 `Skipping the changelog label check for bot author ${pullRequest.user.login}.`,
@@ -40,5 +39,16 @@ jobs:
             if (matched.length === 0) {
               core.setFailed(
                 `This PR needs at least one repository label. Available labels: ${repositoryLabels.sort().join(", ")}.`,
+              );
+              return;
+            }
+            // Keep #33's repository-derived acceptance rule. These are
+            // lerna-changelog's default rendered categories, not an allowlist.
+            const changelogLabels = [
+              "breaking", "enhancement", "bug", "documentation", "internal",
+            ];
+            if (!matched.some((label) => changelogLabels.includes(label.toLowerCase()))) {
+              core.warning(
+                `This PR will not appear in the changelog with its current labels. Add a rendered label if it needs release notes: ${changelogLabels.join(", ")}.`,
               );
             }
