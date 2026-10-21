@@ -869,6 +869,6 @@ Examples:
 Exit codes:
 
 - 0 when docs are current or updated
-- 1 when --check finds stale docs
+- 1 when --check finds stale docs or CLI reference metadata is missing
 
 <!-- pluginpack-cli:end -->

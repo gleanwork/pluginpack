@@ -460,7 +460,7 @@ function commandUsage(command: Command): string {
 /**
  * Example invocations shown in the generated CLI reference, keyed by
  * command name. Hand-maintained, not derived from the command definitions —
- * a new command needs a case added here or its docs section omits examples.
+ * a new command needs a case added here or docs generation fails.
  */
 function commandExamples(commandName: string): string[] {
   switch (commandName) {
@@ -489,7 +489,9 @@ function commandExamples(commandName: string): string[] {
     case "docs":
       return ["pluginpack docs", "pluginpack docs --check"];
     default:
-      return [];
+      throw new Error(
+        `src/cli.ts: commandExamples is missing examples for command "${commandName}". Add a commandExamples case.`,
+      );
   }
 }
 
@@ -531,10 +533,12 @@ function commandExitCodes(commandName: string): string[] {
     case "docs":
       return [
         "0 when docs are current or updated",
-        "1 when --check finds stale docs",
+        "1 when --check finds stale docs or CLI reference metadata is missing",
       ];
     default:
-      return [];
+      throw new Error(
+        `src/cli.ts: commandExitCodes is missing exit codes for command "${commandName}". Add a commandExitCodes case.`,
+      );
   }
 }
 
