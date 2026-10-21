@@ -275,8 +275,10 @@ Pluginpack emits packages in two ways:
   `extensions["com.openai"]` automatically, so existing manifest config needs
   no changes. MCP config is held to the stricter Agent Plugins rules (see
   [MCP Directory](#mcp-directory)). Set `format: "legacy"` on the target to keep the older
-  `.codex-plugin/plugin.json` layout for Codex builds without Agent Plugins
-  support, which landed across v0.146 and v0.147 (see
+  `.codex-plugin/plugin.json` layout for Codex releases older than 0.147.0,
+  the first release that installs Agent Plugins packages. `format: "legacy"`
+  is deprecated in 0.12 and will be removed in 0.13; a build that uses it
+  prints a warning (see
   [ADR 0001](./docs/adr/0001-codex-emits-agent-plugins-packages.md)).
 - **`agent-plugins`** emits portable packages. On its own it has no client
   profile, so it ships `skills`, `scripts`, `assets`, static files, and `mcp`.
@@ -607,7 +609,7 @@ rest of the artifact.
 | Field              | Type                            | Required | Meaning                                                                                                                                                |
 | ------------------ | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `outDir`           | string                          | yes      | Output directory for this target, relative to the config root.                                                                                         |
-| `format`           | `"agent-plugins"` \| `"legacy"` | no       | `codex` only. `"legacy"` keeps the `.codex-plugin/plugin.json` layout; default `"agent-plugins"`.                                                      |
+| `format`           | `"agent-plugins"` \| `"legacy"` | no       | `codex` only. `"legacy"` keeps the `.codex-plugin/plugin.json` layout; deprecated in 0.12, removed in 0.13. Default `"agent-plugins"`.                 |
 | `plugins`          | record                          | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).                                                               |
 | `marketplaceDir`   | string (safe relative)          | no       | Override the marketplace dir (defaults: `.cursor-plugin` / `.claude-plugin`).                                                                          |
 | `pluginRoot`       | string (safe relative)          | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                                                                                        |

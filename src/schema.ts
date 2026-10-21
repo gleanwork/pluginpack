@@ -162,7 +162,9 @@ export const CLIENT_ONLY_CONTENT_KINDS = [
 const targetSchema = z.object({
   outDir: z.string().min(1),
   // codex only: "agent-plugins" (default) emits Agent Plugins packages;
-  // "legacy" emits the .codex-plugin layout. See docs/adr/0001.
+  // "legacy" emits the .codex-plugin layout for Codex releases older than
+  // 0.147.0. "legacy" is deprecated in 0.12 and will be removed in 0.13.
+  // See docs/adr/0001.
   format: z.enum(["agent-plugins", "legacy"]).optional(),
   marketplaceDir: safeRelativePath.optional(),
   pluginRoot: safeRelativePath.optional(),

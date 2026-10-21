@@ -302,6 +302,13 @@ export const codexMarketplace = {
     },
     {
       claim:
+        "Codex 0.146.0 reads Agent Plugins manifests (openai/codex#35105); 0.147.0 is the first release that installs Agent Plugins packages and parses their mcp.json (openai/codex#36544, #36796), so format: legacy serves releases older than 0.147.0",
+      documentationUrl:
+        "https://github.com/openai/codex/releases/tag/rust-v0.147.0",
+      verifiedAt: "2026-10-21",
+    },
+    {
+      claim:
         'legacy .codex-plugin/plugin.json requires only "name"; version/description/author etc. are optional',
       documentationUrl: "https://developers.openai.com/codex/plugins/build",
       verifiedAt: "2026-07-26",
@@ -336,9 +343,10 @@ const openaiProfile = { namespace: "com.openai" };
 /**
  * The pre-Agent Plugins Codex layout (`format: "legacy"`):
  * `.codex-plugin/plugin.json` pointing at `skills/`, `hooks/`, and
- * `.mcp.json`. Kept for Codex builds that predate Agent Plugins support
- * (v0.146–v0.147) — see
- * docs/adr/0001-codex-emits-agent-plugins-packages.md.
+ * `.mcp.json`. Kept for Codex releases older than 0.147.0, the first release
+ * that installs Agent Plugins packages and reads their `mcp.json` (0.146.0
+ * read the root `plugin.json` only). Deprecated in 0.12, removed in 0.13 —
+ * see docs/adr/0001-codex-emits-agent-plugins-packages.md.
  */
 const codexLegacy: PluginTargetDefinition = {
   ...codexMarketplace,
@@ -380,6 +388,10 @@ const codexLegacy: PluginTargetDefinition = {
   mcpDialect: "verbatim",
 };
 
+/** Printed once per build that uses `format: "legacy"`. */
+const LEGACY_FORMAT_DEPRECATION =
+  'warning: targets.codex.format: "legacy" is deprecated and will be removed in pluginpack 0.13. It only serves Codex releases older than 0.147.0. Remove "format" from targets.codex to emit Agent Plugins packages.';
+
 /**
  * OpenAI Codex / ChatGPT target. Emits Agent Plugins packages by default —
  * root `plugin.json` with OpenAI settings under `extensions.com.openai`, and
@@ -389,8 +401,13 @@ const codexLegacy: PluginTargetDefinition = {
 export const codex: PluginTargetDefinition = {
   ...codexMarketplace,
 
-  forConfig: (targetConfig) =>
-    targetConfig.format === "legacy" ? codexLegacy : codex,
+  forConfig: (targetConfig) => {
+    if (targetConfig.format !== "legacy") {
+      return codex;
+    }
+    console.warn(LEGACY_FORMAT_DEPRECATION);
+    return codexLegacy;
+  },
 
   buildPluginManifest: buildPackageManifest,
   finalizeManifest: (manifest, pluginName) =>

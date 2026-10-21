@@ -93,7 +93,8 @@ so author it once. Don't add a per-target copy just to change
 (root `plugin.json` + `mcp.json`). Codex-only manifest fields such as
 `interface` move under `extensions["com.openai"]` automatically. Set
 `format: "legacy"` on the codex target only to keep the old
-`.codex-plugin/plugin.json` layout. The `agent-plugins` target emits
+`.codex-plugin/plugin.json` layout for Codex releases older than 0.147.0.
+`format: "legacy"` is deprecated in 0.12 and will be removed in 0.13. The `agent-plugins` target emits
 portable packages. Without `clients` it writes no marketplace and can't include
 `agents`, `commands`, `rules`, or `hooks`. With `clients: { codex: {}, copilot:
 {} }` it builds each package once and writes each client's marketplace. Listing
