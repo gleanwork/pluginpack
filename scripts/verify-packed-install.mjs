@@ -28,7 +28,7 @@ const scratch = mkdtempSync(path.join(tmpdir(), "pluginpack-pack-smoke-"));
  * Read from the first build's output rather than listed here, so the script
  * keeps checking every scaffolded target when init gains one.
  */
-let initTargets = [];
+let initTargets;
 
 /** Every file under `dir`, as posix paths relative to it, sorted. */
 function listFiles(dir) {
