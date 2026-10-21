@@ -23,8 +23,12 @@ import path from "node:path";
 const repoRoot = process.cwd();
 const scratch = mkdtempSync(path.join(tmpdir(), "pluginpack-pack-smoke-"));
 
-/** The targets `pluginpack init` configures, each writing to `dist/<target>`. */
-const initTargets = ["cursor", "claude", "antigravity", "copilot"];
+/**
+ * The targets `pluginpack init` configures, each writing to `dist/<target>`.
+ * Read from the first build's output rather than listed here, so the script
+ * keeps checking every scaffolded target when init gains one.
+ */
+let initTargets = [];
 
 /** Every file under `dir`, as posix paths relative to it, sorted. */
 function listFiles(dir) {
@@ -114,6 +118,11 @@ try {
   );
   const sources = snapshot(project, isOutput);
   pluginpack("build");
+  initTargets = readdirSync(path.join(project, "dist")).sort();
+  check(
+    initTargets.length >= 4,
+    `Expected init to scaffold at least four targets, got: ${initTargets.join(", ")}`,
+  );
   for (const target of initTargets) {
     pluginpack("validate", "--target", target);
     check(
