@@ -239,4 +239,72 @@ describe("validate and partial tags", () => {
       validateOutput("cursor", path.join(root, "dist")),
     ).resolves.toEqual({ ok: true, issues: [] });
   });
+
+  // A plugin emitted at the output root (`path: "."`) shares that root with
+  // authored sources and dependencies, which validate must not scan.
+  it.each([
+    [
+      "cursor",
+      `    cursor: { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+    ],
+    [
+      "claude",
+      `    claude: { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+    ],
+    [
+      "copilot",
+      `    copilot: { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+    ],
+    [
+      "codex",
+      `    codex: { outDir: ".", plugins: { acme: { source: "shared/acme", path: ".", entry: { policy: { installation: "AVAILABLE", authentication: "NOT_REQUIRED" }, category: "Developer Tools" } } } }`,
+    ],
+    [
+      "agent-plugins",
+      `    "agent-plugins": { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+    ],
+  ] as const)(
+    "validates a %s plugin emitted at the output root without scanning unrelated files",
+    async (target, targets) => {
+      const root = await setup(targets, {
+        shared: {
+          acme: {
+            skills: { a: { "SKILL.md": `${skill("a")}\n{{> auth}}\n` } },
+          },
+        },
+        node_modules: {
+          dep: { "index.js": 'const example = "{{> x}}";\n' },
+          ".cache": { jiti: { "x.mjs": "// {{> x}}\n" } },
+        },
+        notes: { "unrelated.yaml": "a: '{{> x}}'\n" },
+      });
+      await build({ cwd: root });
+
+      await expect(validateOutput(target, root)).resolves.toEqual({
+        ok: true,
+        issues: [],
+      });
+    },
+  );
+
+  it("still flags a tag in a root-level plugin's component directory", async () => {
+    const root = await setup(
+      `    cursor: { outDir: ".", plugins: { acme: { source: "shared/acme", path: "." } } }`,
+      { shared: { acme: { skills: { a: { "SKILL.md": skill("a") } } } } },
+    );
+    await build({ cwd: root });
+    await writeFile(path.join(root, "skills/a/data.yaml"), "a: {{> auth}}\n");
+
+    const result = await validateOutput("cursor", root);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      {
+        level: "error",
+        message: expect.stringContaining(
+          "skills/a/data.yaml contains an unsubstituted partial reference {{> auth}}",
+        ),
+      },
+    ]);
+  });
 });

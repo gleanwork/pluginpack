@@ -3,6 +3,7 @@ import { exists, toPosix, walkFiles } from "../fs.js";
 import { stripUndefined } from "./shared.js";
 import {
   error,
+  pluginScanPaths,
   readJson,
   validateBareStringSourceEntry,
   validateFrontmatter,
@@ -184,7 +185,7 @@ export const copilot: PluginTargetDefinition = {
         continue;
       }
       const pluginDir = path.join(root, entry.source);
-      ownedPaths.push(pluginDir);
+      ownedPaths.push(...pluginScanPaths(root, pluginDir));
       // .github/plugin/ is the authoritative copy; the root copy is only
       // checked for presence, not re-parsed.
       const manifest = await readJson(

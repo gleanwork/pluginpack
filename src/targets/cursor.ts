@@ -2,6 +2,7 @@ import path from "node:path";
 import { stripUndefined, titleCase } from "./shared.js";
 import {
   error,
+  pluginScanPaths,
   readJson,
   validateBareStringSourceEntry,
   validateFrontmatter,
@@ -199,7 +200,7 @@ export const cursor: PluginTargetDefinition = {
         continue;
       }
       const pluginDir = path.join(root, entry.source);
-      ownedPaths.push(pluginDir);
+      ownedPaths.push(...pluginScanPaths(root, pluginDir));
       const manifest = await readJson(
         path.join(pluginDir, ".cursor-plugin", "plugin.json"),
         `${pluginName} plugin manifest`,

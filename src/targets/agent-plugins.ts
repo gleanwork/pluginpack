@@ -16,7 +16,7 @@ import {
   CLIENT_ONLY_CONTENT_KINDS,
   PACKAGE_CLIENT_CONTENT_KINDS,
 } from "../schema.js";
-import { error } from "./validation-shared.js";
+import { error, pluginScanPaths } from "./validation-shared.js";
 import type { ValidationIssue } from "../types.js";
 import type { PluginTargetDefinition } from "./types.js";
 
@@ -90,7 +90,9 @@ export const agentPlugins: PluginTargetDefinition = {
       await validatePackage(pluginDir, path.basename(pluginDir), issues);
       await rejectClientOnlyContent(pluginDir, issues);
     }
-    const owned = [...pluginDirs];
+    const owned = pluginDirs.flatMap((pluginDir) =>
+      pluginScanPaths(root, pluginDir),
+    );
     for (const client of Object.values(PACKAGE_CLIENTS)) {
       owned.push(...(await client.validate(root, pluginDirs, issues)));
     }

@@ -11,6 +11,7 @@ import { stripUndefined } from "./shared.js";
 import {
   error,
   pathExistsSync,
+  pluginScanPaths,
   readJson,
   validateFrontmatter,
   validateHooksShape,
@@ -252,7 +253,7 @@ export const codexMarketplace = {
       if (!pluginDir) {
         continue;
       }
-      ownedPaths.push(pluginDir);
+      ownedPaths.push(...pluginScanPaths(root, pluginDir));
       const manifest = await validateCodexPlugin(pluginDir, pluginName, issues);
       if (!manifest) {
         continue;

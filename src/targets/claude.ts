@@ -2,6 +2,7 @@ import path from "node:path";
 import { stripUndefined } from "./shared.js";
 import {
   error,
+  pluginScanPaths,
   readJson,
   validateBareStringSourceEntry,
   validateFrontmatter,
@@ -133,7 +134,7 @@ export const claude: PluginTargetDefinition = {
         continue;
       }
       const pluginDir = path.join(root, entry.source);
-      ownedPaths.push(pluginDir);
+      ownedPaths.push(...pluginScanPaths(root, pluginDir));
       const manifest = await readJson(
         path.join(pluginDir, ".claude-plugin", "plugin.json"),
         `${pluginName} plugin manifest`,

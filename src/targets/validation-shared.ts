@@ -1,6 +1,7 @@
 import { promises as fs, statSync } from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
+import { componentDirs, staticFiles } from "../components.js";
 import {
   exists,
   isNotFoundError,
@@ -117,6 +118,23 @@ export async function validateNoSurvivingPartialTags(
       );
     }
   }
+}
+
+/**
+ * The paths `validateNoSurvivingPartialTags` should scan for one plugin
+ * directory a target's validator found. A plugin emitted at the output root
+ * (`path: "."`) shares that root with authored sources, dependencies, and
+ * other files pluginpack does not own, so only its component directories and
+ * static files are scanned; the managed manifest covers the rest of its
+ * output.
+ */
+export function pluginScanPaths(root: string, pluginDir: string): string[] {
+  if (path.resolve(pluginDir) !== path.resolve(root)) {
+    return [pluginDir];
+  }
+  return [...componentDirs, ...staticFiles].map((entry) =>
+    path.join(root, entry),
+  );
 }
 
 /** Reads and parses a JSON file, pushing an issue and returning `null` on failure. */
