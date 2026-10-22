@@ -45,6 +45,7 @@
     "!dist/**/*.map",
     "CHANGELOG.md",
     "MIGRATING_TO_0.11.md",
+    "MIGRATING_TO_0.12.md",
     "LICENSE",
     "README.md"
   ],

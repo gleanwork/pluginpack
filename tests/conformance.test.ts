@@ -346,6 +346,7 @@ describe("emitted output conforms to external target schemas", () => {
   it("codex emits the documented Codex plugin marketplace layout", async () => {
     const result = await runBin("build", "--target", "codex");
     expect(result.exitCode, String(result.stderr)).toBe(0);
+    expect(String(result.stderr)).not.toContain("deprecated");
 
     const marketplace = readJson(
       project.baseDir,
@@ -402,6 +403,14 @@ describe("emitted output conforms to external target schemas", () => {
     });
     const result = await runBin("build", "--target", "codex");
     expect(result.exitCode, String(result.stderr)).toBe(0);
+    // Deprecated in 0.12, removed in 0.13: every build says so once, and
+    // names the config field and the way off it.
+    const deprecations = String(result.stderr)
+      .split("\n")
+      .filter((line) => line.includes('format: "legacy"'));
+    expect(deprecations).toEqual([
+      'warning: targets.codex.format: "legacy" is deprecated and will be removed in pluginpack 0.13. It only serves Codex releases older than 0.147.0. Remove "format" from targets.codex to emit Agent Plugins packages.',
+    ]);
 
     const plugin = readJson(
       project.baseDir,

@@ -323,8 +323,10 @@ Pluginpack emits packages in two ways:
   `extensions["com.openai"]` automatically, so existing manifest config needs
   no changes. MCP config is held to the stricter Agent Plugins rules (see
   [MCP Directory](#mcp-directory)). Set `format: "legacy"` on the target to keep the older
-  `.codex-plugin/plugin.json` layout for Codex builds without Agent Plugins
-  support, which landed across v0.146 and v0.147 (see
+  `.codex-plugin/plugin.json` layout for Codex releases older than 0.147.0,
+  the first release that installs Agent Plugins packages. `format: "legacy"`
+  is deprecated in 0.12 and will be removed in 0.13; a build that uses it
+  prints a warning (see
   [ADR 0001](./docs/adr/0001-codex-emits-agent-plugins-packages.md)).
 - **`agent-plugins`** emits portable packages. On its own it has no client
   profile, so it ships `skills`, `scripts`, `assets`, static files, and `mcp`.
@@ -411,14 +413,41 @@ This removes the old managed manifest and marketplace without deleting source
 files. In the reverse direction, run `pluginpack clean --target agent-plugins`
 before removing that target. The `agent-plugins` target does not ship Codex hooks.
 
-**Upgrading from 0.11:** the `codex` target's output layout changes. Run
-`pluginpack build`, and either publish the new layout or set
-`format: "legacy"`. If `validate` reports skill names such as
-`skill_name`, rename them before switching, because Agent Plugins clients
-skip them. The build can also fail on MCP config that 0.11 copied as
-authored, such as `cwd: "."` or a `${API_TOKEN}` placeholder. Change it to
-follow the Agent Plugins rules in [MCP Directory](#mcp-directory), or set
-`format: "legacy"` to keep writing `.mcp.json` as authored.
+## Upgrading from 0.11
+
+0.12 changes generated output for `codex`, `claude`, `cursor` and `copilot`.
+Some configs and sources that 0.11 accepted now fail at config load, build or
+`validate`. [`MIGRATING_TO_0.12.md`](./MIGRATING_TO_0.12.md) lists each error
+with its fix, then the changed output, the new warnings and the API type
+changes. The first 0.12 build rewrites each `.pluginpack/<target>.json` in a
+format 0.11 can't read, so upgrade every machine that builds the same output
+together.
+
+- The `codex` target's output layout changes. Run `pluginpack build`, and
+  either publish the new layout or set `format: "legacy"` until 0.13. If
+  `validate` reports skill names such as `skill_name`, rename them before
+  switching, because Agent Plugins clients skip them. The build can also fail
+  on MCP config that 0.11 copied as authored, such as `cwd: "."` or a
+  `${API_TOKEN}` placeholder. Change it to follow the Agent Plugins rules in
+  [MCP Directory](#mcp-directory), or set `format: "legacy"` to keep writing
+  `.mcp.json` as authored.
+- A `cursor` build fails when the shared MCP config uses
+  `${CLAUDE_PLUGIN_DATA}` or `${PLUGIN_DATA}`, which 0.11 shipped to Cursor
+  unexpanded:
+  `MCP server "local" uses ${CLAUDE_PLUGIN_DATA}, but Cursor has no plugin-data variable.`
+  The error stops every target, so nothing is written. Give `cursor` its own
+  `mcp/config.json` through `overrides`, or add `"mcp"` to its `exclude`.
+- `claude`, `cursor` and `copilot` no longer copy MCP config as authored. A
+  `./bin/server` command becomes `${CLAUDE_PLUGIN_ROOT}/bin/server` for
+  `claude`, `${CURSOR_PLUGIN_ROOT}/bin/server` for `cursor` and
+  `${PLUGIN_ROOT}/bin/server` for `copilot`. A `claude` build fails on an MCP
+  server with `cwd`, because Claude Code ignores it. Other root and data
+  variables are renamed to each client's own. `"type": "streamable-http"`
+  becomes `"type": "http"` for `claude` and `copilot`, and `cursor` drops
+  `type` for stdio and HTTP servers.
+- `validate` rejects `---json` frontmatter and tab-indented YAML, which 0.11
+  accepted. An unquoted number with a leading zero, such as `017`, now reads
+  as 17 instead of the octal 15.
 
 ## Legacy 0.10 Source Composition
 
@@ -737,7 +766,7 @@ Keys stripped by config parsing produce a warning that names the config file and
 | Field              | Type                            | Required | Meaning                                                                                                                                                    |
 | ------------------ | ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `outDir`           | string                          | yes      | Output directory for this target, relative to the config root. May be outside the project; it may not sit inside a source path.                            |
-| `format`           | `"agent-plugins"` \| `"legacy"` | no       | `codex` only. `"legacy"` keeps the `.codex-plugin/plugin.json` layout; default `"agent-plugins"`.                                                          |
+| `format`           | `"agent-plugins"` \| `"legacy"` | no       | `codex` only. `"legacy"` keeps the `.codex-plugin/plugin.json` layout; deprecated in 0.12, removed in 0.13. Default `"agent-plugins"`.                     |
 | `plugins`          | record                          | yes      | Emitted plugins, keyed by emitted plugin name (see **`targets.<name>.plugins.<name>`**).                                                                   |
 | `marketplaceDir`   | string (safe relative)          | no       | Compatibility field for `cursor` / `claude`: only the fixed host directory (`.cursor-plugin` / `.claude-plugin`) is accepted. Other targets do not use it. |
 | `pluginRoot`       | string (safe relative)          | no       | Override the plugin root dir (`claude`; defaults to `plugins`).                                                                                            |
