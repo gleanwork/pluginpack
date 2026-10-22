@@ -1,5 +1,7 @@
 dist/
 node_modules/
+# Git worktrees for other branches; each one is checked in its own checkout.
+.worktrees/
 examples/glean/dist/
 examples/glean/plugins/
 examples/basic/dist/
