@@ -7,3 +7,5 @@ package-lock.json
 tests/fixtures/cursor/*.schema.json
 tests/fixtures/agent-plugins/*.schema.json
 CHANGELOG.md
+# Golden output is pinned byte for byte as pluginpack emits it.
+tests/golden/

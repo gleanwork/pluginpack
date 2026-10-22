@@ -1,0 +1,19 @@
+{
+  "name": "golden-plugins",
+  "interface": {
+    "displayName": "Golden plugins"
+  },
+  "plugins": [
+    {
+      "name": "acme",
+      "source": "./plugins/acme",
+      "description": "Acme from the source manifest.",
+      "version": "1.2.3",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "target": "codex",
+  "files": [
+    ".agents/plugins/marketplace.json",
+    "CONTRIBUTING.md",
+    "README.md",
+    "plugins/acme/LICENSE",
+    "plugins/acme/README.md",
+    "plugins/acme/assets/icon.png",
+    "plugins/acme/bin/server",
+    "plugins/acme/hooks/hooks.json",
+    "plugins/acme/mcp.json",
+    "plugins/acme/plugin.json",
+    "plugins/acme/scripts/run.sh",
+    "plugins/acme/skills/release-notes/SKILL.md",
+    "plugins/acme/skills/release-notes/references/template.txt"
+  ],
+  "sha256": {
+    ".agents/plugins/marketplace.json": "c929e0fb6a0376199e20c75b96b7ad544cf1026351445ecd11d6b7e16a559c6d",
+    "CONTRIBUTING.md": "5d81cc62707c5592ad3fd46205b8b45d3aa25e2a1e6e18d59c14b3e801217bc7",
+    "README.md": "2e67a1226ce201bd5560b910ec05652241bf38ec364fc639d5173ae433980e5e",
+    "plugins/acme/LICENSE": "adc37366f403835c1470ab2df93d3837d4719372fc1ef8593d922e06f033f8b2",
+    "plugins/acme/README.md": "bd8dd9498117b96048242a906bd2112379227d573726b62ea4bbcba214a24469",
+    "plugins/acme/assets/icon.png": "71fde3856a298a052c6edb5155638d8422114e55bf0e28374d90dea8be99ef6c",
+    "plugins/acme/bin/server": "9210d306feecb440d7bd86c82b2ddfae0bb2b706571ed3962f566a7f3f3cf83d",
+    "plugins/acme/hooks/hooks.json": "ffa7f7bd137c04c26f889c25e3ea9cad84596c619f55a2f6324369c9a413c94d",
+    "plugins/acme/mcp.json": "f6d7a3e17bd9f611b74858306a38f4904a0dba89da8e069a9e09ddadc6cd7b73",
+    "plugins/acme/plugin.json": "6399ba0f48ba6f10251c99950d900933d33a03a7cb158afaec0182f8499fd753",
+    "plugins/acme/scripts/run.sh": "a4e0317eafab5cf1bc4a0041c7c8aeb6ece56fe72e7b2b3017a8a6574614cd35",
+    "plugins/acme/skills/release-notes/SKILL.md": "91a5dad01d643b10c4f1e413bbab93e6f97d0aa213fa83ada8a26b0063670ddd",
+    "plugins/acme/skills/release-notes/references/template.txt": "0528c3e23a7f67ba714dc08d17d0fa4d1d71584c3a52caa2d344d5f030db441a"
+  }
+}

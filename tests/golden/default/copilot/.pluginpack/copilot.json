@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "target": "copilot",
+  "files": [
+    ".claude-plugin/marketplace.json",
+    ".github/plugin/marketplace.json",
+    "CONTRIBUTING.md",
+    "README.md",
+    "plugins/acme/.github/plugin/plugin.json",
+    "plugins/acme/.mcp.json",
+    "plugins/acme/LICENSE",
+    "plugins/acme/README.md",
+    "plugins/acme/agents/helper.agent.md",
+    "plugins/acme/assets/icon.png",
+    "plugins/acme/bin/server",
+    "plugins/acme/hooks/hooks.json",
+    "plugins/acme/plugin.json",
+    "plugins/acme/scripts/run.sh",
+    "plugins/acme/skills/release-notes/SKILL.md",
+    "plugins/acme/skills/release-notes/references/template.txt"
+  ],
+  "sha256": {
+    ".claude-plugin/marketplace.json": "7959535c7d4f15dbbe875f2a68297900bb16daacacd7c4b33a861040dddde2ac",
+    ".github/plugin/marketplace.json": "7959535c7d4f15dbbe875f2a68297900bb16daacacd7c4b33a861040dddde2ac",
+    "CONTRIBUTING.md": "5d81cc62707c5592ad3fd46205b8b45d3aa25e2a1e6e18d59c14b3e801217bc7",
+    "README.md": "2e67a1226ce201bd5560b910ec05652241bf38ec364fc639d5173ae433980e5e",
+    "plugins/acme/.github/plugin/plugin.json": "82aa29a8d5cb896860bf6fd92cf42bd498dec846c93943d27681c7c52085ec2b",
+    "plugins/acme/.mcp.json": "ca303b1525ecca62ef783a67180f84ea8f58665bb132c0db2e8c78a9e9b02105",
+    "plugins/acme/LICENSE": "adc37366f403835c1470ab2df93d3837d4719372fc1ef8593d922e06f033f8b2",
+    "plugins/acme/README.md": "bd8dd9498117b96048242a906bd2112379227d573726b62ea4bbcba214a24469",
+    "plugins/acme/agents/helper.agent.md": "f98ea67be542b0a45b4b493c086c36fef4bb7b18c3a9ed957370083b1b0962f4",
+    "plugins/acme/assets/icon.png": "71fde3856a298a052c6edb5155638d8422114e55bf0e28374d90dea8be99ef6c",
+    "plugins/acme/bin/server": "9210d306feecb440d7bd86c82b2ddfae0bb2b706571ed3962f566a7f3f3cf83d",
+    "plugins/acme/hooks/hooks.json": "ffa7f7bd137c04c26f889c25e3ea9cad84596c619f55a2f6324369c9a413c94d",
+    "plugins/acme/plugin.json": "82aa29a8d5cb896860bf6fd92cf42bd498dec846c93943d27681c7c52085ec2b",
+    "plugins/acme/scripts/run.sh": "a4e0317eafab5cf1bc4a0041c7c8aeb6ece56fe72e7b2b3017a8a6574614cd35",
+    "plugins/acme/skills/release-notes/SKILL.md": "ab3912f7c2cd1515c291a59d91205364a66b41566095e4202ce8842c59d21b6d",
+    "plugins/acme/skills/release-notes/references/template.txt": "0528c3e23a7f67ba714dc08d17d0fa4d1d71584c3a52caa2d344d5f030db441a"
+  }
+}
