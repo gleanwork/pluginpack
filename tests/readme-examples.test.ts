@@ -91,6 +91,10 @@ const inventory: Record<string, string> = {
     "not runnable: a fragment; partials are run by lifecycle-journeys.test.ts",
   "CI Change Detection > bash #1": "run",
   "Programmatic API > ts #1": "run",
+  "Claude Code > bash #1":
+    "not runnable: host CLI commands; install-snippet.test.ts checks install-info",
+  "Antigravity > bash #1":
+    "not runnable: host CLI commands; install-snippet.test.ts checks install-info",
   ...Object.fromEntries(
     [
       "init",
