@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.12.0 (2026-10-22)
+
+#### :boom: Breaking Change
+
+- [#49](https://github.com/gleanwork/pluginpack/pull/49) fix(targets): enforce native layouts and correct conformance evidence ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#48](https://github.com/gleanwork/pluginpack/pull/48) fix(api): keep the config and artifact types stable for consumers ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#47](https://github.com/gleanwork/pluginpack/pull/47) fix(mcp): reject broken server commands, carry Codex MCP auth, cite dialect facts ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#46](https://github.com/gleanwork/pluginpack/pull/46) fix(partials): keep substituted files faithful and never emit a live tag ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#45](https://github.com/gleanwork/pluginpack/pull/45) fix: compare physical paths in the delete guard and keep 0.11 projects upgradable ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#38](https://github.com/gleanwork/pluginpack/pull/38) feat!: emit Agent Plugins packages from codex and add an agent-plugins target ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#37](https://github.com/gleanwork/pluginpack/pull/37) feat: render MCP config into each target's MCP dialect ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### :rocket: Enhancement
+
+- [#42](https://github.com/gleanwork/pluginpack/pull/42) feat: build one Agent Plugins package for several clients ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### :bug: Bug Fix
+
+- [#44](https://github.com/gleanwork/pluginpack/pull/44) fix(init): scaffold every target without overwriting existing files ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#41](https://github.com/gleanwork/pluginpack/pull/41) fix(deps): drop fast-glob and gray-matter to clear the production audit ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#39](https://github.com/gleanwork/pluginpack/pull/39) fix(deps): patch js-yaml for GHSA-2883-xcg3-v3hh ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### :memo: Documentation
+
+- [#51](https://github.com/gleanwork/pluginpack/pull/51) docs: cover every 0.12 behavior change in the migration guide ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### :house: Internal
+
+- [#53](https://github.com/gleanwork/pluginpack/pull/53) chore: ignore git worktrees in lint, format and tests ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#52](https://github.com/gleanwork/pluginpack/pull/52) test: give the suite a CI-sized timeout ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#50](https://github.com/gleanwork/pluginpack/pull/50) test: walk the full lifecycle, pin golden output, and run README examples ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#43](https://github.com/gleanwork/pluginpack/pull/43) chore(release): align credentials and document the compatibility policy ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+- [#40](https://github.com/gleanwork/pluginpack/pull/40) Add REVIEW.md and agent permission rules ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+#### Committers: 1
+
+- Steve Calvert ([@steve-calvert-glean](https://github.com/steve-calvert-glean))
+
+
+
 ## v0.11.1 (2026-08-11)
 
 #### :bug: Bug Fix
