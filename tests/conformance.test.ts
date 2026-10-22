@@ -561,8 +561,12 @@ describe("emitted output conforms to external target schemas", () => {
     const result = await runBin("install-info");
     expect(result.exitCode, String(result.stderr)).toBe(0);
     expect(result.stdout).toContain(
-      "/plugin marketplace add https://github.com/gleanwork/plugins",
+      "claude plugin marketplace add https://github.com/gleanwork/plugins",
     );
+    expect(result.stdout).toContain(
+      "claude plugin install glean@glean-plugins",
+    );
+    expect(result.stdout).not.toContain("slash-only");
     expect(result.stdout).toContain(
       "codex plugin marketplace add https://github.com/gleanwork/plugins",
     );
@@ -577,6 +581,42 @@ describe("emitted output conforms to external target schemas", () => {
     expect(result.exitCode, String(result.stderr)).toBe(0);
     expect(result.stdout).toContain("claude / glean");
     expect(result.stdout).not.toContain("codex / glean");
+  });
+
+  it("install-info --target antigravity prints the GitHub URL and generated subdirectory fallback", async () => {
+    await project.write({
+      "pluginpack.config.ts": CONFIG.replace(
+        "  targets: {",
+        '  targets: {\n    antigravity: { outDir: "out-antigravity", plugins: { glean: { from: ["glean"], path: "tools/glean" } } },',
+      ),
+    });
+    const result = await runBin("install-info", "--target", "antigravity");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+    expect(result.stdout).toContain(
+      "agy plugin install https://github.com/gleanwork/plugins",
+    );
+    expect(result.stdout).toContain(
+      "git clone https://github.com/gleanwork/plugins plugin-source && cd plugin-source && agy plugin install tools/glean",
+    );
+    expect(result.stdout).toContain("do not specify a subdirectory selector");
+  });
+
+  it("install-info --json prints Claude's shell commands and interactive alternative", async () => {
+    const result = await runBin("install-info", "--target", "claude", "--json");
+    expect(result.exitCode, String(result.stderr)).toBe(0);
+    expect(JSON.parse(String(result.stdout))).toEqual([
+      {
+        target: "claude",
+        plugin: "glean",
+        snippet: {
+          userConfigurable: true,
+          kind: "command",
+          snippet:
+            "claude plugin marketplace add https://github.com/gleanwork/plugins\nclaude plugin install glean@glean-plugins",
+          note: expect.stringContaining("/plugin install glean@glean-plugins"),
+        },
+      },
+    ]);
   });
 
   it("install-info --json prints a parseable, per-target-per-plugin array", async () => {

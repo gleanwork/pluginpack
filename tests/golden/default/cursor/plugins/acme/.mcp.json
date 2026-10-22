@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "acme": {
+      "command": "${CURSOR_PLUGIN_ROOT}/bin/server",
+      "args": [
+        "--stdio"
+      ],
+      "env": {
+        "ACME_MODE": "plugin"
+      }
+    },
+    "docs": {
+      "url": "https://mcp.example.com/mcp"
+    }
+  }
+}

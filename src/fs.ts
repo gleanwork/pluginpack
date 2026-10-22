@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { FileValue } from "./types.js";
@@ -12,7 +14,9 @@ export function toPosix(value: string): string {
  * Dotfiles are included. Symlinks are followed: a link to a file is listed
  * as a file and a link to a directory is walked, except a link back to a
  * directory already being walked, which would loop. Broken links are
- * skipped. A missing `dir` yields no files.
+ * skipped. A missing `dir` yields no files; a `dir` that is a file is an
+ * error, since reading it as an empty directory would silently drop content
+ * the author meant to ship.
  */
 export async function walkFiles(dir: string): Promise<string[]> {
   const files: string[] = [];
@@ -23,6 +27,12 @@ export async function walkFiles(dir: string): Promise<string[]> {
       real = await fs.realpath(current);
       entries = await fs.readdir(current, { withFileTypes: true });
     } catch (err) {
+      if (await isExistingNonDirectory(err, current)) {
+        throw new Error(
+          `Expected a directory but found a file: ${current}. Move the file into a directory of that name, or remove it.`,
+          { cause: err },
+        );
+      }
       if (isNotFoundError(err)) {
         return;
       }
@@ -71,6 +81,231 @@ export function isInsideFolded(root: string, candidate: string): boolean {
 
 function fold(value: string): string {
   return value.normalize("NFC").toLowerCase();
+}
+
+/**
+ * The key two paths share when they name the same file on this host: the
+ * physical path (symlinks resolved on the deepest existing ancestor), folded
+ * for case and Unicode normalization when that ancestor's volume compares
+ * names case-insensitively (APFS and NTFS by default).
+ *
+ * Every check that decides whether a delete or write is safe, or whether two
+ * targets claim the same file, compares these keys. Comparing `path.resolve`
+ * strings instead lets an alias walk past the check: `out` and `OUT` on APFS,
+ * or a symlink into a source tree, are different strings but one file.
+ *
+ * With `entry` set, only the parent is resolved and the final name is kept,
+ * which is the file `fs.rm` removes when the final entry is itself a symlink.
+ * Use it for deletions and ownership; leave it off for a root being protected.
+ */
+export async function physicalKey(
+  target: string,
+  options: { entry?: boolean } = {},
+): Promise<string> {
+  const absolute = path.resolve(target);
+  const parent = path.dirname(absolute);
+  const real =
+    options.entry && parent !== absolute
+      ? path.join(await cachedRealpathDeep(parent), path.basename(absolute))
+      : await cachedRealpathDeep(absolute);
+  return (await isCaseInsensitiveAt(real)) ? fold(real) : real;
+}
+
+/** Lookups `physicalKey` memoizes inside `withPathCache`. */
+type PathCache = {
+  realpaths: Map<string, Promise<string>>;
+  directories: Map<string, Promise<{ dir: string; dev: number } | null>>;
+  caseInsensitiveDevices: Map<number, Promise<boolean>>;
+};
+
+const pathCache = new AsyncLocalStorage<PathCache>();
+
+/**
+ * Runs `fn` with `physicalKey` memoizing real paths and per-volume case
+ * sensitivity, so a preflight over thousands of files resolves each
+ * directory and probes each volume once rather than once per file.
+ *
+ * The memo assumes the paths it has seen do not change while `fn` runs. Wrap
+ * read-only checks only, never code that writes or deletes. Nested calls share
+ * the outer cache.
+ */
+export function withPathCache<T>(fn: () => Promise<T>): Promise<T> {
+  if (pathCache.getStore()) {
+    return fn();
+  }
+  return pathCache.run(
+    {
+      realpaths: new Map(),
+      directories: new Map(),
+      caseInsensitiveDevices: new Map(),
+    },
+    fn,
+  );
+}
+
+function memoize<K, V>(
+  map: Map<K, Promise<V>> | undefined,
+  key: K,
+  compute: () => Promise<V>,
+): Promise<V> {
+  if (!map) {
+    return compute();
+  }
+  let value = map.get(key);
+  if (!value) {
+    value = compute();
+    map.set(key, value);
+  }
+  return value;
+}
+
+/** `realpathDeep`, memoized per path (and so per ancestor) inside `withPathCache`. */
+function cachedRealpathDeep(target: string): Promise<string> {
+  const absolute = path.resolve(target);
+  return memoize(pathCache.getStore()?.realpaths, absolute, async () => {
+    try {
+      return await fs.realpath(absolute);
+    } catch (error) {
+      if (!isNotFoundError(error)) {
+        throw error;
+      }
+      const parent = path.dirname(absolute);
+      if (parent === absolute) {
+        return absolute;
+      }
+      return path.join(
+        await cachedRealpathDeep(parent),
+        path.basename(absolute),
+      );
+    }
+  });
+}
+
+/**
+ * Whether names on the volume that holds `real` compare case-insensitively.
+ * `real` may not exist yet; the volume is the one holding its nearest
+ * existing directory, since that is where the missing tail will be created.
+ */
+async function isCaseInsensitiveAt(real: string): Promise<boolean> {
+  const nearest = await nearestDirectory(real);
+  if (!nearest) {
+    return platformFoldsCase();
+  }
+  return memoize(
+    pathCache.getStore()?.caseInsensitiveDevices,
+    nearest.dev,
+    () => probeVolumeCase(nearest.dir, nearest.dev),
+  );
+}
+
+/** The nearest existing directory at or above `real`, and its device. */
+function nearestDirectory(
+  real: string,
+): Promise<{ dir: string; dev: number } | null> {
+  return memoize(pathCache.getStore()?.directories, real, async () => {
+    // lstat: `real` is resolved except, for an entry key, its final name,
+    // which may be a symlink. That name lives in its parent's directory.
+    const stats = await fs.lstat(real).catch(() => null);
+    if (stats?.isDirectory()) {
+      return { dir: real, dev: stats.dev };
+    }
+    const parent = path.dirname(real);
+    return parent === real ? null : nearestDirectory(parent);
+  });
+}
+
+/**
+ * Probes whether the volume `dir` lives on (device `dev`) folds case.
+ *
+ * A name lookup in a directory is answered by the directory's own
+ * filesystem, so the probe looks up names inside `dir`, or inside an
+ * ancestor on the same device, never a mount point's name in the parent
+ * volume. For an existing name with a cased letter: if its case-swapped
+ * spelling is also listed, the directory holds both and is case-sensitive;
+ * otherwise, the volume folds case exactly when looking the swapped spelling
+ * up finds something. (Comparing inodes instead would be fooled by two hard
+ * links whose names differ only by case.)
+ *
+ * When no directory on the volume has a usable name, as on an empty volume
+ * just mounted, the probe creates and removes one empty, uniquely named file
+ * in `dir`. Only when that also fails does it fall back to the platform
+ * default, folding on macOS and Windows: over-matching is the safe direction
+ * for a check that decides whether to refuse.
+ */
+async function probeVolumeCase(dir: string, dev: number): Promise<boolean> {
+  let current = dir;
+  for (;;) {
+    const answer = await probeDirectoryEntries(current);
+    if (answer !== undefined) {
+      return answer;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    const parentStats = await fs.stat(parent).catch(() => null);
+    if (!parentStats || parentStats.dev !== dev) {
+      break;
+    }
+    current = parent;
+  }
+  return (await probeWithScratchFile(dir)) ?? platformFoldsCase();
+}
+
+async function probeDirectoryEntries(
+  dir: string,
+): Promise<boolean | undefined> {
+  const names = await fs.readdir(dir).catch(() => null);
+  if (!names) {
+    return undefined;
+  }
+  const listed = new Set(names);
+  for (const name of names) {
+    const swapped = swapCase(name);
+    // Skip names whose case swap does not round-trip ("ß" -> "SS"): the
+    // swapped name would be a different name, not a different case.
+    if (swapped === name || swapCase(swapped) !== name) {
+      continue;
+    }
+    if (listed.has(swapped)) {
+      return false;
+    }
+    return fs.lstat(path.join(dir, swapped)).then(
+      () => true,
+      () => false,
+    );
+  }
+  return undefined;
+}
+
+async function probeWithScratchFile(dir: string): Promise<boolean | null> {
+  const name = `.pluginpack-case-probe-${process.pid}-${randomBytes(6).toString("hex")}`;
+  const probe = path.join(dir, name);
+  try {
+    await fs.writeFile(probe, "", { flag: "wx" });
+  } catch {
+    return null;
+  }
+  try {
+    return await fs.lstat(path.join(dir, swapCase(name))).then(
+      () => true,
+      () => false,
+    );
+  } finally {
+    await fs.rm(probe, { force: true });
+  }
+}
+
+function platformFoldsCase(): boolean {
+  return process.platform === "darwin" || process.platform === "win32";
+}
+
+function swapCase(value: string): string {
+  return [...value]
+    .map((char) =>
+      char === char.toLowerCase() ? char.toUpperCase() : char.toLowerCase(),
+    )
+    .join("");
 }
 
 /**
@@ -153,7 +388,12 @@ export function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-/** Whether `value` is a URL, or a relative path that can't escape its base directory. */
+/**
+ * Whether `value` is a URL, or a relative path that can't escape its base
+ * directory. For a value that may be either, such as a marketplace entry's
+ * `source`. A value that is only ever read from or written to disk must use
+ * `isSafeRelativeFilePath` instead.
+ */
 export function isSafeRelativePath(value: string): boolean {
   if (!value) {
     return false;
@@ -161,11 +401,27 @@ export function isSafeRelativePath(value: string): boolean {
   if (value.startsWith("http://") || value.startsWith("https://")) {
     return true;
   }
-  if (path.isAbsolute(value)) {
+  return isSafeRelativeFilePath(value);
+}
+
+/**
+ * Whether `value` is a relative filesystem path that can't escape its base
+ * directory. Unlike `isSafeRelativePath`, a URL gets no exemption: passed to
+ * `path.resolve`, `https://../../outside` is just a path with a `..` in it,
+ * and lands outside the base.
+ */
+export function isSafeRelativeFilePath(value: string): boolean {
+  if (!value || path.isAbsolute(value)) {
     return false;
   }
   const normalized = path.posix.normalize(value.replace(/\\/g, "/"));
-  return normalized !== ".." && !normalized.startsWith("../");
+  return (
+    normalized !== ".." &&
+    !normalized.startsWith("../") &&
+    !path.posix.isAbsolute(normalized) &&
+    // A Windows drive-letter path resolves as absolute on Windows.
+    !/^[a-zA-Z]:/.test(normalized)
+  );
 }
 
 /** Whether the file at `filePath` exists. */
@@ -192,4 +448,23 @@ export function isNotFoundError(error: unknown): boolean {
   }
   const code = (error as NodeJS.ErrnoException).code;
   return code === "ENOENT" || code === "ENOTDIR";
+}
+
+/**
+ * Whether `error` is an ENOTDIR raised because `dir` itself exists as a file,
+ * rather than because some ancestor of it is a file (which means `dir` is
+ * simply missing).
+ */
+async function isExistingNonDirectory(
+  error: unknown,
+  dir: string,
+): Promise<boolean> {
+  if (
+    !(error instanceof Error) ||
+    (error as NodeJS.ErrnoException).code !== "ENOTDIR"
+  ) {
+    return false;
+  }
+  const stats = await fs.stat(dir).catch(() => null);
+  return stats !== null && !stats.isDirectory();
 }

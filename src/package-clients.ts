@@ -5,7 +5,11 @@ import {
   PACKAGE_CLIENT_NAMES,
   type PackageClientName,
 } from "./schema.js";
-import { codexMarketplace, validateCodexEntry } from "./targets/codex.js";
+import {
+  buildCodexMarketplaceEntry,
+  codexMarketplace,
+  validateCodexEntry,
+} from "./targets/codex.js";
 import { stripUndefined } from "./targets/shared.js";
 import {
   error,
@@ -71,7 +75,7 @@ const codexClient: PackageClient = {
   placeContent: () => undefined,
   marketplacePath: path.join(".agents", "plugins", "marketplace.json"),
   buildMarketplaceEntry: (ctx) =>
-    codexMarketplace.buildMarketplaceEntry(ctx) as Record<string, unknown>,
+    buildCodexMarketplaceEntry(ctx, "agent-plugins"),
   buildMarketplaceManifest: (ctx) =>
     codexMarketplace.buildMarketplaceManifest(ctx) as Record<string, unknown>,
   validate: async (root, packageDirs, issues) => {

@@ -1,0 +1,29 @@
+name: Evidence freshness
+
+# Fails when a target citation or vendored schema is past the re-verification
+# cadence in CONFORMANCE.md. It runs on a schedule rather than on pull
+# requests, because its result depends on the date, not on the change.
+on:
+  schedule:
+    - cron: "0 16 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up toolchain
+        uses: jdx/mise-action@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check evidence dates
+        env:
+          PLUGINPACK_CHECK_FRESHNESS: "1"
+        run: npx vitest run tests/evidence-freshness.test.ts

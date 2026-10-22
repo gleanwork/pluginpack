@@ -16,7 +16,7 @@ import {
   CLIENT_ONLY_CONTENT_KINDS,
   PACKAGE_CLIENT_CONTENT_KINDS,
 } from "../schema.js";
-import { error } from "./validation-shared.js";
+import { error, pluginScanPaths } from "./validation-shared.js";
 import type { ValidationIssue } from "../types.js";
 import type { PluginTargetDefinition } from "./types.js";
 
@@ -27,6 +27,18 @@ import type { PluginTargetDefinition } from "./types.js";
  * belongs to.
  */
 const noProfile = {};
+
+/**
+ * Plugin-relative files and directories a client reads from a package,
+ * whoever wrote them: the manifest, the MCP config, the hooks file, and each
+ * client's extension directory.
+ */
+const NATIVE_FILES = [
+  packageLayout.manifest,
+  packageLayout.mcp,
+  "hooks/hooks.json",
+  ...Object.values(PACKAGE_CLIENTS).map((client) => client.namespace),
+];
 
 /**
  * Agent Plugins target: one portable package per plugin under
@@ -78,7 +90,7 @@ export const agentPlugins: PluginTargetDefinition = {
   // Validates every package, then each client's marketplace and extension
   // directory. Output carries no config, so a client is validated when its
   // marketplace or extension directory is present.
-  validateOutput: async (root, issues) => {
+  validateOutput: async (root, issues, context) => {
     const pluginDirs = await findPackages(root);
     if (pluginDirs.length === 0) {
       error(
@@ -90,7 +102,9 @@ export const agentPlugins: PluginTargetDefinition = {
       await validatePackage(pluginDir, path.basename(pluginDir), issues);
       await rejectClientOnlyContent(pluginDir, issues);
     }
-    const owned = [...pluginDirs];
+    const owned = pluginDirs.flatMap((pluginDir) =>
+      pluginScanPaths(root, pluginDir, NATIVE_FILES, context),
+    );
     for (const client of Object.values(PACKAGE_CLIENTS)) {
       owned.push(...(await client.validate(root, pluginDirs, issues)));
     }
@@ -134,6 +148,12 @@ function withClients(
   );
   return {
     ...base,
+    omittedContentWarnings: clients.some((client) => client.name === "codex")
+      ? {
+          hooks:
+            'The agent-plugins target does not ship Codex hooks. Keep the codex target if hooks are required, or exclude "hooks" explicitly in pluginpack.config.ts.',
+        }
+      : undefined,
     defaultComponents: [
       ...new Set([...base.defaultComponents, ...clientKinds]),
     ],

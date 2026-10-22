@@ -1,0 +1,26 @@
+{
+  "name": "golden-plugins",
+  "metadata": {
+    "description": "Plugins whose output is pinned byte for byte.",
+    "version": "1.2.3",
+    "keywords": [
+      "golden",
+      "test"
+    ]
+  },
+  "owner": {
+    "name": "Golden"
+  },
+  "plugins": [
+    {
+      "name": "acme",
+      "source": "./plugins/acme",
+      "description": "Acme for Copilot.",
+      "version": "1.2.3",
+      "skills": [
+        "./skills/release-notes"
+      ],
+      "mcpServers": ".mcp.json"
+    }
+  ]
+}

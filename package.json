@@ -51,7 +51,7 @@
   ],
   "scripts": {
     "audit": "npm audit --omit=dev",
-    "build": "tsup",
+    "build": "tsup && node scripts/materialize-config-types.mjs",
     "check": "npm run test:all",
     "dev": "tsx src/cli.ts",
     "docs": "npm run docs:check",
@@ -67,6 +67,7 @@
     "test": "vitest run",
     "test:all": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build && npm run docs",
     "test:coverage": "vitest run --coverage",
+    "test:golden:update": "env UPDATE_GOLDEN=1 vitest run tests/golden.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -104,18 +105,14 @@
     "access": "public",
     "registry": "https://registry.npmjs.org"
   },
-  "overrides": {
-    "esbuild": "^0.28.1",
-    "tmp": "^0.2.7",
-    "brace-expansion": "^5.0.8"
-  },
   "release-it": {
     "git": {
-      "tagName": "v${version}"
+      "tagName": "v${version}",
+      "requireBranch": "main"
     },
     "github": {
       "release": true,
-      "tokenRef": "GITHUB_TOKEN"
+      "tokenRef": "GITHUB_AUTH"
     },
     "npm": {
       "publish": true

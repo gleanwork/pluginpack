@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "target": "cursor",
+  "files": [
+    ".cursor-plugin/marketplace.json",
+    "CONTRIBUTING.md",
+    "README.md",
+    "plugins/acme/.cursor-plugin/plugin.json",
+    "plugins/acme/.mcp.json",
+    "plugins/acme/LICENSE",
+    "plugins/acme/README.md",
+    "plugins/acme/agents/helper.agent.md",
+    "plugins/acme/assets/icon.png",
+    "plugins/acme/bin/server",
+    "plugins/acme/hooks/hooks.json",
+    "plugins/acme/rules/cursor-only.mdc",
+    "plugins/acme/rules/style.mdc",
+    "plugins/acme/scripts/pluginpack-update-check.sh",
+    "plugins/acme/scripts/run.sh",
+    "plugins/acme/skills/release-notes/SKILL.md",
+    "plugins/acme/skills/release-notes/references/template.txt"
+  ],
+  "sha256": {
+    ".cursor-plugin/marketplace.json": "b36379764a5a320c8c59cbec1194be620032d8929286ab3239e5f45222a04317",
+    "CONTRIBUTING.md": "5d81cc62707c5592ad3fd46205b8b45d3aa25e2a1e6e18d59c14b3e801217bc7",
+    "README.md": "2e67a1226ce201bd5560b910ec05652241bf38ec364fc639d5173ae433980e5e",
+    "plugins/acme/.cursor-plugin/plugin.json": "17110335b7450c7c195abf50702584def0eaf68c38629976b70600959cc5c6a2",
+    "plugins/acme/.mcp.json": "e5eb8a5785f1395b17759a0519533736ab96cdce9430a2be7eba63f0d806b98f",
+    "plugins/acme/LICENSE": "adc37366f403835c1470ab2df93d3837d4719372fc1ef8593d922e06f033f8b2",
+    "plugins/acme/README.md": "bd8dd9498117b96048242a906bd2112379227d573726b62ea4bbcba214a24469",
+    "plugins/acme/agents/helper.agent.md": "f98ea67be542b0a45b4b493c086c36fef4bb7b18c3a9ed957370083b1b0962f4",
+    "plugins/acme/assets/icon.png": "71fde3856a298a052c6edb5155638d8422114e55bf0e28374d90dea8be99ef6c",
+    "plugins/acme/bin/server": "9210d306feecb440d7bd86c82b2ddfae0bb2b706571ed3962f566a7f3f3cf83d",
+    "plugins/acme/hooks/hooks.json": "2964500e86d837c20982917061fdf2972946b893c682779f1677aafb1afd9b6d",
+    "plugins/acme/rules/cursor-only.mdc": "e735f55eb2c55458eeb055e07462474bb95d4a0052efecf687a4248938875821",
+    "plugins/acme/rules/style.mdc": "8d5532f408bbf1d24877ce3afb4cdf15114628ab98235787d1957bfe425546ee",
+    "plugins/acme/scripts/pluginpack-update-check.sh": "555083e54f172c755b824e825890ae87841ce27154717508ad18ed0274a84ed3",
+    "plugins/acme/scripts/run.sh": "a4e0317eafab5cf1bc4a0041c7c8aeb6ece56fe72e7b2b3017a8a6574614cd35",
+    "plugins/acme/skills/release-notes/SKILL.md": "ab3912f7c2cd1515c291a59d91205364a66b41566095e4202ce8842c59d21b6d",
+    "plugins/acme/skills/release-notes/references/template.txt": "0528c3e23a7f67ba714dc08d17d0fa4d1d71584c3a52caa2d344d5f030db441a"
+  }
+}

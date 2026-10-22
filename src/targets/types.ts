@@ -9,13 +9,27 @@ import type {
   ValidationIssue,
 } from "../types.js";
 
+/** What validation knows about the output beyond its files. */
+export type OutputValidationContext = {
+  /**
+   * Whether the output directory has a managed-file manifest for this
+   * target. When it does, validation scans the files it lists; without one,
+   * a target falls back to the paths its layout implies.
+   */
+  hasManagedState: boolean;
+};
+
 /** Inputs available when building a single plugin's own manifest file. */
 export type ManifestBuildContext = {
+  target: TargetName;
+  /** Resolve an authored file for a diagnostic, relative to the config root. */
+  sourceFile: (file: string) => string;
   metadata: Metadata | undefined;
   version: string;
   pluginName: string;
   pluginConfig: EmittedPluginConfig;
   componentDirs: Set<string>;
+  pluginFiles: Map<string, FileValue>;
   mcpServers: Record<string, unknown> | undefined;
 };
 
@@ -105,6 +119,9 @@ export type PluginTargetDefinition = {
   /** Component directories copied into a plugin when it has no `components` override. */
   defaultComponents: readonly string[];
 
+  /** Build warnings for source content this layout omits by default. */
+  omittedContentWarnings?: Record<string, string>;
+
   resolvePluginPath: (
     pluginName: string,
     pluginConfig: EmittedPluginConfig,
@@ -183,6 +200,7 @@ export type PluginTargetDefinition = {
   validateOutput: (
     root: string,
     issues: ValidationIssue[],
+    context: OutputValidationContext,
   ) => Promise<string[]>;
 
   installSnippet: InstallSnippetDefinition;
