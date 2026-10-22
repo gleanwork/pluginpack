@@ -6,6 +6,8 @@ export default tseslint.config(
     ignores: [
       "dist/**",
       "node_modules/**",
+      // Git worktrees for other branches; each one is linted in its own checkout.
+      ".worktrees/**",
       "examples/basic/dist/**",
       "examples/glean/dist/**",
       "examples/glean/plugins/**",
