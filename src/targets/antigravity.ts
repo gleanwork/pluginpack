@@ -130,12 +130,14 @@ export const antigravity: PluginTargetDefinition = {
     userConfigurable: true,
     build: ({ repository, pluginPath }) => ({
       kind: "command",
-      snippet: `git clone ${repository} plugin-source && cd plugin-source && agy plugin install ${pluginPath}`,
+      snippet: `agy plugin install ${repository}`,
+      note: `The docs show GitHub repository URLs but do not specify a subdirectory selector. To install this generated plugin from "${pluginPath}", use the local-directory form after cloning: git clone ${repository} plugin-source && cd plugin-source && agy plugin install ${pluginPath}`,
     }),
     citation: {
-      claim: "agy plugin install <local-path> syntax (no git-URL support)",
-      documentationUrl: "https://antigravity.google/docs/cli/plugins",
-      verifiedAt: "2026-07-25",
+      claim:
+        'the CLI docs show "agy plugin install https://github.com/<owner>/<repo>" and "agy plugin install </path/to/local/plugin>"; they do not specify a GitHub URL subdirectory selector',
+      documentationUrl: "https://antigravity.google/docs/plugins?tab=cli",
+      verifiedAt: "2026-10-21",
     },
   },
 
@@ -144,17 +146,17 @@ export const antigravity: PluginTargetDefinition = {
       claim:
         "plugin.json schema (name required, description optional, additionalProperties: false)",
       documentationUrl: "https://antigravity.google/docs/cli/plugins",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
     {
       claim: "hooks.json lives at the plugin root, not in a hooks/ directory",
       documentationUrl: "https://antigravity.google/docs/ide/plugins",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
     {
       claim: "agents/ is a supported component (subagent definition templates)",
       documentationUrl: "https://antigravity.google/docs/cli/plugins",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
   ],
 };

@@ -700,7 +700,7 @@ export default defineConfig({
     ).toBe("3.0.0");
   });
 
-  it('only requires "name" in a codex plugin.json (developers.openai.com/codex/plugins/build: ".codex-plugin/plugin.json is the required entry point. The other manifest fields are optional.")', async () => {
+  it("builds and validates a Codex package without optional description or author metadata", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 

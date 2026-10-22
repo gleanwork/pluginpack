@@ -71,16 +71,38 @@ export const packageLayout = {
  * discovered from fixed locations, so the manifest never points at them.
  */
 export function buildPackageManifest({
+  target,
+  sourceFile,
   metadata,
   version,
   pluginName,
   pluginConfig,
+  pluginFiles,
 }: ManifestBuildContext): Record<string, unknown> {
   const problem = packageNameProblem(pluginName);
   if (problem) {
     throw new Error(
       `Plugin "${pluginName}" can't be an Agent Plugins package: ${problem}`,
     );
+  }
+  for (const [file, contents] of pluginFiles) {
+    const skill = /^skills\/([^/]+)\/SKILL\.md$/.exec(file);
+    if (!skill) {
+      continue;
+    }
+    const issues: ValidationIssue[] = [];
+    validateSkillContents(
+      contents.toString(),
+      skill[1],
+      pluginName,
+      issues,
+      "Skill",
+    );
+    for (const issue of issues) {
+      console.warn(
+        `Warning: Target "${target}" ${sourceFile(file)}: ${issue.message} Fix the YAML "name" and "description" fields and make the name match its directory before publishing.`,
+      );
+    }
   }
   return stripUndefined({
     $schema: AGENT_PLUGINS_SCHEMA,
@@ -389,39 +411,54 @@ async function validateSkills(
     if (!(await exists(skillFile))) {
       continue;
     }
-    const where = `${pluginName}: skill "skills/${entry.name}"`;
-    let frontmatter: Record<string, unknown>;
-    try {
-      frontmatter = parseMatter(await fs.readFile(skillFile, "utf8")).data;
-    } catch (err) {
+    validateSkillContents(
+      await fs.readFile(skillFile, "utf8"),
+      entry.name,
+      pluginName,
+      issues,
+    );
+  }
+}
+
+/** Shared by build-time diagnostics and on-disk validation. */
+function validateSkillContents(
+  contents: string,
+  directoryName: string,
+  pluginName: string,
+  issues: ValidationIssue[],
+  where = `${pluginName}: skill "skills/${directoryName}"`,
+): void {
+  let frontmatter: Record<string, unknown>;
+  try {
+    frontmatter = parseMatter(contents).data;
+  } catch (err) {
+    error(
+      issues,
+      `${where} has unparseable frontmatter: ${(err as Error).message}`,
+    );
+    return;
+  }
+  const { name, description } = frontmatter;
+  if (typeof name !== "string" || !name) {
+    error(issues, `${where} is missing the required "name" field.`);
+  } else {
+    const problem = skillNameProblem(name);
+    if (problem) {
       error(
         issues,
-        `${where} has unparseable frontmatter: ${(err as Error).message}`,
+        `${where} has name "${name}", which ${problem} (Agent Skills specification) — conforming clients skip it.`,
       );
-      continue;
+    } else if (name !== directoryName) {
+      error(
+        issues,
+        `${where} has name "${name}", which must match its directory name "${directoryName}" — conforming clients skip it.`,
+      );
     }
-    const { name, description } = frontmatter;
-    if (typeof name !== "string" || !name) {
-      error(issues, `${where} is missing the required "name" field.`);
-    } else {
-      const problem = skillNameProblem(name);
-      if (problem) {
-        error(
-          issues,
-          `${where} has name "${name}", which ${problem} (Agent Skills specification) — conforming clients skip it.`,
-        );
-      } else if (name !== entry.name) {
-        error(
-          issues,
-          `${where} has name "${name}", which must match its directory name "${entry.name}" — conforming clients skip it.`,
-        );
-      }
-    }
-    if (typeof description !== "string" || !description) {
-      error(issues, `${where} is missing the required "description" field.`);
-    } else if (description.length > 1024) {
-      error(issues, `${where} "description" exceeds 1024 characters.`);
-    }
+  }
+  if (typeof description !== "string" || !description) {
+    error(issues, `${where} is missing the required "description" field.`);
+  } else if (description.length > 1024) {
+    error(issues, `${where} "description" exceeds 1024 characters.`);
   }
 }
 

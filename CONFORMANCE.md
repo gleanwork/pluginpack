@@ -24,8 +24,9 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
 
 - **claude** — runs `claude plugin validate --strict` against the emitted
   marketplace and plugin directories when the `claude` CLI is on `PATH` (skipped
-  otherwise, e.g. CI). This is Anthropic's own validator — the same check their
-  submission pipeline runs — so it is a genuinely external oracle that tracks
+  otherwise). CI installs the CLI before running the suite. This is Anthropic's
+  own validator, the same check their submission pipeline runs, so it is an
+  external oracle that tracks
   upstream automatically. A structural golden assertion also pins the exact
   emitted shape.
 - **cursor** — validates the emitted `marketplace.json` and `plugin.json` against
@@ -71,14 +72,20 @@ against a temp fixture via [`bintastic`](https://github.com/scalvert/bintastic).
   (re-verified 2026-10-02): a repo-scoped `.agents/plugins/marketplace.json`
   (`{ name, interface, plugins }`, no `owner` field). The default package is a
   root `plugin.json` with OpenAI settings under `extensions.com.openai`.
-  `format: "legacy"` instead emits `.codex-plugin/plugin.json`, where only
-  `name` is required and `skills`/`hooks`/`mcpServers` are optional pointers;
-  `validate` detects either layout per plugin. Every marketplace entry must carry
+  `format: "legacy"` instead emits `.codex-plugin/plugin.json`.
+  In [Codex rust-v0.146.0's legacy parser](https://github.com/openai/codex/blob/rust-v0.146.0/codex-rs/core-plugins/src/manifest.rs#L34-L287),
+  every recognized field has a serde default; an omitted or blank `name` falls
+  back to the plugin directory basename. `version`, `description`, `skills`,
+  `hooks`, and `mcpServers` are optional. Pluginpack keeps a stricter rule:
+  an explicit `name` must match the marketplace entry. `validate` detects
+  either layout per plugin. Every marketplace entry must carry
   `policy.installation`, `policy.authentication`, and `category`; pluginpack has
-  no way to infer these, so the base entry stays guess-free and `validateOutput`
-  errors clearly if an author never supplies them via the per-plugin `entry`
-  passthrough. An entry's `source` is a bare string only for local plugins (the
-  only shape pluginpack itself ever emits); a `url`/`git-subdir`/`npm` source
+  no way to infer these, so the base entry stays guess-free. Build warns and
+  `validateOutput` errors if an author never supplies them via the per-plugin
+  `entry` passthrough (or `clients.codex.entry` for a package client). Build
+  also warns about skill frontmatter that package validation rejects.
+  An entry's `source` is a bare string only for local plugins (the only shape
+  pluginpack itself ever emits); a `url`/`git-subdir`/`npm` source
   added via `entry` is a structured object with an inner `source` discriminator
   (e.g. `{ source: "git-subdir", url, path, ref }`), validated by shape rather
   than requiring a local directory to exist. No published JSON Schema exists.
@@ -214,19 +221,34 @@ marketplace. Each target's snippet and citation live on its own
 `PluginTargetDefinition.installSnippet` in `src/targets/<name>.ts`, verified
 directly against product docs:
 
-| Target        | Snippet                                                                                                                  | Source                                                                                                | Verified   |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ---------- |
-| `claude`      | `/plugin marketplace add <repo>` then `/plugin install <name>@<marketplace>` (slash-only)                                | <https://code.claude.com/docs/en/plugins-reference#cli-commands-reference>                            | 2026-07-25 |
-| `codex`       | `codex plugin marketplace add <repo>`                                                                                    | <https://learn.chatgpt.com/codex/developer-commands>                                                  | 2026-07-25 |
-| `copilot`     | `copilot plugin marketplace add <repo>` then `copilot plugin install <name>@<marketplace>`                               | <https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing> | 2026-07-25 |
-| `antigravity` | `git clone <repo> plugin-source && cd plugin-source && agy plugin install <pluginPath>`                                  | <https://antigravity.google/docs/cli/plugins>                                                         | 2026-07-25 |
-| `cursor`      | No CLI equivalent exists. Prints the repo URL, pasted into Dashboard → Plugins → Team Marketplaces → "Import from Repo." | <https://cursor.com/docs/plugins>                                                                     | 2026-07-25 |
+| Target        | Snippet                                                                                               | Source                                                                                                | Verified   |
+| ------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------- |
+| `claude`      | `claude plugin marketplace add <repo>` then `claude plugin install <name>@<marketplace>`              | <https://code.claude.com/docs/en/plugins/cli-reference>                                               | 2026-10-21 |
+| `codex`       | `codex plugin marketplace add <repo>`                                                                 | <https://learn.chatgpt.com/codex/developer-commands>                                                  | 2026-10-21 |
+| `copilot`     | `copilot plugin marketplace add <repo>` then `copilot plugin install <name>@<marketplace>`            | <https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing> | 2026-10-21 |
+| `antigravity` | `agy plugin install https://github.com/<owner>/<repo>`                                                | <https://antigravity.google/docs/plugins?tab=cli>                                                     | 2026-10-21 |
+| `cursor`      | Prints the repo URL, pasted into Dashboard → Plugins & MCPs → Team Marketplaces → "Import from Repo." | <https://cursor.com/docs/plugins>                                                                     | 2026-10-21 |
 
-`claude`'s two-step sequence is not symmetric with `codex`/`copilot`'s shell
-commands: `/plugin marketplace add` is slash-only inside an active Claude Code
-session, with no shell equivalent — but once a marketplace is already added,
-`claude plugin install <name>@<marketplace>` does work as a standalone shell
-command, surfaced as a secondary `note`.
+The 2026-10-21 refresh corrected both install snippets. Claude's shell
+commands were checked against the current command reference and Claude Code
+2.1.284's `claude plugin --help` and `claude plugin marketplace --help`.
+The old `plugins-reference#cli-commands-reference` URL now redirects to the
+manifest reference, so the citation points to the current command reference.
+The interactive `/plugin marketplace add <repo>` and
+`/plugin install <name>@<marketplace>` forms remain documented. The latter
+opens the plugin details for review and scope selection rather than installing
+immediately; the snippet's note explains this.
+
+Antigravity's current CLI docs show the exact command
+`agy plugin install https://github.com/<owner>/<repo>` and the local form
+`agy plugin install </path/to/local/plugin>`. `install-info` uses the configured
+repository URL. Its note retains clone-then-local-install with the generated
+`pluginPath`, because the docs do not specify a GitHub URL subdirectory selector.
+
+The legacy Codex citation was also corrected on 2026-10-21 against the tagged
+OpenAI source described above. The native parser does not require an explicit
+`name`; pluginpack's marketplace-matching rule does. Only these three corrected
+citations advance their `verifiedAt` dates in this follow-up.
 
 `agent-plugins` is the one target with `userConfigurable: false`. The
 specification defines no marketplace or install command, and installation is
@@ -234,6 +256,29 @@ left to each client (for example, VS Code installs a plugin directly from a Git
 repository URL:
 <https://code.visualstudio.com/docs/agent-customization/agent-plugins>,
 verified 2026-10-02).
+
+## Evidence refresh cadence
+
+Re-verify every citation and vendored schema at least every 90 days.
+The `Evidence freshness` workflow runs `tests/evidence-freshness.test.ts` every
+Monday and on demand. It checks every literal `verifiedAt` in `src/` and the
+`Verified-at` date in each vendored schema directory's `SOURCE.md`. It fails
+when a date is more than 90 days old, is in the future, or is invalid. The date
+checks do not run in `npm test`, because their result depends on the day rather
+than the change. Run them locally with
+`env PLUGINPACK_CHECK_FRESHNESS=1 npx vitest run tests/evidence-freshness.test.ts`.
+The tests do not fetch the network.
+
+To refresh a citation, open its `documentationUrl`, check the claim against the
+current product docs, and run the affected target's conformance tests. Update
+`verifiedAt` only after that check. Correct the implementation or record a
+format conflict here if the upstream behavior changed.
+
+To refresh a vendored schema, follow the fetch commands in its `SOURCE.md`,
+diff the fetched bytes against the pinned copy, and run
+`npx vitest run tests/conformance.test.ts` and the freshness command above.
+Record the checked commit and update `Verified-at: YYYY-MM-DD` in `SOURCE.md`,
+even when the bytes are unchanged. Do not advance dates just to pass CI.
 
 ## Refreshing vendored schemas
 

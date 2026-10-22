@@ -16,16 +16,25 @@ const params: InstallParams = {
 };
 
 describe("install snippet", () => {
-  it("builds the exact claude slash-command sequence, with the shell alternative as a note", () => {
+  it("builds the documented claude shell sequence and retains the interactive slash form", () => {
     const snippet = buildInstallSnippet("claude", params);
     expect(snippet).toMatchObject({
       userConfigurable: true,
       kind: "command",
       snippet:
-        "/plugin marketplace add https://github.com/gleanwork/plugins\n/plugin install glean@glean-plugins",
+        "claude plugin marketplace add https://github.com/gleanwork/plugins\nclaude plugin install glean@glean-plugins",
     });
     expect(snippet.userConfigurable && snippet.note).toContain(
-      "claude plugin install glean@glean-plugins",
+      "/plugin marketplace add https://github.com/gleanwork/plugins",
+    );
+    expect(snippet.userConfigurable && snippet.note).toContain(
+      "/plugin install glean@glean-plugins",
+    );
+    expect(snippet.userConfigurable && snippet.note).toContain(
+      "opens the plugin details",
+    );
+    expect(snippet.userConfigurable && snippet.note).not.toContain(
+      "slash-only",
     );
   });
 
@@ -49,14 +58,26 @@ describe("install snippet", () => {
     });
   });
 
-  it("builds the exact antigravity clone-and-install sequence, using pluginPath", () => {
+  it("builds the documented antigravity GitHub URL command with a local subdirectory fallback", () => {
     const snippet = buildInstallSnippet("antigravity", params);
     expect(snippet).toMatchObject({
       userConfigurable: true,
       kind: "command",
-      snippet:
-        "git clone https://github.com/gleanwork/plugins plugin-source && cd plugin-source && agy plugin install plugins/glean",
+      snippet: "agy plugin install https://github.com/gleanwork/plugins",
     });
+    expect(snippet.userConfigurable && snippet.note).toContain(
+      "do not specify a subdirectory selector",
+    );
+    expect(snippet.userConfigurable && snippet.note).toContain(
+      "git clone https://github.com/gleanwork/plugins plugin-source && cd plugin-source && agy plugin install plugins/glean",
+    );
+    const citation = getInstallSnippetCitation("antigravity");
+    expect(citation.claim).toContain(
+      "agy plugin install https://github.com/<owner>/<repo>",
+    );
+    expect(citation.documentationUrl).toBe(
+      "https://antigravity.google/docs/plugins?tab=cli",
+    );
   });
 
   it("builds a repo URL for cursor, with a GUI-paste note (no CLI marketplace-add exists)", () => {

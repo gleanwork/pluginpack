@@ -21,11 +21,15 @@ export type OutputValidationContext = {
 
 /** Inputs available when building a single plugin's own manifest file. */
 export type ManifestBuildContext = {
+  target: TargetName;
+  /** Resolve an authored file for a diagnostic, relative to the config root. */
+  sourceFile: (file: string) => string;
   metadata: Metadata | undefined;
   version: string;
   pluginName: string;
   pluginConfig: EmittedPluginConfig;
   componentDirs: Set<string>;
+  pluginFiles: Map<string, FileValue>;
   mcpServers: Record<string, unknown> | undefined;
 };
 
@@ -114,6 +118,9 @@ export type PluginTargetDefinition = {
 
   /** Component directories copied into a plugin when it has no `components` override. */
   defaultComponents: readonly string[];
+
+  /** Build warnings for source content this layout omits by default. */
+  omittedContentWarnings?: Record<string, string>;
 
   resolvePluginPath: (
     pluginName: string,

@@ -34,7 +34,7 @@ Data flows: **config → discover source → collect/render files → emit per t
 diff, prune, and validate all derive from it.
 
 - `src/cli.ts` — commander CLI: `init`, `build`, `validate`, `diff`, `prune`,
-  `clean`, `docs`.
+  `clean`, `install-info`, `docs`.
 - `src/schema.ts` — **zod schemas are the source of truth for config types**;
   authoring types use `z.input`, and parsed config uses `z.infer`. The build
   materializes these aliases as structural declarations without a Zod type

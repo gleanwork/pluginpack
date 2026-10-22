@@ -5,8 +5,9 @@ plugin/marketplace JSON Schemas, authored outside this repo.
 
 - Source: `gleanwork/cursor-plugins` → `schemas/`
 - Commit: `424c3485` (fetched 2026-05-29)
-- Re-verified byte-identical against upstream `schemas/` (commit `6f3ad6e6`) on
-  2026-07-28 — no re-fetch needed.
+- Verified-at: 2026-10-21
+- Re-fetched both schemas and verified byte-identical against upstream `schemas/`
+  at commit `d6077b77e56d5aa908713669ba8c72af0ef892e5` on 2026-10-21.
 
 Do not hand-edit. Re-fetch to update:
 
@@ -17,6 +18,9 @@ gh api repos/gleanwork/cursor-plugins/contents/schemas/plugin.schema.json \
   -H "Accept: application/vnd.github.raw" > plugin.schema.json
 ```
 
-Staleness has no automated check today — re-run the fetch above and diff
-against the vendored copies periodically, especially before a stability-tier
-bump, since CONFORMANCE.md already flags this oracle as self-referential.
+Re-verify at least every 90 days. `tests/evidence-freshness.test.ts` enforces
+this cadence in CI. Run the fetch above and diff against the vendored copies,
+then update `Verified-at` and record the checked upstream commit. See
+[the refresh procedure](../../../CONFORMANCE.md#evidence-refresh-cadence).
+CONFORMANCE.md flags this oracle as self-referential because Glean, not Cursor,
+authored these schemas.

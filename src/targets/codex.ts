@@ -19,7 +19,10 @@ import {
   validateReferencedManifestPaths,
 } from "./validation-shared.js";
 import type { ValidationIssue } from "../types.js";
-import type { PluginTargetDefinition } from "./types.js";
+import type {
+  MarketplaceEntryContext,
+  PluginTargetDefinition,
+} from "./types.js";
 
 const pluginNamePattern = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 const sourceKinds = new Set(["local", "url", "git-subdir", "npm"]);
@@ -116,23 +119,24 @@ export function validateCodexEntry(
   } else {
     error(issues, `${name}: source must be a string or a structured object.`);
   }
-  const policy = entry.policy as Record<string, unknown> | undefined;
-  if (!policy || typeof policy.installation !== "string") {
-    error(
-      issues,
-      `${name}: entry is missing required field "policy.installation".`,
-    );
-  }
-  if (!policy || typeof policy.authentication !== "string") {
-    error(
-      issues,
-      `${name}: entry is missing required field "policy.authentication".`,
-    );
-  }
-  if (typeof entry.category !== "string" || !entry.category) {
-    error(issues, `${name}: entry is missing required field "category".`);
+  for (const problem of codexEntryFieldProblems(entry)) {
+    error(issues, `${name}: ${problem}`);
   }
   return name;
+}
+
+function codexEntryFieldProblems(entry: Record<string, unknown>): string[] {
+  const problems: string[] = [];
+  const policy = entry.policy as Record<string, unknown> | undefined;
+  for (const field of ["installation", "authentication"]) {
+    if (!policy || typeof policy[field] !== "string") {
+      problems.push(`entry is missing required field "policy.${field}".`);
+    }
+  }
+  if (typeof entry.category !== "string" || !entry.category) {
+    problems.push('entry is missing required field "category".');
+  }
+  return problems;
 }
 
 /**
@@ -163,6 +167,9 @@ async function validateCodexPlugin(
   if (!manifest) {
     return undefined;
   }
+  // Pluginpack requires an explicit name for marketplace matching. Codex's
+  // legacy parser also accepts an omitted/blank name and uses the directory
+  // basename instead (see the rust-v0.146.0 source citation below).
   requireName(manifest, pluginName, issues);
   await validateReferencedManifestPaths(
     pluginDir,
@@ -188,6 +195,31 @@ function requireName(
   }
 }
 
+/** Builds a Codex entry and reports required fields before output is written. */
+export function buildCodexMarketplaceEntry(
+  { pluginName, pluginPath, pluginConfig, manifest }: MarketplaceEntryContext,
+  target: "codex" | "agent-plugins" = "codex",
+): Record<string, unknown> {
+  const packageClient = target === "agent-plugins";
+  const field = `targets.${target}.plugins.${pluginName}.${packageClient ? "clients.codex.entry" : "entry"}`;
+  const entry = packageClient
+    ? pluginConfig.clients?.codex?.entry
+    : pluginConfig.entry;
+  const problems = codexEntryFieldProblems(entry ?? {});
+  if (problems.length > 0) {
+    console.warn(
+      `Warning: pluginpack.config.ts ${field}: ${problems.join(" ")} Set the required fields in ${field} before publishing.`,
+    );
+  }
+  return stripUndefined({
+    name: pluginName,
+    source: `./${pluginPath}`,
+    description:
+      pluginConfig.description ?? (manifest?.description as string | undefined),
+    version: pluginConfig.version ?? (manifest?.version as string | undefined),
+  });
+}
+
 /**
  * Shared by both Codex layouts, and by the `agent-plugins` target's Codex
  * client: everything outside the plugin directory.
@@ -204,17 +236,8 @@ export const codexMarketplace = {
   // Author-supplied `policy`/`category` land here via the per-plugin `entry`
   // passthrough (see engine.ts's deepMerge) — pluginpack has no way to infer
   // installation/authentication policy on its own, so the base entry stays
-  // guess-free and validateOutput errors clearly if they're never supplied.
-  buildMarketplaceEntry: ({ pluginName, pluginPath, pluginConfig, manifest }) =>
-    stripUndefined({
-      name: pluginName,
-      source: `./${pluginPath}`,
-      description:
-        pluginConfig.description ??
-        (manifest?.description as string | undefined),
-      version:
-        pluginConfig.version ?? (manifest?.version as string | undefined),
-    }),
+  // guess-free. Build warns and validateOutput errors if they are absent.
+  buildMarketplaceEntry: buildCodexMarketplaceEntry,
 
   buildMarketplaceManifest: ({ project, plugins }) =>
     stripUndefined({
@@ -299,7 +322,7 @@ export const codexMarketplace = {
     citation: {
       claim: "codex plugin marketplace add syntax",
       documentationUrl: "https://learn.chatgpt.com/codex/developer-commands",
-      verifiedAt: "2026-07-25",
+      verifiedAt: "2026-10-21",
     },
   },
 
@@ -318,9 +341,10 @@ export const codexMarketplace = {
     },
     {
       claim:
-        'legacy .codex-plugin/plugin.json requires only "name"; version/description/author etc. are optional',
-      documentationUrl: "https://developers.openai.com/codex/plugins/build",
-      verifiedAt: "2026-07-26",
+        "Codex rust-v0.146.0's legacy parser defaults every RawPluginManifest field; an omitted or blank name falls back to the plugin directory basename, and version/description/skills/hooks/mcpServers are optional",
+      documentationUrl:
+        "https://github.com/openai/codex/blob/rust-v0.146.0/codex-rs/core-plugins/src/manifest.rs#L34-L287",
+      verifiedAt: "2026-10-21",
     },
     {
       claim:
@@ -365,6 +389,7 @@ const codexLegacy: PluginTargetDefinition = {
     pluginName,
     pluginConfig,
     componentDirs,
+    pluginFiles,
     mcpServers,
   }) => {
     const manifest: Record<string, unknown> = {
@@ -380,7 +405,7 @@ const codexLegacy: PluginTargetDefinition = {
     if (componentDirs.has("skills")) {
       manifest.skills = "./skills/";
     }
-    if (componentDirs.has("hooks")) {
+    if (pluginFiles.has("hooks/hooks.json")) {
       manifest.hooks = "./hooks/hooks.json";
     }
     if (mcpServers) {

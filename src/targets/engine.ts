@@ -1,10 +1,11 @@
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { collectPluginFiles, resolveMcpServers } from "../render.js";
 import { readAuthoredPlugin } from "../source.js";
-import { isSafeRelativePath, json, toPosix } from "../fs.js";
+import { isSafeRelativePath, json, toPosix, walkFiles } from "../fs.js";
 import { pluginArgFiles, pluginCommandFiles, renderMcpConfig } from "../mcp.js";
 import { resolvePartials } from "../partials.js";
+import { marketplaceDirProblem } from "../schema.js";
 import { validateNoSurvivingPartialTags } from "./validation-shared.js";
 import { deepMerge, stripUndefined } from "./shared.js";
 import { applyUpdateCheck, pluginAllowsUpdateCheck } from "../update-check.js";
@@ -19,6 +20,53 @@ import type {
   ValidationIssue,
 } from "../types.js";
 import type { PluginTargetDefinition } from "./types.js";
+
+/** Resolve a warning's authored file lazily; valid skills need no extra I/O. */
+function skillSourcePath(
+  project: ResolvedProject,
+  target: TargetName,
+  pluginConfig: EmittedPluginConfig,
+  metadata: Record<string, unknown> | undefined,
+  file: string,
+): string {
+  const candidates: string[] = [];
+  if (pluginConfig.source) {
+    const additional = metadata?.additionalFiles as
+      Record<string, string> | undefined;
+    const source = additional?.[file] ?? file;
+    if (pluginConfig.overrides)
+      candidates.push(
+        path.resolve(project.rootDir, pluginConfig.overrides, source),
+      );
+    candidates.push(path.resolve(project.rootDir, pluginConfig.source, source));
+  } else {
+    for (const id of pluginConfig.from ?? []) {
+      const plugin = project.plugins.get(id);
+      if (!plugin) continue;
+      const source = plugin.manifest.additionalFiles?.[file];
+      const base = source
+        ? path.resolve(plugin.dir, source)
+        : plugin.componentRoots?.skills
+          ? path.join(
+              plugin.componentRoots.skills,
+              file.slice("skills/".length),
+            )
+          : path.join(plugin.dir, file);
+      candidates.push(
+        path.join(path.dirname(base), "targets", target, path.basename(base)),
+        path.join(
+          plugin.dir,
+          "targets",
+          target,
+          path.relative(plugin.dir, base),
+        ),
+        base,
+      );
+    }
+  }
+  const source = candidates.find((candidate) => existsSync(candidate));
+  return source ? toPosix(path.relative(project.rootDir, source)) : file;
+}
 
 /**
  * Resolves a plugin's component set from its own `components` override, or
@@ -98,10 +146,32 @@ export async function emitFromDefinition(
   outDir: string,
   targetDefinition: PluginTargetDefinition,
 ): Promise<Artifact> {
+  const marketplaceProblem = marketplaceDirProblem(
+    target,
+    targetConfig.marketplaceDir,
+  );
+  if (marketplaceProblem) {
+    throw new Error(
+      `${project.configPath}: targets.${target}.marketplaceDir: ${marketplaceProblem}`,
+    );
+  }
   const definition =
     targetDefinition.forConfig?.(targetConfig) ?? targetDefinition;
   const version = targetConfig.version ?? project.config.version;
   const files = new Map<string, FileValue>();
+  const writtenBy = new Map<string, string>();
+  const putFile = (file: string, value: FileValue, owner: string): void => {
+    const normalized = toPosix(path.normalize(file));
+    const key = normalized.normalize("NFC").toLowerCase();
+    const earlier = writtenBy.get(key);
+    if (earlier !== undefined) {
+      throw new Error(
+        `Target "${target}": ${earlier} and ${owner} collide at "${normalized}". Change the plugin path or remove the conflicting file in pluginpack.config.ts.`,
+      );
+    }
+    writtenBy.set(key, owner);
+    files.set(normalized, value);
+  };
   const entries: Record<string, unknown>[] = [];
   const clientMarketplaces =
     definition.clientMarketplaces?.(targetConfig) ?? [];
@@ -122,6 +192,13 @@ export async function emitFromDefinition(
       pluginName,
       pluginConfig,
       targetConfig,
+    );
+    await warnOmittedContent(
+      project,
+      target,
+      definition,
+      pluginName,
+      pluginConfig,
     );
     let pluginFiles: Map<string, FileValue>;
     let mcpServers: Record<string, unknown> | undefined;
@@ -179,13 +256,16 @@ export async function emitFromDefinition(
     const sourceHooksFile = definition.placeFile
       ? undefined
       : pluginFiles.get("hooks/hooks.json");
-    if (sourceHooksFile !== undefined) {
-      pluginFiles.delete("hooks/hooks.json");
-    }
     // Placement can map two source files to one path (e.g. agents/x.md and
     // agents/x.agent.md for Copilot); fail instead of keeping either.
     const placedFrom = new Map<string, string>();
     for (const [relativePath, value] of pluginFiles) {
+      if (
+        sourceHooksFile !== undefined &&
+        relativePath === "hooks/hooks.json"
+      ) {
+        continue;
+      }
       for (const placed of definition.placeFile?.(relativePath, pluginName) ?? [
         relativePath,
       ]) {
@@ -198,17 +278,25 @@ export async function emitFromDefinition(
           );
         }
         placedFrom.set(outputPath, relativePath);
-        files.set(outputPath, value);
+        putFile(
+          outputPath,
+          value,
+          `plugin "${pluginName}" file "${relativePath}"`,
+        );
       }
     }
     if (sourceHooksFile !== undefined) {
-      files.set(toPosix(definition.hooksPath(pluginPath)), sourceHooksFile);
+      putFile(
+        definition.hooksPath(pluginPath),
+        sourceHooksFile,
+        `plugin "${pluginName}" hooks`,
+      );
     }
 
     const mcpConfigPath = definition.mcpConfigPath(pluginPath);
     if (mcpServers && mcpConfigPath) {
-      files.set(
-        toPosix(mcpConfigPath),
+      putFile(
+        mcpConfigPath,
         json(
           renderMcpConfig(
             mcpServers,
@@ -216,6 +304,7 @@ export async function emitFromDefinition(
             `Target "${target}" plugin "${pluginName}"`,
           ),
         ),
+        `plugin "${pluginName}" MCP config`,
       );
       // A warning, not an error: the file may be added to the output after
       // the build (e.g. a compiled binary). `validate` checks the result.
@@ -246,11 +335,15 @@ export async function emitFromDefinition(
       sourceMetadata,
     );
     const manifest = definition.buildPluginManifest({
+      target,
+      sourceFile: (file) =>
+        skillSourcePath(project, target, pluginConfig, sourceMetadata, file),
       metadata,
       version,
       pluginName,
       pluginConfig,
       componentDirs,
+      pluginFiles,
       mcpServers,
     });
     const merged = stripUndefined(
@@ -263,7 +356,7 @@ export async function emitFromDefinition(
       pluginPath,
       targetConfig,
     )) {
-      files.set(toPosix(manifestPath), manifestContent);
+      putFile(manifestPath, manifestContent, `plugin "${pluginName}" manifest`);
     }
 
     const entryContext = {
@@ -302,8 +395,8 @@ export async function emitFromDefinition(
       targetConfig.clients as
         Record<string, { manifest?: Record<string, unknown> }> | undefined
     )?.[marketplace.client]?.manifest;
-    files.set(
-      toPosix(marketplace.path),
+    putFile(
+      marketplace.path,
       json(
         stripUndefined(
           deepMerge(
@@ -317,6 +410,7 @@ export async function emitFromDefinition(
           ),
         ),
       ),
+      `client "${marketplace.client}" marketplace`,
     );
   }
 
@@ -333,7 +427,7 @@ export async function emitFromDefinition(
   );
   const marketplaceContent = json(marketplace);
   for (const marketplacePath of definition.marketplacePaths(targetConfig)) {
-    files.set(toPosix(marketplacePath), marketplaceContent);
+    putFile(marketplacePath, marketplaceContent, "generated marketplace");
   }
 
   return artifact(target, outDir, files);
@@ -359,6 +453,46 @@ export async function validateFromDefinition(
     [...ownedPaths, ...(managedPaths ?? [])],
     issues,
   );
+}
+
+async function warnOmittedContent(
+  project: ResolvedProject,
+  target: TargetName,
+  definition: PluginTargetDefinition,
+  pluginName: string,
+  pluginConfig: EmittedPluginConfig,
+): Promise<void> {
+  for (const [kind, message] of Object.entries(
+    definition.omittedContentWarnings ?? {},
+  )) {
+    // An explicit exclusion is intentional, not a silent migration loss.
+    if (
+      pluginConfig.exclude?.includes(kind) ||
+      (pluginConfig.include && !pluginConfig.include.includes(kind)) ||
+      (pluginConfig.components && !pluginConfig.components.includes(kind))
+    ) {
+      continue;
+    }
+    const roots = pluginConfig.source
+      ? [
+          pluginConfig.source,
+          ...(pluginConfig.overrides ? [pluginConfig.overrides] : []),
+        ]
+      : (pluginConfig.from ?? []).flatMap((id) => {
+          const plugin = project.plugins.get(id);
+          return plugin
+            ? [plugin.componentRoots?.[kind] ?? path.join(plugin.dir, kind)]
+            : [];
+        });
+    for (const source of roots) {
+      const dir = pluginConfig.source ? path.join(source, kind) : source;
+      if ((await walkFiles(path.resolve(project.rootDir, dir))).length > 0) {
+        console.warn(
+          `Warning: Target "${target}" plugin "${pluginName}": "${toPosix(path.relative(project.rootDir, path.resolve(project.rootDir, dir)))}" is omitted. ${message}`,
+        );
+      }
+    }
+  }
 }
 
 function emittedPluginMetadata(

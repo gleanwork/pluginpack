@@ -7,6 +7,9 @@ TSC (not by this repo).
 
 - Source: `agentplugins/agent-plugins-spec` → `schemas/1.0.0/`
 - Commit: `ff8ab5e392cc87bd88d87c060815a87490e51003` (fetched 2026-10-02)
+- Verified-at: 2026-10-21
+- Re-fetched both schemas and verified byte-identical against upstream
+  at commit `ff8ab5e392cc87bd88d87c060815a87490e51003` on 2026-10-21.
 - SHA-256:
   - `plugin.schema.json` — `0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883`
   - `mcp.schema.json` — `6539175bfcdf43085855183e86da40ea94b166547a72b47ae9a0a390516d3acb`
@@ -15,6 +18,11 @@ The specification text is authoritative where it and these schemas disagree
 (spec §5.2, §7.2.1). Published schema identifiers are never reassigned to
 different contents (spec §10.1), so the 1.0.0 copies shouldn't change. A new
 specification version publishes new schemas under a new directory.
+
+Re-verify at least every 90 days. `tests/evidence-freshness.test.ts` enforces
+this cadence in CI. Re-fetch and diff the bytes, then update `Verified-at` and
+record the checked upstream commit, even when the schemas are unchanged. See
+[the refresh procedure](../../../CONFORMANCE.md#evidence-refresh-cadence).
 
 Do not hand-edit. Re-fetch to update:
 
