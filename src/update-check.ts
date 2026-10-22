@@ -241,7 +241,7 @@ export function applyUpdateCheck(
       ? undefined
       : typeof existingValue === "string"
         ? existingValue
-        : existingValue.toString("utf8");
+        : Buffer.from(existingValue).toString("utf8");
   let merged: string;
   try {
     merged = FORMATS[options.format].mergeHooks(existing);

@@ -1,4 +1,4 @@
-/** Public API — everything the CLI itself uses is exported here for programmatic use. */
+/** Public build, validation, cleanup, config, and install-snippet APIs for programmatic use. */
 export { defineConfig, loadConfig } from "./config.js";
 export { build } from "./build.js";
 export { clean, prune } from "./cleanup.js";
@@ -27,6 +27,7 @@ export type {
   FileValue,
   Metadata,
   PluginpackConfig,
+  ResolvedPluginpackConfig,
   ResolvedProject,
   SourcePlugin,
   TargetConfig,

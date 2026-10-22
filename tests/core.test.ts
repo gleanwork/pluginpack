@@ -700,7 +700,7 @@ export default defineConfig({
     ).toBe("3.0.0");
   });
 
-  it('only requires "name" in a codex plugin.json (developers.openai.com/codex/plugins/build: ".codex-plugin/plugin.json is the required entry point. The other manifest fields are optional.")', async () => {
+  it("builds and validates a Codex package without optional description or author metadata", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
 
@@ -3633,14 +3633,11 @@ export default defineConfig({
         },
       ]),
     );
-    // A substituted file type can only reach output with a tag via the
-    // documented escape, so it warns rather than failing.
+    // Build resolves or rejects every tag in a substituted file type, so the
+    // only tag left there is the documented escape, which validate ignores.
     expect(
-      result.issues.filter(
-        (issue) =>
-          issue.level === "warning" && issue.message.includes("NOTES.md"),
-      ),
-    ).toHaveLength(1);
+      result.issues.filter((issue) => issue.message.includes("NOTES.md")),
+    ).toEqual([]);
   });
 
   it("rejects a target that references an unknown source plugin in from:", async () => {

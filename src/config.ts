@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
 import { z } from "zod";
 import { componentDirs } from "./components.js";
+import { warnOnStrippedKeys } from "./config-diagnostics.js";
 import { exists, isInside, physicalKey } from "./fs.js";
 import { loadPartials } from "./partials.js";
 import { configSchema, sourcePluginManifestSchema } from "./schema.js";
@@ -11,6 +12,7 @@ import { createFilesystemSourceProvider } from "./source.js";
 import type {
   ResolvedProject,
   PluginpackConfig,
+  ResolvedPluginpackConfig,
   ResolvedProjectConfig,
   SourcePlugin,
   SourcePluginManifest,
@@ -49,7 +51,7 @@ export async function loadConfig(
  */
 async function loadPartialsIfConfigured(
   rootDir: string,
-  config: PluginpackConfig,
+  config: ResolvedPluginpackConfig,
 ): Promise<Map<string, string>> {
   if (!config.source?.partials) {
     return new Map();
@@ -77,11 +79,7 @@ export async function loadProjectConfig(
     moduleCache: false,
   });
   const loaded = await jiti.import(resolvedConfigPath, { default: true });
-  const config = parseWithContext(
-    configSchema,
-    loaded,
-    resolvedConfigPath,
-  ) as PluginpackConfig;
+  const config = parseWithContext(configSchema, loaded, resolvedConfigPath);
   const rootDir = path.dirname(resolvedConfigPath);
   return {
     rootDir,
@@ -92,7 +90,7 @@ export async function loadProjectConfig(
 
 async function addRootSkillsPlugin(
   rootDir: string,
-  config: PluginpackConfig,
+  config: ResolvedPluginpackConfig,
   plugins: Map<string, SourcePlugin>,
 ): Promise<void> {
   if (!config.source?.skills) {
@@ -400,6 +398,7 @@ async function readSourceManifest(
       sourcePluginManifestSchema,
       JSON.parse(raw),
       filePath,
+      "manifest",
     ) as SourcePluginManifest;
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -411,17 +410,19 @@ async function readSourceManifest(
   }
 }
 
-function parseWithContext(
-  schema: z.ZodType,
+function parseWithContext<S extends z.ZodType>(
+  schema: S,
   value: unknown,
   context: string,
-): unknown {
+  kind: "config" | "manifest" = "config",
+): z.output<S> {
   const parsed = schema.safeParse(value);
   if (parsed.success) {
+    warnOnStrippedKeys(value, parsed.data, context, kind);
     return parsed.data;
   }
   const details = parsed.error.issues
     .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
     .join("; ");
-  throw new Error(`Invalid pluginpack config in ${context}: ${details}`);
+  throw new Error(`Invalid pluginpack ${kind} in ${context}: ${details}`);
 }
