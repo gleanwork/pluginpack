@@ -2992,6 +2992,50 @@ More instructions.
 `);
   });
 
+  it("substitutes partials configured with the top-level partials field into a direct source", async () => {
+    const project = await fixtureProject({
+      "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
+
+export default defineConfig({
+  name: "top-level-partials",
+  version: "1.0.0",
+  metadata: { description: "Partials", author: { name: "X" }, license: "MIT" },
+  partials: "partials",
+  targets: {
+    claude: {
+      outDir: "dist/claude",
+      plugins: { demo: { source: "shared/demo" } }
+    }
+  }
+});
+`,
+      partials: {
+        "auth.md": "Authenticate via OAuth, falling back to a token.\n",
+      },
+      shared: {
+        demo: {
+          skills: {
+            demo: {
+              "SKILL.md": skill("demo", "Demo skill.") + "\n{{> auth}}\n",
+            },
+          },
+        },
+      },
+    });
+    const root = project.baseDir;
+
+    await build({ cwd: root, target: "claude" });
+
+    const content = await readFile(
+      path.join(root, "dist/claude/plugins/demo/skills/demo/SKILL.md"),
+      "utf8",
+    );
+    expect(content).toBe(
+      skill("demo", "Demo skill.") +
+        "\nAuthenticate via OAuth, falling back to a token.\n",
+    );
+  });
+
   it("fails the build on a partial reference no partial satisfies", async () => {
     const project = await fixtureProject({
       "pluginpack.config.ts": `import { defineConfig } from "${path.resolve("src/index.ts")}";
@@ -3063,7 +3107,7 @@ export default defineConfig({
     const root = project.baseDir;
 
     await expect(build({ cwd: root, target: "claude" })).rejects.toThrow(
-      /no partials are configured — set `source\.partials`/,
+      /no partials are configured — set `partials`/,
     );
   });
 

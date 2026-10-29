@@ -45,18 +45,37 @@ export async function loadConfig(
 }
 
 /**
- * Loads the project-level `partials/` map if `source.partials` is
- * configured, shared across every source plugin (unlike components, which
- * are scoped to one plugin's own directory) — see `src/partials.ts`.
+ * The configured partials directory and the field that set it. `partials` is
+ * the current spelling; `source.partials` is the older one and still works.
+ * The schema rejects a config that sets both.
+ */
+function configuredPartials(
+  config: ResolvedPluginpackConfig,
+): { dir: string; field: "partials" | "source.partials" } | undefined {
+  if (config.partials) {
+    return { dir: config.partials, field: "partials" };
+  }
+  if (config.source?.partials) {
+    return { dir: config.source.partials, field: "source.partials" };
+  }
+  return undefined;
+}
+
+/**
+ * Loads the project-level `partials/` map if `partials` (or the older
+ * `source.partials`) is configured, shared across every source plugin (unlike
+ * components, which are scoped to one plugin's own directory) — see
+ * `src/partials.ts`.
  */
 async function loadPartialsIfConfigured(
   rootDir: string,
   config: ResolvedPluginpackConfig,
 ): Promise<Map<string, string>> {
-  if (!config.source?.partials) {
+  const configured = configuredPartials(config);
+  if (!configured) {
     return new Map();
   }
-  const partialsDir = path.resolve(rootDir, config.source.partials);
+  const partialsDir = path.resolve(rootDir, configured.dir);
   if (!(await exists(partialsDir))) {
     throw new Error(`Source partials directory is missing: ${partialsDir}`);
   }
@@ -183,8 +202,9 @@ export async function listSourcePaths(
   if (config.source?.skills) {
     add(config.source.skills, "source.skills");
   }
-  if (config.source?.partials) {
-    add(config.source.partials, "source.partials");
+  const partials = configuredPartials(config);
+  if (partials) {
+    add(partials.dir, partials.field);
   }
   if (config.source?.plugins) {
     add(config.source.plugins, "source.plugins");

@@ -415,6 +415,29 @@ describe("source protection compares physical paths", () => {
     );
   });
 
+  it.each([
+    ["partials", `partials: "partials",`],
+    ["source.partials", `source: { partials: "partials" },`],
+  ])(
+    "refuses to load a config whose outDir sits inside the %s directory",
+    async (field, sourceBlock) => {
+      const root = await makeProject(
+        `    antigravity: {
+      outDir: "partials/out",
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+        { partials: { "auth.md": "Authenticate first.\n" } },
+        sourceBlock,
+      );
+
+      await expect(loadConfig(root)).rejects.toThrow(
+        new RegExp(
+          `targets\\.antigravity\\.outDir .* resolves inside .*partials \\(${field.replace(".", "\\.")}\\)`,
+        ),
+      );
+    },
+  );
+
   it("refuses a --out-dir override inside source", async () => {
     const root = await makeProject(`    antigravity: {
       outDir: "dist/antigravity",
@@ -1301,6 +1324,36 @@ describe("an external outDir keeps its version-control data", () => {
 });
 
 describe("config path fields stay inside the project", () => {
+  it("rejects partials outside the project at config load", async () => {
+    const root = await makeProject(
+      `    antigravity: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      {},
+      `partials: "../outside",`,
+    );
+
+    await expect(loadConfig(root)).rejects.toThrow(
+      /Invalid pluginpack config in .*: partials: must be a safe relative path/,
+    );
+  });
+
+  it("rejects a config that sets both partials and source.partials", async () => {
+    const root = await makeProject(
+      `    antigravity: {
+      outDir: "out",
+      plugins: { acme: { source: "shared/acme" } }
+    }`,
+      { partials: { "auth.md": "Authenticate first.\n" } },
+      `partials: "partials",\n  source: { partials: "partials" },`,
+    );
+
+    await expect(loadConfig(root)).rejects.toThrow(
+      /source\.partials: set either "partials" or "source\.partials", not both/,
+    );
+  });
+
   it("rejects source.partials outside the project at config load", async () => {
     const root = await makeProject(
       `    antigravity: {
@@ -1317,6 +1370,7 @@ describe("config path fields stay inside the project", () => {
   });
 
   it.each([
+    ["partials", `partials: "https://../../outside",`, ""],
     ["source.partials", `source: { partials: "https://../../outside" },`, ""],
     [
       "targets.antigravity.plugins.acme.source",

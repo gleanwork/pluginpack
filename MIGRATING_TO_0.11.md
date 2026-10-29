@@ -139,8 +139,9 @@ Omit `overrides` when that directory does not exist. Prefer `exclude` when a
 target differs from pluginpack's defaults by only one or two content kinds.
 
 Delete `source.skills`, `source.rootPlugin`, and `source.plugins` after every
-emitted plugin uses a direct `source`. Keep `source.partials` temporarily if the
-repository uses partials.
+emitted plugin uses a direct `source`. Keep `source.partials` if the repository
+uses partials. It is not part of the legacy discovery model, and later versions
+also accept it as the top-level `partials` field.
 
 ## 7. Update scripts and ignored paths
 

@@ -301,7 +301,7 @@ function describe(error: unknown, partials: Map<string, string>): string {
   }
   const names = [...partials.keys()];
   if (names.length === 0) {
-    return `${error.message}, and no partials are configured — set \`source.partials\` in pluginpack.config.ts`;
+    return `${error.message}, and no partials are configured — set \`partials\` in pluginpack.config.ts`;
   }
   const suggestion = closestName(error.partialName, names);
   return [
