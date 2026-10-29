@@ -41,12 +41,19 @@ const rootPluginSchema = metadataSchema.extend({
   description: z.string().optional(),
 });
 
+// Partials are inlined into shipped output, so reading them from outside the
+// project would publish files that are not part of it.
+const partialsPath = safeRelativePath;
+
+/**
+ * The 0.10 source-discovery fields. `plugins`, `skills` and `rootPlugin` are
+ * legacy: 0.11 emitted plugins name a direct `source` instead. `partials` is
+ * not legacy; it is the older spelling of the top-level `partials` field.
+ */
 const sourceSchema = z.object({
   plugins: z.string().optional(),
   skills: z.string().optional(),
-  // Partials are inlined into shipped output, so reading them from outside the
-  // project would publish files that are not part of it.
-  partials: safeRelativePath.optional(),
+  partials: partialsPath.optional(),
   rootPlugin: rootPluginSchema.optional(),
 });
 
@@ -233,6 +240,7 @@ const configSchema = z
   .object({
     name: z.string().min(1),
     version: z.string().min(1),
+    partials: partialsPath.optional(),
     source: sourceSchema.optional(),
     metadata: metadataSchema.optional(),
     targets: z.object({
@@ -245,6 +253,17 @@ const configSchema = z
     }),
   })
   .superRefine((config, ctx) => {
+    if (
+      config.partials !== undefined &&
+      config.source?.partials !== undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["source", "partials"],
+        message:
+          'set either "partials" or "source.partials", not both; "partials" is the current spelling',
+      });
+    }
     for (const [target, targetConfig] of Object.entries(config.targets)) {
       const problem = marketplaceDirProblem(
         target,

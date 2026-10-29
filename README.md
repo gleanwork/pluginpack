@@ -659,14 +659,16 @@ shared/acme/skills/release-notes/SKILL.md   ->  contains {{> auth}}
 shared/acme/skills/changelog/SKILL.md       ->  contains {{> auth}}
 ```
 
-Point `source.partials` at that directory in `pluginpack.config.ts`:
+Point `partials` at that directory in `pluginpack.config.ts`:
 
 ```ts
 export default defineConfig({
-  source: { partials: "partials" },
+  partials: "partials",
   // ...
 });
 ```
+
+`source: { partials: "partials" }` is the older spelling and still works. Set one or the other, not both.
 
 Partials are project-level (shared across every source plugin, not scoped to one), and may reference other partials — nested composition resolves in one pass, though a circular reference (A includes B includes A) is a build-time error. A tag alone on its own line — the common case — leaves no blank line behind.
 
@@ -728,22 +730,25 @@ Keys stripped by config parsing produce a warning that names the config file and
 
 **Top level**
 
-| Field      | Type   | Required | Meaning                                                                            |
-| ---------- | ------ | -------- | ---------------------------------------------------------------------------------- |
-| `name`     | string | yes      | Marketplace/source name written into generated manifests.                          |
-| `version`  | string | yes      | Default version stamped into manifests (per-target/plugin overridable).            |
-| `source`   | object | legacy   | 0.10 discovery/partials config; direct plugin sources now live on emitted plugins. |
-| `metadata` | object | no       | Shared metadata merged into manifests (see **`metadata`**).                        |
-| `targets`  | object | yes      | Per-target output config, keyed by target name (see **`targets.<name>`**).         |
+| Field      | Type   | Required | Meaning                                                                                                                                                 |
+| ---------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | string | yes      | Marketplace/source name written into generated manifests.                                                                                               |
+| `version`  | string | yes      | Default version stamped into manifests (per-target/plugin overridable).                                                                                 |
+| `partials` | string | no       | Directory of reusable `{{> name}}` text fragments, shared across every source plugin (see **Partials**). Safe relative: it must sit inside the project. |
+| `source`   | object | no       | 0.10 source discovery, plus the older spelling of `partials` (see **`source`**). Direct plugin sources now live on emitted plugins.                     |
+| `metadata` | object | no       | Shared metadata merged into manifests (see **`metadata`**).                                                                                             |
+| `targets`  | object | yes      | Per-target output config, keyed by target name (see **`targets.<name>`**).                                                                              |
 
-**Legacy `source` (0.10 migration compatibility)**
+**`source`**
+
+`plugins`, `skills` and `rootPlugin` are legacy 0.10 fields, kept for migration. `partials` is not legacy.
 
 | Field        | Type   | Required | Meaning                                                                                                                                                                      |
 | ------------ | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `plugins`    | string | no       | Directory to discover source plugins from. Defaults to `plugins`.                                                                                                            |
-| `skills`     | string | no       | Repo-level skills directory; creates a root source plugin from sibling component dirs.                                                                                       |
-| `partials`   | string | no       | Directory of reusable `{{> name}}` text fragments, shared across every source plugin (see **Partials**). Safe relative: it must sit inside the project.                      |
-| `rootPlugin` | object | no       | Metadata for that root skills plugin. Accepts all **`metadata`** fields plus `id`, `name`, `description`. `id` is the source-plugin name used in each target's `from` array. |
+| `plugins`    | string | legacy   | Directory to discover source plugins from. Defaults to `plugins`.                                                                                                            |
+| `skills`     | string | legacy   | Repo-level skills directory; creates a root source plugin from sibling component dirs.                                                                                       |
+| `partials`   | string | no       | Older spelling of the top-level `partials` field. Still accepted; a config that sets both fails to load.                                                                     |
+| `rootPlugin` | object | legacy   | Metadata for that root skills plugin. Accepts all **`metadata`** fields plus `id`, `name`, `description`. `id` is the source-plugin name used in each target's `from` array. |
 
 **`metadata`** (and `source.rootPlugin`)
 
